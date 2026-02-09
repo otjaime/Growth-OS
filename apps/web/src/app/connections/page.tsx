@@ -96,7 +96,7 @@ export default function ConnectionsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Data Connections</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Connect your data sources to unify analytics in one place.
+            Connect your data sources to unify all your analytics in one place.
           </p>
         </div>
         <button
