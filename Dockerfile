@@ -4,6 +4,8 @@
 # ──────────────────────────────────────────────────────────────
 
 FROM node:20-alpine AS base
+# Prisma requires OpenSSL libs on Alpine
+RUN apk add --no-cache openssl openssl-dev libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
 WORKDIR /app
 
@@ -13,6 +15,8 @@ COPY pnpm-workspace.yaml package.json ./
 COPY packages/database/package.json ./packages/database/
 COPY packages/etl/package.json ./packages/etl/
 COPY apps/api/package.json ./apps/api/
+# Tell Prisma to download the linux-musl binary (Alpine)
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 RUN pnpm install --no-frozen-lockfile
 
 # ── Build ────────────────────────────────────────────────────
