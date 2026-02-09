@@ -1,0 +1,81 @@
+{
+  "_description": "Hand-calculated golden KPI values for regression testing",
+  "_methodology": "Each scenario uses known inputs, expected outputs verified by manual calculation",
+  "scenarios": {
+    "blendedCac": [
+      { "inputs": { "totalSpend": 10000, "newCustomers": 100 }, "expected": 100, "notes": "10000/100 = 100" },
+      { "inputs": { "totalSpend": 15000, "newCustomers": 120 }, "expected": 125, "notes": "15000/120 = 125" },
+      { "inputs": { "totalSpend": 0, "newCustomers": 50 }, "expected": 0, "notes": "Zero spend → CAC = 0" },
+      { "inputs": { "totalSpend": 10000, "newCustomers": 0 }, "expected": 0, "notes": "Zero customers → CAC = 0 (not Infinity)" }
+    ],
+    "mer": [
+      { "inputs": { "totalRevenue": 50000, "totalSpend": 10000 }, "expected": 5.0, "notes": "50000/10000 = 5.0x" },
+      { "inputs": { "totalRevenue": 25000, "totalSpend": 10000 }, "expected": 2.5, "notes": "Break-even at 1.0x; 2.5x is healthy" },
+      { "inputs": { "totalRevenue": 8000, "totalSpend": 10000 }, "expected": 0.8, "notes": "Below 1.0x = unprofitable" },
+      { "inputs": { "totalRevenue": 50000, "totalSpend": 0 }, "expected": 0, "notes": "Zero spend → 0 (not Infinity)" }
+    ],
+    "contributionMarginPct": [
+      { "inputs": { "cm": 30000, "revenueNet": 90000 }, "expected": 0.3333, "tolerance": 0.001, "notes": "30k/90k = 33.33%" },
+      { "inputs": { "cm": 0, "revenueNet": 90000 }, "expected": 0.0, "notes": "Zero margin" },
+      { "inputs": { "cm": 90000, "revenueNet": 90000 }, "expected": 1.0, "notes": "100% margin edge case" },
+      { "inputs": { "cm": 50000, "revenueNet": 0 }, "expected": 0.0, "notes": "Zero revenue → 0 (not NaN)" }
+    ],
+    "aov": [
+      { "inputs": { "totalRevenue": 50000, "orderCount": 500 }, "expected": 100, "notes": "50000/500 = 100" },
+      { "inputs": { "totalRevenue": 75000, "orderCount": 300 }, "expected": 250, "notes": "75000/300 = 250" },
+      { "inputs": { "totalRevenue": 50000, "orderCount": 0 }, "expected": 0, "notes": "Zero orders → 0" }
+    ],
+    "roas": [
+      { "inputs": { "channelRevenue": 20000, "channelSpend": 5000 }, "expected": 4.0, "notes": "20000/5000 = 4.0x" },
+      { "inputs": { "channelRevenue": 3000, "channelSpend": 5000 }, "expected": 0.6, "notes": "Below 1.0 = negative ROI" },
+      { "inputs": { "channelRevenue": 20000, "channelSpend": 0 }, "expected": 0, "notes": "Zero spend → 0" }
+    ],
+    "paybackDays": [
+      { "inputs": { "cac": 100, "ltv30": 150, "cmPct": 0.4 }, "expected": 50, "notes": "dailyCM=(150*0.4)/30=2.0; 100/2.0=50" },
+      { "inputs": { "cac": 200, "ltv30": 150, "cmPct": 0.35 }, "expected": 114, "notes": "dailyCM=(150*0.35)/30=1.75; 200/1.75≈114" },
+      { "inputs": { "cac": 80, "ltv30": 100, "cmPct": 0.5 }, "expected": 48, "notes": "dailyCM=(100*0.5)/30=1.667; 80/1.667≈48" },
+      { "inputs": { "cac": 0, "ltv30": 150, "cmPct": 0.4 }, "expected": null, "notes": "Zero CAC → null" },
+      { "inputs": { "cac": 100, "ltv30": 0, "cmPct": 0.4 }, "expected": null, "notes": "Zero LTV → null" }
+    ],
+    "retentionRate": [
+      { "inputs": { "repeatCustomers": 25, "cohortSize": 100 }, "expected": 0.25, "notes": "25/100 = 25%" },
+      { "inputs": { "repeatCustomers": 0, "cohortSize": 100 }, "expected": 0.0, "notes": "Zero repeat = 0%" },
+      { "inputs": { "repeatCustomers": 100, "cohortSize": 100 }, "expected": 1.0, "notes": "100% retention" },
+      { "inputs": { "repeatCustomers": 10, "cohortSize": 0 }, "expected": 0, "notes": "Zero cohort → 0 (not Infinity)" }
+    ],
+    "newCustomerShare": [
+      { "inputs": { "newCustomerOrders": 200, "totalOrders": 500 }, "expected": 0.4, "notes": "200/500 = 40%" },
+      { "inputs": { "newCustomerOrders": 0, "totalOrders": 500 }, "expected": 0.0, "notes": "Zero new = 0%" },
+      { "inputs": { "newCustomerOrders": 500, "totalOrders": 500 }, "expected": 1.0, "notes": "All new = 100%" },
+      { "inputs": { "newCustomerOrders": 0, "totalOrders": 0 }, "expected": 0, "notes": "Zero total → 0" }
+    ],
+    "percentChange": [
+      { "inputs": { "current": 120, "previous": 100 }, "expected": 0.2, "notes": "(120-100)/100 = 20%" },
+      { "inputs": { "current": 80, "previous": 100 }, "expected": -0.2, "notes": "(80-100)/100 = -20%" },
+      { "inputs": { "current": 100, "previous": 0 }, "expected": 1, "notes": "Previous zero → 100%" },
+      { "inputs": { "current": 0, "previous": 0 }, "expected": 0, "notes": "Both zero → 0" },
+      { "inputs": { "current": 200, "previous": 100 }, "expected": 1.0, "notes": "Doubled = 100%" }
+    ],
+    "funnelCvr": [
+      {
+        "inputs": { "sessions": 10000, "pdpViews": 4000, "addToCart": 1000, "checkouts": 500, "purchases": 200 },
+        "expected": {
+          "sessionToPdp": 0.4,
+          "pdpToAtc": 0.25,
+          "atcToCheckout": 0.5,
+          "checkoutToPurchase": 0.4,
+          "sessionToPurchase": 0.02
+        },
+        "notes": "Standard e-commerce funnel"
+      }
+    ],
+    "cpc": [
+      { "inputs": { "spend": 5000, "clicks": 2500 }, "expected": 2.0, "notes": "5000/2500 = $2.00" },
+      { "inputs": { "spend": 5000, "clicks": 0 }, "expected": 0, "notes": "Zero clicks → 0" }
+    ],
+    "cpm": [
+      { "inputs": { "spend": 5000, "impressions": 1000000 }, "expected": 5.0, "notes": "(5000/1M)*1000 = $5.00" },
+      { "inputs": { "spend": 10, "impressions": 2000 }, "expected": 5.0, "notes": "(10/2000)*1000 = $5.00" }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+*.log
+coverage/
+.turbo/
+.prisma/
+postgres-data/
+redis-data/
+test-results/
+playwright-report/
+blob-report/

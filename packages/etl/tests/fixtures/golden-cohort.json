@@ -1,0 +1,55 @@
+{
+  "_description": "Golden cohort/retention fixtures. Verifies that retention rates are bounded [0, 1] and represent UNIQUE customers, not order counts.",
+  "invariants": {
+    "retention_bounded": {
+      "rule": "All retention rates (d7, d30, d60, d90) must be in [0.0, 1.0]",
+      "reasoning": "Retention = unique repeat customers / cohort size. Cannot exceed 100% after bug fix."
+    },
+    "retention_monotonic": {
+      "rule": "d7 <= d30 <= d60 <= d90 for each cohort",
+      "reasoning": "A customer who repurchases within 7 days also repurchases within 30/60/90 days."
+    },
+    "ltv_monotonic": {
+      "rule": "ltv30 <= ltv90 <= ltv180 for each cohort",
+      "reasoning": "LTV at longer windows includes all shorter-window revenue."
+    },
+    "cohort_size_positive": {
+      "rule": "cohortSize > 0 for all cohorts",
+      "reasoning": "A cohort cannot have zero members."
+    },
+    "payback_days_reasonable": {
+      "rule": "paybackDays is null OR between 1 and 365",
+      "reasoning": "Payback > 1 year is unrealistic for DTC; likely a data issue."
+    }
+  },
+  "syntheticScenarios": [
+    {
+      "name": "single_repeat_customer",
+      "cohortSize": 10,
+      "customersWithRepeatInD7": 1,
+      "customersWithRepeatInD30": 3,
+      "customersWithRepeatInD60": 4,
+      "customersWithRepeatInD90": 5,
+      "expected": {
+        "d7Retention": 0.1,
+        "d30Retention": 0.3,
+        "d60Retention": 0.4,
+        "d90Retention": 0.5
+      },
+      "notes": "Even if the 1 D7 customer placed 5 orders in D7, retention should still be 0.1 (1/10)"
+    },
+    {
+      "name": "heavy_buyer_no_inflation",
+      "cohortSize": 100,
+      "customersWithRepeatInD30": 20,
+      "ordersPlacedByRepeatCustomersInD30": 80,
+      "expected": {
+        "d30Retention": 0.20
+      },
+      "buggyExpected": {
+        "d30Retention": 0.80,
+        "notes": "Before fix: 80 orders / 100 cohort = 0.80 (inflated by counting orders, not customers)"
+      }
+    }
+  ]
+}

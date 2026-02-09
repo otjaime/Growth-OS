@@ -1,0 +1,105 @@
+{
+  "_description": "Hand-calculated golden alert scenarios for regression testing. Each scenario defines inputs and which alerts should/shouldn't fire.",
+  "baseInput": {
+    "currentRevenue": 100000,
+    "currentSpend": 20000,
+    "currentNewCustomers": 200,
+    "currentTotalOrders": 500,
+    "currentContributionMargin": 30000,
+    "currentRevenueNet": 90000,
+    "currentD30Retention": 0.25,
+    "previousRevenue": 100000,
+    "previousSpend": 20000,
+    "previousNewCustomers": 200,
+    "previousTotalOrders": 500,
+    "previousContributionMargin": 30000,
+    "previousRevenueNet": 90000,
+    "previousD30Retention": 0.25,
+    "baselineD30Retention": 0.25
+  },
+  "scenarios": {
+    "all_healthy": {
+      "overrides": {},
+      "expectedAlertIds": [],
+      "notes": "All metrics stable → no alerts"
+    },
+    "cac_warning": {
+      "overrides": { "currentNewCustomers": 171 },
+      "expectedAlertIds": ["cac_increase"],
+      "expectedSeverity": "warning",
+      "notes": "Previous CAC=100, Current CAC=20000/171≈117, change≈17% > 15% threshold"
+    },
+    "cac_critical": {
+      "overrides": { "currentNewCustomers": 150 },
+      "expectedAlertIds": ["cac_increase"],
+      "expectedSeverity": "critical",
+      "notes": "Previous CAC=100, Current CAC=133.3, change=33.3% > 30% → critical"
+    },
+    "cm_decline_warning": {
+      "overrides": { "currentContributionMargin": 25000 },
+      "expectedAlertIds": ["cm_decrease"],
+      "expectedSeverity": "warning",
+      "notes": "Previous CM%=33.3%, Current CM%=25000/90000=27.8%, drop=5.6pp > 3pp"
+    },
+    "cm_decline_critical": {
+      "overrides": { "currentContributionMargin": 20000 },
+      "expectedAlertIds": ["cm_decrease"],
+      "expectedSeverity": "critical",
+      "notes": "CM% drop from 33.3% to 22.2% = 11.1pp > 6pp → critical"
+    },
+    "retention_warning": {
+      "overrides": { "currentD30Retention": 0.18, "baselineD30Retention": 0.25 },
+      "expectedAlertIds": ["retention_drop"],
+      "expectedSeverity": "warning",
+      "notes": "18% vs 25% baseline = -7pp > -5pp threshold"
+    },
+    "retention_critical": {
+      "overrides": { "currentD30Retention": 0.12, "baselineD30Retention": 0.25 },
+      "expectedAlertIds": ["retention_drop"],
+      "expectedSeverity": "critical",
+      "notes": "12% vs 25% baseline = -13pp > -10pp → critical"
+    },
+    "revenue_warning": {
+      "overrides": { "currentRevenue": 85000 },
+      "expectedAlertIds": ["revenue_decline"],
+      "expectedSeverity": "warning",
+      "notes": "85k vs 100k = -15% > -10% threshold"
+    },
+    "revenue_critical": {
+      "overrides": { "currentRevenue": 75000 },
+      "expectedAlertIds": ["revenue_decline"],
+      "expectedSeverity": "critical",
+      "notes": "75k vs 100k = -25% > -20% → critical"
+    },
+    "new_customer_share_decline": {
+      "overrides": {
+        "currentNewCustomers": 100,
+        "currentTotalOrders": 500,
+        "previousNewCustomers": 200,
+        "previousTotalOrders": 500
+      },
+      "expectedAlertIds": ["new_customer_decline"],
+      "expectedSeverity": "info",
+      "notes": "Current share=100/500=20%, Previous share=200/500=40%, drop=20pp > 8pp threshold"
+    },
+    "mer_deterioration": {
+      "overrides": {
+        "currentSpend": 24000,
+        "currentRevenue": 101000,
+        "currentNewCustomers": 200
+      },
+      "expectedAlertIds": ["mer_deterioration"],
+      "expectedSeverity": "warning",
+      "notes": "Spend up 20%, revenue +1%, MER drops from 5.0x to 4.21x = -15.8%"
+    },
+    "multi_alert_storm": {
+      "overrides": {
+        "currentRevenue": 85000,
+        "currentNewCustomers": 150,
+        "currentContributionMargin": 25000
+      },
+      "minAlerts": 2,
+      "notes": "Revenue -15%, CAC +33%, CM% -5.6pp → multiple alerts fire simultaneously"
+    }
+  }
+}

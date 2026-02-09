@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --card: #1e293b;
+  --card-border: #334155;
+  --accent: #3b82f6;
+  --positive: #22c55e;
+  --negative: #ef4444;
+  --warning: #f59e0b;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.card {
+  @apply bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-6;
+}
+
+.kpi-positive { color: var(--positive); }
+.kpi-negative { color: var(--negative); }
+.kpi-neutral { color: var(--foreground); }

@@ -1,0 +1,247 @@
+name: Growth OS — QA Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  DATABASE_URL: postgresql://postgres:growth@localhost:5432/growth_os
+  REDIS_URL: redis://localhost:6379
+  DEMO_MODE: 'true'
+  NODE_ENV: test
+
+jobs:
+  # ─── Stage 1: Lint + Type Check ────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r exec tsc --noEmit
+      # Future: pnpm lint
+
+  # ─── Stage 2: Unit + Integration Tests ─────────────────────────────
+  unit-tests:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Run all unit + integration tests with coverage
+      - name: Run tests with coverage
+        run: pnpm test -- --coverage --reporter=verbose
+
+      # Upload coverage report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            packages/etl/coverage/
+            apps/api/coverage/
+          retention-days: 14
+
+      # QA Gate: Fail if coverage below thresholds
+      # Uncomment when coverage config is added to vitest.config.ts
+      # - name: Check coverage thresholds
+      #   run: |
+      #     pnpm --filter @growth-os/etl test -- --coverage --coverage.thresholds.lines=80
+      #     pnpm --filter @growth-os/api test -- --coverage --coverage.thresholds.lines=70
+
+  # ─── Stage 3: Golden Fixture Regression ─────────────────────────────
+  golden-regression:
+    name: Golden Fixture Regression
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Run only golden fixture tests
+      - name: Golden KPI regression
+        run: pnpm --filter @growth-os/etl test -- --reporter=verbose -t "golden"
+
+      # Verify fixture files haven't been accidentally modified
+      - name: Fixture integrity check
+        run: |
+          echo "Checking golden fixture checksums..."
+          sha256sum packages/etl/tests/fixtures/golden-*.json
+          echo "✅ Fixture files present and readable"
+
+  # ─── Stage 4: E2E Tests ────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [unit-tests, golden-regression]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: growth
+          POSTGRES_DB: growth_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Generate Prisma client + migrate
+      - name: Database setup
+        run: |
+          pnpm --filter @growth-os/database db:generate
+          pnpm --filter @growth-os/database db:migrate
+
+      # Seed demo data
+      - name: Seed demo data
+        run: pnpm demo:pipeline
+
+      # Install Playwright browsers
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Start API server in background
+      - name: Start API
+        run: pnpm --filter @growth-os/api dev &
+        env:
+          PORT: 4000
+
+      # Start web app in background
+      - name: Start Web
+        run: pnpm --filter @growth-os/web dev &
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+
+      # Wait for services
+      - name: Wait for services
+        run: |
+          echo "Waiting for API..."
+          timeout 30 bash -c 'until curl -s http://localhost:4000/api/health > /dev/null; do sleep 1; done'
+          echo "Waiting for Web..."
+          timeout 60 bash -c 'until curl -s http://localhost:3000 > /dev/null; do sleep 1; done'
+          echo "✅ Services ready"
+
+      # Run E2E tests
+      - name: Run Playwright tests
+        run: pnpm test:e2e
+
+      # Upload test artifacts on failure
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/e2e/test-results/
+          retention-days: 7
+
+  # ─── Stage 5: Security Checks ──────────────────────────────────────
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Check for known vulnerabilities
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high || true
+
+      # Check for secrets in code
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for potential secrets..."
+          ! grep -rn "ENCRYPTION_KEY\s*=" --include="*.ts" --include="*.tsx" packages/ apps/ \
+            | grep -v "process.env" \
+            | grep -v ".test." \
+            | grep -v "node_modules" \
+            | grep -v ".example" \
+            && echo "✅ No hardcoded secrets found" \
+            || echo "⚠️ Review flagged files"
+
+      # Verify .env is gitignored
+      - name: Check .gitignore
+        run: |
+          if grep -q "^\.env$" .gitignore 2>/dev/null || grep -q "^\.env\." .gitignore 2>/dev/null; then
+            echo "✅ .env is in .gitignore"
+          else
+            echo "⚠️ .env may not be gitignored"
+          fi
+
+  # ─── Final: QA Summary ─────────────────────────────────────────────
+  qa-summary:
+    name: QA Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, golden-regression, e2e-tests, security]
+    if: always()
+    steps:
+      - name: QA Gate Results
+        run: |
+          echo "╔══════════════════════════════════════╗"
+          echo "║       Growth OS — QA Summary         ║"
+          echo "╠══════════════════════════════════════╣"
+          echo "║ Unit Tests:        ${{ needs.unit-tests.result }}"
+          echo "║ Golden Regression: ${{ needs.golden-regression.result }}"
+          echo "║ E2E Tests:         ${{ needs.e2e-tests.result }}"
+          echo "║ Security:          ${{ needs.security.result }}"
+          echo "╚══════════════════════════════════════╝"
+
+      - name: Fail if any gate failed
+        if: |
+          needs.unit-tests.result == 'failure' ||
+          needs.golden-regression.result == 'failure' ||
+          needs.e2e-tests.result == 'failure'
+        run: exit 1

@@ -1,0 +1,307 @@
+// ──────────────────────────────────────────────────────────────
+// Growth OS — Prisma Schema
+// Full data model: raw layer, staging, marts, orchestration
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ══════════════════════════════════════════════════════════════
+// RAW LAYER
+// ══════════════════════════════════════════════════════════════
+
+model RawEvent {
+  id          String   @id @default(uuid())
+  source      String   // shopify | meta | google_ads | ga4
+  entity      String   // orders | customers | campaigns | insights | sessions
+  externalId  String?  @map("external_id")
+  cursor      String?  // pagination cursor or updated_at watermark
+  fetchedAt   DateTime @default(now()) @map("fetched_at")
+  payloadJson Json     @map("payload_json")
+
+  @@index([source, entity])
+  @@index([source, entity, externalId])
+  @@index([fetchedAt])
+  @@map("raw_events")
+}
+
+model JobRun {
+  id          String    @id @default(uuid())
+  jobName     String    @map("job_name")
+  status      JobStatus @default(PENDING)
+  startedAt   DateTime  @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  rowsLoaded  Int       @default(0) @map("rows_loaded")
+  errorJson   Json?     @map("error_json")
+  durationMs  Int?      @map("duration_ms")
+  metadata    Json?     // extra context: source, entity, cursor range, etc.
+
+  @@index([jobName, startedAt])
+  @@index([status])
+  @@map("job_runs")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  RETRYING
+}
+
+// ══════════════════════════════════════════════════════════════
+// CREDENTIAL STORAGE (encrypted at rest)
+// ══════════════════════════════════════════════════════════════
+
+model ConnectorCredential {
+  id            String   @id @default(uuid())
+  connectorType String   @map("connector_type") // shopify | google | meta
+  encryptedData String   @map("encrypted_data") // AES-GCM encrypted JSON
+  iv            String   // initialization vector
+  authTag       String   @map("auth_tag") // GCM auth tag
+  metadata      Json?    // non-sensitive config (shop domain, property id, etc.)
+  lastSyncAt    DateTime? @map("last_sync_at")
+  lastSyncStatus String? @map("last_sync_status")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([connectorType])
+  @@map("connector_credentials")
+}
+
+// ══════════════════════════════════════════════════════════════
+// STAGING LAYER
+// ══════════════════════════════════════════════════════════════
+
+model StgOrder {
+  id              String    @id @default(uuid())
+  orderId         String    @unique @map("order_id") // Shopify order ID
+  orderDate       DateTime  @map("order_date")
+  customerId      String?   @map("customer_id")
+  email           String?
+  revenueGross    Decimal   @map("revenue_gross") @db.Decimal(12, 2)
+  discounts       Decimal   @default(0) @db.Decimal(12, 2)
+  refunds         Decimal   @default(0) @db.Decimal(12, 2)
+  revenueNet      Decimal   @map("revenue_net") @db.Decimal(12, 2)
+  currency        String    @default("USD")
+  sourceName      String?   @map("source_name")
+  landingSite     String?   @map("landing_site")
+  referringSite   String?   @map("referring_site")
+  utmSource       String?   @map("utm_source")
+  utmMedium       String?   @map("utm_medium")
+  utmCampaign     String?   @map("utm_campaign")
+  channelRaw      String?   @map("channel_raw")
+  region          String?
+  lineItemsJson   Json?     @map("line_items_json")
+  isNewCustomer   Boolean   @default(false) @map("is_new_customer")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([orderDate])
+  @@index([customerId])
+  @@map("stg_orders")
+}
+
+model StgCustomer {
+  id                  String   @id @default(uuid())
+  customerId          String   @unique @map("customer_id")
+  email               String?
+  firstOrderDate      DateTime? @map("first_order_date")
+  acquisitionChannel  String?  @map("acquisition_channel")
+  region              String?
+  totalOrders         Int      @default(0) @map("total_orders")
+  totalRevenue        Decimal  @default(0) @db.Decimal(12, 2) @map("total_revenue")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("stg_customers")
+}
+
+model StgSpend {
+  id           String   @id @default(uuid())
+  date         DateTime @db.Date
+  source       String   // meta | google_ads
+  campaignId   String   @map("campaign_id")
+  campaignName String   @map("campaign_name")
+  spend        Decimal  @db.Decimal(12, 2)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Int      @default(0)
+  conversionValue Decimal @default(0) @db.Decimal(12, 2) @map("conversion_value")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, source, campaignId])
+  @@index([date])
+  @@map("stg_spend")
+}
+
+model StgTraffic {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  source      String   // ga4
+  channelRaw  String?  @map("channel_raw")
+  sessions    Int      @default(0)
+  pdpViews    Int      @default(0) @map("pdp_views")
+  addToCart   Int      @default(0) @map("add_to_cart")
+  checkouts   Int      @default(0)
+  purchases   Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, source, channelRaw])
+  @@index([date])
+  @@map("stg_traffic")
+}
+
+// ══════════════════════════════════════════════════════════════
+// MART / SEMANTIC LAYER — DIMENSIONS
+// ══════════════════════════════════════════════════════════════
+
+model DimDate {
+  date      DateTime @id @db.Date
+  dayOfWeek Int      @map("day_of_week")
+  dayName   String   @map("day_name")
+  week      Int
+  month     Int
+  monthName String   @map("month_name")
+  quarter   Int
+  year      Int
+  isWeekend Boolean  @map("is_weekend")
+
+  @@map("dim_date")
+}
+
+model DimChannel {
+  id   String @id @default(uuid())
+  slug String @unique // meta, google, email, organic, affiliate, direct, other
+  name String         // Meta Ads, Google Ads, Email, Organic, Affiliate, Direct, Other
+
+  factOrders FactOrder[]
+  factSpend  FactSpend[]
+  factTraffic FactTraffic[]
+  dimCampaigns DimCampaign[]
+
+  @@map("dim_channel")
+}
+
+model DimCampaign {
+  id           String  @id @default(uuid())
+  source       String  // meta | google_ads
+  campaignId   String  @map("campaign_id")
+  campaignName String  @map("campaign_name")
+  channelId    String  @map("channel_id")
+  channel      DimChannel @relation(fields: [channelId], references: [id])
+
+  factOrders FactOrder[]
+  factSpend  FactSpend[]
+
+  @@unique([source, campaignId])
+  @@map("dim_campaign")
+}
+
+model DimCustomer {
+  id                  String    @id @default(uuid())
+  customerId          String    @unique @map("customer_id")
+  firstOrderDate      DateTime? @map("first_order_date") @db.Date
+  acquisitionChannel  String?   @map("acquisition_channel")
+  region              String?
+  isNewCustomer       Boolean   @default(true) @map("is_new_customer")
+  cohortMonth         String?   @map("cohort_month") // YYYY-MM
+  totalOrders         Int       @default(0) @map("total_orders")
+  totalRevenue        Decimal   @default(0) @db.Decimal(12, 2) @map("total_revenue")
+  ltv30               Decimal   @default(0) @db.Decimal(12, 2)
+  ltv90               Decimal   @default(0) @db.Decimal(12, 2)
+  ltv180              Decimal   @default(0) @db.Decimal(12, 2)
+
+  factOrders FactOrder[]
+
+  @@map("dim_customer")
+}
+
+// ══════════════════════════════════════════════════════════════
+// MART / SEMANTIC LAYER — FACTS
+// ══════════════════════════════════════════════════════════════
+
+model FactOrder {
+  id                  String   @id @default(uuid())
+  orderId             String   @unique @map("order_id")
+  orderDate           DateTime @map("order_date") @db.Date
+  customerId          String?  @map("customer_id")
+  customer            DimCustomer? @relation(fields: [customerId], references: [customerId])
+  revenueGross        Decimal  @map("revenue_gross") @db.Decimal(12, 2)
+  discounts           Decimal  @default(0) @db.Decimal(12, 2)
+  refunds             Decimal  @default(0) @db.Decimal(12, 2)
+  revenueNet          Decimal  @map("revenue_net") @db.Decimal(12, 2)
+  cogs                Decimal  @default(0) @db.Decimal(12, 2)
+  shippingCost        Decimal  @default(0) @map("shipping_cost") @db.Decimal(12, 2)
+  opsCost             Decimal  @default(0) @map("ops_cost") @db.Decimal(12, 2)
+  contributionMargin  Decimal  @default(0) @map("contribution_margin") @db.Decimal(12, 2)
+  channelId           String?  @map("channel_id")
+  channel             DimChannel? @relation(fields: [channelId], references: [id])
+  campaignId          String?  @map("campaign_id")
+  campaign            DimCampaign? @relation(fields: [campaignId], references: [id])
+  category            String?
+  region              String?
+  isNewCustomer       Boolean  @default(false) @map("is_new_customer")
+
+  @@index([orderDate])
+  @@index([channelId])
+  @@index([customerId])
+  @@map("fact_orders")
+}
+
+model FactSpend {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  channelId   String   @map("channel_id")
+  channel     DimChannel @relation(fields: [channelId], references: [id])
+  campaignId  String?  @map("campaign_id")
+  campaign    DimCampaign? @relation(fields: [campaignId], references: [id])
+  spend       Decimal  @db.Decimal(12, 2)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+
+  @@unique([date, channelId, campaignId])
+  @@index([date])
+  @@map("fact_spend")
+}
+
+model FactTraffic {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  channelId String   @map("channel_id")
+  channel   DimChannel @relation(fields: [channelId], references: [id])
+  sessions  Int      @default(0)
+  pdpViews  Int      @default(0) @map("pdp_views")
+  addToCart Int      @default(0) @map("add_to_cart")
+  checkouts Int     @default(0)
+  purchases Int      @default(0)
+
+  @@unique([date, channelId])
+  @@index([date])
+  @@map("fact_traffic")
+}
+
+model Cohort {
+  id           String   @id @default(uuid())
+  cohortMonth  String   @unique @map("cohort_month") // YYYY-MM
+  cohortSize   Int      @map("cohort_size")
+  d7Retention  Decimal  @default(0) @map("d7_retention") @db.Decimal(5, 4)
+  d30Retention Decimal  @default(0) @map("d30_retention") @db.Decimal(5, 4)
+  d60Retention Decimal  @default(0) @map("d60_retention") @db.Decimal(5, 4)
+  d90Retention Decimal  @default(0) @map("d90_retention") @db.Decimal(5, 4)
+  ltv30        Decimal  @default(0) @db.Decimal(12, 2)
+  ltv90        Decimal  @default(0) @db.Decimal(12, 2)
+  ltv180       Decimal  @default(0) @db.Decimal(12, 2)
+  paybackDays  Int?     @map("payback_days")
+  avgCac       Decimal? @default(0) @map("avg_cac") @db.Decimal(12, 2)
+
+  @@map("cohorts")
+}

@@ -1,0 +1,48 @@
+{
+  "name": "growth-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Growth OS — Unified analytics platform for DTC/ecommerce growth teams",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "i": "pnpm install",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @growth-os/database db:migrate",
+    "db:generate": "pnpm --filter @growth-os/database db:generate",
+    "db:seed": "pnpm --filter @growth-os/database db:seed",
+    "db:reset": "pnpm --filter @growth-os/database db:reset",
+    "demo": "DEMO_MODE=true pnpm run demo:pipeline && pnpm run demo:start",
+    "demo:pipeline": "DEMO_MODE=true pnpm --filter @growth-os/etl demo",
+    "demo:start": "DEMO_MODE=true concurrently \"pnpm --filter @growth-os/api dev\" \"pnpm --filter @growth-os/web dev\"",
+    "sync": "pnpm --filter @growth-os/etl sync",
+    "sync:watch": "pnpm --filter @growth-os/api start:scheduler",
+    "dev": "concurrently \"pnpm --filter @growth-os/api dev\" \"pnpm --filter @growth-os/web dev\"",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm --filter @growth-os/etl test",
+    "test:integration": "pnpm --filter @growth-os/api test",
+    "test:e2e": "pnpm --filter @growth-os/e2e test",
+    "test:golden": "pnpm --filter @growth-os/etl test -- -t golden",
+    "test:quality": "pnpm --filter @growth-os/etl test -- -t 'Boundary|Invariant|Safety|Negative'",
+    "test:coverage": "pnpm -r test -- --coverage",
+    "qa": "pnpm test && pnpm validate-data && echo '✅ All QA gates passed'",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "validate-data": "pnpm --filter @growth-os/etl validate",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "concurrently": "^8.2.2",
+    "prettier": "^3.2.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}
