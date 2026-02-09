@@ -12,12 +12,14 @@ import {
   FileText,
   Cable,
   Activity,
+  Filter,
 } from 'lucide-react';
 import clsx from 'clsx';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Executive Summary', icon: LayoutDashboard },
   { href: '/channels', label: 'Channel Performance', icon: Megaphone },
+  { href: '/funnel', label: 'Conversion Funnel', icon: Filter },
   { href: '/cohorts', label: 'Cohorts & Retention', icon: Users },
   { href: '/unit-economics', label: 'Unit Economics', icon: DollarSign },
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },

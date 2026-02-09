@@ -1,0 +1,44 @@
+# ──────────────────────────────────────────────────────────────
+# Growth OS — Web Frontend Dockerfile (Railway)
+# Standalone Next.js 14 build
+# ──────────────────────────────────────────────────────────────
+
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
+WORKDIR /app
+
+# ── Install dependencies ─────────────────────────────────────
+FROM base AS deps
+COPY pnpm-workspace.yaml package.json ./
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --no-frozen-lockfile --filter @growth-os/web
+
+# ── Build ────────────────────────────────────────────────────
+FROM deps AS build
+
+# NEXT_PUBLIC_* must be available at build time
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+COPY apps/web/ ./apps/web/
+COPY tsconfig.json ./
+
+RUN pnpm --filter @growth-os/web build
+
+# ── Production ───────────────────────────────────────────────
+FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Copy standalone output
+COPY --from=build /app/apps/web/.next/standalone ./
+COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /app/apps/web/public ./apps/web/public 2>/dev/null || true
+
+EXPOSE 3000
+
+CMD ["node", "apps/web/server.js"]
