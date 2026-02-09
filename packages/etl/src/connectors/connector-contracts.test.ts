@@ -20,7 +20,7 @@ describe('Shopify Connector', () => {
       const result = await fetchShopifyOrders(config);
       expect(result.records.length).toBeGreaterThan(0);
       expect(result.records[0]!.source).toBe('shopify');
-      expect(result.records[0]!.entity).toBe('order');
+      expect(result.records[0]!.entity).toBe('orders');
       expect(result.nextCursor).toBeUndefined();
     });
   });
@@ -107,7 +107,7 @@ describe('Meta Connector', () => {
       const result = await fetchMetaInsights(config);
       expect(result.records.length).toBeGreaterThan(0);
       expect(result.records[0]!.source).toBe('meta');
-      expect(result.records[0]!.entity).toBe('campaign_insight');
+      expect(result.records[0]!.entity).toBe('insights');
     });
   });
 });

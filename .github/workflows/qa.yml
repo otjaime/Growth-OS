@@ -27,8 +27,23 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r exec tsc --noEmit
-      # Future: pnpm lint
+
+      # Generate Prisma client (needed for type definitions)
+      - name: Generate Prisma client
+        run: pnpm --filter @growth-os/database exec prisma generate
+
+      # Type check backend packages
+      - name: Typecheck packages
+        run: |
+          pnpm --filter @growth-os/database exec tsc --noEmit
+          pnpm --filter @growth-os/etl exec tsc --noEmit
+          pnpm --filter @growth-os/api exec tsc --noEmit
+
+      # Type check web (Next.js uses its own tsc config)
+      - name: Typecheck web
+        run: pnpm --filter @growth-os/web exec next build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
 
   # ─── Stage 2: Unit + Integration Tests ─────────────────────────────
   unit-tests:
@@ -45,6 +60,10 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      # Generate Prisma client
+      - name: Generate Prisma client
+        run: pnpm --filter @growth-os/database exec prisma generate
 
       # Run all unit + integration tests with coverage
       - name: Run tests with coverage
@@ -82,6 +101,10 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      # Generate Prisma client
+      - name: Generate Prisma client
+        run: pnpm --filter @growth-os/database exec prisma generate
 
       # Run only golden fixture tests
       - name: Golden KPI regression

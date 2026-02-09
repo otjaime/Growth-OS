@@ -8,7 +8,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
       'Content-Type': 'application/json',
       ...options?.headers,
     },
-    cache: 'no-store',
+    cache: 'no-store' as RequestCache,
   });
 
   if (!res.ok) {

@@ -462,14 +462,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
         encryptedData: encrypted,
         iv,
         authTag,
-        metadata,
+        metadata: metadata as Record<string, string>,
         lastSyncStatus: 'pending',
       },
       update: {
         encryptedData: encrypted,
         iv,
         authTag,
-        metadata,
+        metadata: metadata as Record<string, string>,
         lastSyncStatus: 'pending',
       },
     });

@@ -123,11 +123,9 @@ describe('Demo Data Generator', () => {
 
     it('has required payload fields', () => {
       const payload = generateGoogleAdsInsights()[0]!.payload;
-      expect(payload).toHaveProperty('campaign_id');
-      expect(payload).toHaveProperty('campaign_name');
-      expect(payload).toHaveProperty('spend');
-      expect(payload).toHaveProperty('impressions');
-      expect(payload).toHaveProperty('clicks');
+      expect(payload).toHaveProperty('campaign');
+      expect(payload).toHaveProperty('segments');
+      expect(payload).toHaveProperty('metrics');
     });
   });
 
@@ -142,7 +140,7 @@ describe('Demo Data Generator', () => {
     it('has required payload fields', () => {
       const payload = generateGA4Traffic()[0]!.payload;
       expect(payload).toHaveProperty('date');
-      expect(payload).toHaveProperty('channel_group');
+      expect(payload).toHaveProperty('sessionDefaultChannelGroup');
       expect(payload).toHaveProperty('sessions');
     });
   });

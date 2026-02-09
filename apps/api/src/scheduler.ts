@@ -3,7 +3,7 @@
 // Manages cron-based sync jobs with retries
 // ──────────────────────────────────────────────────────────────
 
-import { Queue, Worker, QueueScheduler } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@growth-os/database';
 import { createLogger } from './logger.js';

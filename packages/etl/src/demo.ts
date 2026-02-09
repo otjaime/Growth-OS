@@ -73,8 +73,8 @@ async function runDemo() {
         rowsLoaded,
         durationMs,
         errorJson: allPassed
-          ? null
-          : validationResults.filter((r) => !r.passed).map((r) => r.message),
+          ? undefined
+          : (validationResults.filter((r) => !r.passed).map((r) => r.message) as unknown as string),
       },
     });
 

@@ -37,11 +37,11 @@ export async function ingestRaw(records: RawRecord[]): Promise<number> {
               entity: record.entity,
               externalId: record.externalId,
               cursor: record.cursor,
-              payloadJson: record.payload,
+              payloadJson: record.payload as unknown as Record<string, string>,
             },
             update: {
               cursor: record.cursor,
-              payloadJson: record.payload,
+              payloadJson: record.payload as unknown as Record<string, string>,
               fetchedAt: new Date(),
             },
           });
@@ -52,7 +52,7 @@ export async function ingestRaw(records: RawRecord[]): Promise<number> {
               entity: record.entity,
               externalId: record.externalId,
               cursor: record.cursor,
-              payloadJson: record.payload,
+              payloadJson: record.payload as unknown as Record<string, string>,
             },
           });
         }

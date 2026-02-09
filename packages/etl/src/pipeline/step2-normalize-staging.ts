@@ -85,7 +85,7 @@ async function normalizeOrders(): Promise<number> {
             utmCampaign: utmParams.utm_campaign || null,
             channelRaw,
             region: (shippingAddr?.province_code as string) ?? null,
-            lineItemsJson: lineItems ?? null,
+            lineItemsJson: lineItems ? (lineItems as unknown as Record<string, string>[]) : undefined,
             isNewCustomer: ((p.tags as string) ?? '').includes('new_customer'),
           },
           update: {
@@ -94,7 +94,7 @@ async function normalizeOrders(): Promise<number> {
             refunds,
             revenueNet,
             channelRaw,
-            lineItemsJson: lineItems ?? null,
+            lineItemsJson: lineItems ? (lineItems as unknown as Record<string, string>[]) : undefined,
           },
         });
         count++;
