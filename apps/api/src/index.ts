@@ -19,9 +19,10 @@ async function main() {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
-      transport: process.env.NODE_ENV !== 'production'
-        ? { target: 'pino-pretty', options: { colorize: true } }
-        : undefined,
+      transport: (() => {
+        if (process.env.NODE_ENV === 'production') return undefined;
+        try { require.resolve('pino-pretty'); return { target: 'pino-pretty', options: { colorize: true } }; } catch { return undefined; }
+      })(),
     },
   });
 
