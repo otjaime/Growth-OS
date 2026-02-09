@@ -531,7 +531,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       if (type === 'google_ads') {
         const devToken = creds.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '';
-        const customerId = (creds.customerId ?? '').replace(/-/g, '');
+        const customerId = (meta.customerId ?? creds.customerId ?? '').replace(/-/g, '');
         const accessToken = creds.accessToken ?? '';
 
         if (!devToken || !customerId) {
@@ -563,7 +563,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         if (resp.status === 401 && !accessToken) {
           return {
             success: true,
-            message: `Credentials saved (Customer: ${creds.customerId}). Connect via OAuth to enable full access.`,
+            message: `Credentials saved (Customer: ${meta.customerId ?? customerId}). Connect via OAuth to enable full access.`,
             latencyMs: Date.now() - start,
           };
         }
