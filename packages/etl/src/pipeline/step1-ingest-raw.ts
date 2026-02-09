@@ -17,12 +17,12 @@ export async function ingestRaw(records: RawRecord[]): Promise<number> {
   log.info({ count: records.length }, 'Ingesting raw records');
 
   let loaded = 0;
-  const BATCH_SIZE = 500;
+  const BATCH_SIZE = 200;
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    // Use a transaction for each batch
+    // Use a transaction for each batch with extended timeout for cloud DBs
     await prisma.$transaction(async (tx) => {
       for (const record of batch) {
         if (record.externalId) {
@@ -58,6 +58,9 @@ export async function ingestRaw(records: RawRecord[]): Promise<number> {
         }
         loaded++;
       }
+    }, {
+      maxWait: 30000,  // 30s max wait to acquire connection
+      timeout: 60000,  // 60s transaction timeout
     });
 
     log.info({ batch: Math.floor(i / BATCH_SIZE) + 1, loaded }, 'Batch ingested');

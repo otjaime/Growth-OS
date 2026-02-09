@@ -99,6 +99,9 @@ async function normalizeOrders(): Promise<number> {
         });
         count++;
       }
+    }, {
+      maxWait: 30000,
+      timeout: 60000,
     });
   }
 
