@@ -6,14 +6,9 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify from 'fastify';
-import { healthRoutes } from './routes/health.js';
-import { metricsRoutes } from './routes/metrics.js';
-import { alertsRoutes } from './routes/alerts.js';
-import { wbrRoutes } from './routes/wbr.js';
-import { jobsRoutes } from './routes/jobs.js';
 
-// ── Mock Prisma ──────────────────────────────────────────────
-const mockPrisma = {
+// ── Mock Prisma (hoisted so vi.mock can access it) ───────────
+const mockPrisma = vi.hoisted(() => ({
   $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
   factOrder: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -46,12 +41,18 @@ const mockPrisma = {
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
-};
+}));
 
 vi.mock('@growth-os/database', () => ({
   prisma: mockPrisma,
   Prisma: { sql: vi.fn(), raw: vi.fn() },
 }));
+
+import { healthRoutes } from './routes/health.js';
+import { metricsRoutes } from './routes/metrics.js';
+import { alertsRoutes } from './routes/alerts.js';
+import { wbrRoutes } from './routes/wbr.js';
+import { jobsRoutes } from './routes/jobs.js';
 
 // ── Mock order factory ───────────────────────────────────────
 function mockOrder(overrides: Record<string, unknown> = {}) {

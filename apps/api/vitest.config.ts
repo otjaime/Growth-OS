@@ -6,5 +6,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     testTimeout: 30000,
+    env: {
+      NODE_ENV: 'production',
+    },
   },
 });

@@ -67,7 +67,9 @@ jobs:
 
       # Run all unit + integration tests with coverage
       - name: Run tests with coverage
-        run: pnpm test -- --coverage --reporter=verbose
+        run: |
+          pnpm --filter @growth-os/etl exec vitest run --reporter=verbose
+          pnpm --filter @growth-os/api exec vitest run --reporter=verbose
 
       # Upload coverage report
       - uses: actions/upload-artifact@v4
