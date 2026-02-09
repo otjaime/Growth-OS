@@ -1,0 +1,13 @@
+# ──────────────────────────────────────────────────────────────
+# Growth OS — Railway Configuration
+# Defines build & deploy settings for each service
+# ──────────────────────────────────────────────────────────────
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
