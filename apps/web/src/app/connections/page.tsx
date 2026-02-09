@@ -1,227 +1,246 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, TestTube, Trash2, CheckCircle, XCircle, Loader2, ShoppingBag, BarChart3, Facebook } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Cable, Loader2, AlertCircle, CheckCircle2, Unplug } from 'lucide-react';
+import {
+  ConnectorCatalog,
+  ConnectionCard,
+  SetupWizard,
+} from '@/components/connections';
+import type { ConnectorDef, SavedConnection } from '@/components/connections/types';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-interface Connection {
-  id: string;
-  source: string;
-  label: string;
-  status: 'active' | 'inactive' | 'error';
-  lastSyncAt: string | null;
-}
-
-const sourceIcons: Record<string, React.ReactNode> = {
-  shopify: <ShoppingBag className="h-5 w-5 text-green-400" />,
-  google_ads: <BarChart3 className="h-5 w-5 text-yellow-400" />,
-  ga4: <BarChart3 className="h-5 w-5 text-blue-400" />,
-  meta: <Facebook className="h-5 w-5 text-blue-300" />,
-};
-
-const sourceLabels: Record<string, string> = {
-  shopify: 'Shopify',
-  google_ads: 'Google Ads',
-  ga4: 'GA4',
-  meta: 'Meta Ads',
-};
-
 export default function ConnectionsPage() {
-  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connections, setConnections] = useState<SavedConnection[]>([]);
+  const [catalog, setCatalog] = useState<ConnectorDef[]>([]);
   const [loading, setLoading] = useState(true);
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, boolean | null>>({});
-  const [showAdd, setShowAdd] = useState(false);
-  const [newSource, setNewSource] = useState('shopify');
-  const [newLabel, setNewLabel] = useState('');
-  const [newCreds, setNewCreds] = useState('');
+  const [activeTab, setActiveTab] = useState<'active' | 'catalog'>('active');
+  const [wizardConnector, setWizardConnector] = useState<ConnectorDef | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const fetchConnections = () => {
-    fetch(`${API}/api/connections`)
-      .then((r) => r.json())
-      .then((data: { connections: Connection[] }) => {
-        setConnections(data.connections);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchConnections();
+  const fetchData = useCallback(async () => {
+    try {
+      const [connRes, catRes] = await Promise.all([
+        fetch(`${API}/api/connections`),
+        fetch(`${API}/api/connectors/catalog`),
+      ]);
+      const connData = await connRes.json();
+      const catData = await catRes.json();
+      setConnections(connData.connections ?? []);
+      setCatalog(catData.connectors ?? []);
+    } catch {
+      // silently handle
+    }
+    setLoading(false);
   }, []);
 
-  const handleTest = async (connectorType: string) => {
-    setTesting(connectorType);
-    setTestResult((prev) => ({ ...prev, [connectorType]: null }));
-    try {
-      const res = await fetch(`${API}/api/connections/${connectorType}/test`, { method: 'POST' });
-      const data = await res.json();
-      setTestResult((prev) => ({ ...prev, [connectorType]: data.success ?? false }));
-    } catch {
-      setTestResult((prev) => ({ ...prev, [connectorType]: false }));
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Check URL params for OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const error = params.get('error');
+    if (connected) {
+      setToastMsg(`${connected} connected successfully!`);
+      setActiveTab('active');
+      fetchData();
+      window.history.replaceState({}, '', '/connections');
+      setTimeout(() => setToastMsg(null), 4000);
     }
-    setTesting(null);
-  };
-
-  const handleDelete = async (connectorType: string) => {
-    await fetch(`${API}/api/connections/${connectorType}`, { method: 'DELETE' });
-    fetchConnections();
-  };
-
-  const handleAdd = async () => {
-    let creds: Record<string, string>;
-    try {
-      creds = JSON.parse(newCreds);
-    } catch {
-      creds = { token: newCreds };
+    if (error) {
+      setToastMsg(`Connection error: ${error}`);
+      setTimeout(() => setToastMsg(null), 6000);
     }
-    await fetch(`${API}/api/connections`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: newSource, label: newLabel || sourceLabels[newSource], credentials: creds }),
-    });
-    setShowAdd(false);
-    setNewLabel('');
-    setNewCreds('');
-    fetchConnections();
+  }, [fetchData]);
+
+  const connectedIds = new Set(connections.map((c: SavedConnection) => c.connectorType));
+
+  const handleSelectConnector = (connector: ConnectorDef) => {
+    setWizardConnector(connector);
   };
 
-  const handleOAuth = (source: string) => {
-    window.location.href = `${API}/api/connections/oauth/${source}`;
+  const handleWizardSaved = () => {
+    fetchData();
+    setActiveTab('active');
+    setToastMsg(`${wizardConnector?.name} connected!`);
+    setTimeout(() => setToastMsg(null), 4000);
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+          <p className="text-sm text-slate-400">Loading connectors...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Connections</h1>
+    <div className="space-y-6 max-w-6xl">
+      {/* Toast */}
+      {toastMsg && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-500/10 border border-green-500/20 rounded-xl text-sm text-green-400 shadow-xl animate-in slide-in-from-top-2">
+          <CheckCircle2 className="h-4 w-4" />
+          {toastMsg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Data Connections</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Connect your data sources to unify analytics in one place.
+          </p>
+        </div>
         <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors"
+          onClick={() => setActiveTab(activeTab === 'catalog' ? 'active' : 'catalog')}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors self-start"
         >
-          <Plus className="h-4 w-4" /> Add Connection
+          {activeTab === 'catalog' ? (
+            <><Cable className="h-4 w-4" /> My Connections</>
+          ) : (
+            <><Plus className="h-4 w-4" /> Add Source</>
+          )}
         </button>
       </div>
 
-      {/* Add Connection Form */}
-      {showAdd && (
-        <div className="card space-y-4">
-          <h2 className="text-white font-semibold">New Connection</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Source</label>
-              <select
-                value={newSource}
-                onChange={(e) => setNewSource(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
-              >
-                <option value="shopify">Shopify</option>
-                <option value="google_ads">Google Ads</option>
-                <option value="ga4">GA4</option>
-                <option value="meta">Meta Ads</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Label</label>
-              <input
-                type="text"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder={sourceLabels[newSource]}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
-              />
-            </div>
+      {/* Stats Bar */}
+      {connections.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-400">Connected</p>
+            <p className="text-xl font-bold text-white mt-0.5">{connections.length}</p>
           </div>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-400">Active</p>
+            <p className="text-xl font-bold text-green-400 mt-0.5">
+              {connections.filter((c) => c.status === 'active' || c.status === 'pending').length}
+            </p>
+          </div>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-400">Syncing</p>
+            <p className="text-xl font-bold text-yellow-400 mt-0.5">
+              {connections.filter((c) => c.status === 'syncing').length}
+            </p>
+          </div>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-400">Errors</p>
+            <p className="text-xl font-bold text-red-400 mt-0.5">
+              {connections.filter((c) => c.status === 'error').length}
+            </p>
+          </div>
+        </div>
+      )}
 
-          {(newSource === 'google_ads' || newSource === 'ga4') ? (
-            <div>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-slate-800/50 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('active')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'active' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Cable className="h-4 w-4" />
+            My Connections
+            {connections.length > 0 && (
+              <span className="bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full">
+                {connections.length}
+              </span>
+            )}
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('catalog')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'catalog' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            Add Source
+            <span className="bg-slate-600 text-slate-300 text-xs px-1.5 py-0.5 rounded-full">
+              {catalog.length}
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* Active Connections */}
+      {activeTab === 'active' && (
+        <>
+          {connections.length === 0 ? (
+            <div className="card flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center mb-4">
+                <Unplug className="h-8 w-8 text-slate-500" />
+              </div>
+              <h3 className="text-white font-semibold mb-2">No connections yet</h3>
+              <p className="text-sm text-slate-400 max-w-md mb-6">
+                Connect your e-commerce platform, ad accounts, analytics, and other tools to start syncing data into Growth OS.
+              </p>
               <button
-                onClick={() => handleOAuth(newSource)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm"
+                onClick={() => setActiveTab('catalog')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
               >
-                Connect with Google OAuth
+                <Plus className="h-4 w-4" /> Browse Connectors
               </button>
-              <p className="text-xs text-slate-500 mt-1">You&apos;ll be redirected to Google to authorise access.</p>
             </div>
           ) : (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">
-                {newSource === 'shopify' ? 'Access Token' : 'Access Token'}
-              </label>
-              <input
-                type="password"
-                value={newCreds}
-                onChange={(e) => setNewCreds(e.target.value)}
-                placeholder="Paste your token here…"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {connections.map((conn) => (
+                <ConnectionCard
+                  key={conn.id}
+                  connection={conn}
+                  onRefresh={fetchData}
+                />
+              ))}
+
+              {/* Add more card */}
+              <button
+                onClick={() => setActiveTab('catalog')}
+                className="flex flex-col items-center justify-center gap-2 min-h-[180px] border-2 border-dashed border-slate-700 hover:border-blue-500/50 rounded-xl text-slate-500 hover:text-blue-400 transition-all"
+              >
+                <Plus className="h-8 w-8" />
+                <span className="text-sm font-medium">Add Another Source</span>
+              </button>
             </div>
           )}
-
-          <div className="flex gap-3">
-            <button onClick={handleAdd} className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm">
-              Save
-            </button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm">
-              Cancel
-            </button>
-          </div>
-        </div>
+        </>
       )}
 
-      {/* Connections List */}
-      {connections.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-slate-400">No connections configured. Add one to start syncing data.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {connections.map((conn) => (
-            <div key={conn.id} className="card flex items-start gap-4">
-              <div className="mt-1">{sourceIcons[conn.source] ?? <BarChart3 className="h-5 w-5 text-slate-400" />}</div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-white font-semibold">{conn.label}</h3>
-                  <span className={`w-2 h-2 rounded-full ${conn.status === 'active' ? 'bg-green-500' : conn.status === 'error' ? 'bg-red-500' : 'bg-slate-500'}`} />
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5">{sourceLabels[conn.source] ?? conn.source}</p>
-                {conn.lastSyncAt && (
-                  <p className="text-xs text-slate-500 mt-1">Last sync: {new Date(conn.lastSyncAt).toLocaleString()}</p>
-                )}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => handleTest(conn.source)}
-                    disabled={testing === conn.source}
-                    className="flex items-center gap-1 px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs transition-colors disabled:opacity-50"
-                  >
-                    {testing === conn.source ? <Loader2 className="h-3 w-3 animate-spin" /> : <TestTube className="h-3 w-3" />}
-                    Test
-                  </button>
-                  <button
-                    onClick={() => handleDelete(conn.source)}
-                    className="flex items-center gap-1 px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-xs transition-colors"
-                  >
-                    <Trash2 className="h-3 w-3" /> Remove
-                  </button>
-                </div>
-                {testResult[conn.source] !== undefined && testResult[conn.source] !== null && (
-                  <div className="flex items-center gap-1 mt-2 text-xs">
-                    {testResult[conn.source] ? (
-                      <><CheckCircle className="h-3 w-3 text-green-400" /><span className="text-green-400">Connection OK</span></>
-                    ) : (
-                      <><XCircle className="h-3 w-3 text-red-400" /><span className="text-red-400">Connection failed</span></>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* Connector Catalog */}
+      {activeTab === 'catalog' && (
+        <ConnectorCatalog
+          connectors={catalog}
+          connectedIds={connectedIds}
+          onSelect={handleSelectConnector}
+        />
       )}
+
+      {/* Setup Wizard Modal */}
+      {wizardConnector && (
+        <SetupWizard
+          connector={wizardConnector}
+          onClose={() => setWizardConnector(null)}
+          onSaved={handleWizardSaved}
+        />
+      )}
+
+      {/* Footer info */}
+      <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/10 rounded-xl px-5 py-4">
+        <AlertCircle className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-slate-400">
+          <p className="text-blue-300 font-medium mb-1">Credentials are encrypted at rest</p>
+          <p>All API keys and tokens are encrypted with AES-256-GCM before storage. We never expose sensitive credentials in API responses or logs.</p>
+        </div>
+      </div>
     </div>
   );
 }
