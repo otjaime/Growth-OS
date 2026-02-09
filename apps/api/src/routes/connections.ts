@@ -2,8 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
 import crypto from 'crypto';
 
+if (!process.env.ENCRYPTION_KEY && process.env.NODE_ENV === 'production') {
+  throw new Error('FATAL: ENCRYPTION_KEY must be set in production. Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+}
 if (!process.env.ENCRYPTION_KEY) {
-  console.warn('⚠️  ENCRYPTION_KEY not set — using random key (connections will not persist across restarts)');
+  console.warn('⚠️  ENCRYPTION_KEY not set — using random key (dev only, connections will not persist across restarts)');
 }
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? crypto.randomBytes(32).toString('hex');
 
@@ -519,7 +522,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'meta_ads') {
-        const resp = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${creds.accessToken}`);
+        const resp = await fetch('https://graph.facebook.com/v19.0/me', {
+          headers: { Authorization: `Bearer ${creds.accessToken}` },
+        });
         if (!resp.ok) throw new Error(`Meta responded ${resp.status}`);
         return { success: true, message: 'Meta Ads connection verified', latencyMs: Date.now() - start };
       }
@@ -689,10 +694,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       const tokens = await resp.json() as { access_token: string; refresh_token?: string };
 
+      // Security: do NOT persist clientSecret in per-connection data.
+      // It's always read from process.env at use-time.
       const { encrypted, iv, authTag } = encrypt(JSON.stringify({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? '',
-        clientSecret,
       }));
 
       await prisma.connectorCredential.upsert({
@@ -727,8 +733,25 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return { success: false, message: 'Webhook not found' };
     }
 
-    // In production, validate signature and ingest the payload
-    // For now, just log and acknowledge
+    // Validate webhook signature (HMAC-SHA256)
+    const signature = (request.headers as Record<string, string>)['x-webhook-signature'];
+    if (credential.encryptedData && credential.iv && credential.authTag) {
+      try {
+        const creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+        const secret = creds.webhookSecret;
+        if (secret) {
+          const body = JSON.stringify(payload);
+          const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
+          if (!signature || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) {
+            app.log.warn({ webhookId: id }, 'Webhook signature verification failed');
+            return { success: false, message: 'Invalid signature' };
+          }
+        }
+      } catch (e) {
+        app.log.warn({ webhookId: id, error: (e as Error).message }, 'Failed to validate webhook signature');
+      }
+    }
+
     app.log.info({ webhookId: id, payloadSize: JSON.stringify(payload).length }, 'Webhook received');
 
     await prisma.connectorCredential.update({

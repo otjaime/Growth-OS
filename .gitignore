@@ -1,8 +1,10 @@
 node_modules/
 dist/
 .next/
+# Environment files (never commit secrets)
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 coverage/
 .turbo/
