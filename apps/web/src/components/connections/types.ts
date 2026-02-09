@@ -10,6 +10,13 @@ export interface ConnectorFieldDef {
   sensitive?: boolean;
 }
 
+export interface SetupStep {
+  text: string;
+  url?: string;       // direct link to the settings page for this step
+  urlLabel?: string;  // e.g. "Open Shopify Apps"
+  tip?: string;       // extra context shown below the step
+}
+
 export interface ConnectorDef {
   id: string;
   name: string;
@@ -21,7 +28,10 @@ export interface ConnectorDef {
   authType: 'api_key' | 'oauth2' | 'credentials' | 'webhook';
   fields: ConnectorFieldDef[];
   docsUrl?: string;
-  setupGuide: string[];
+  setupGuide: SetupStep[];
+  setupTime?: string;       // e.g. "~2 min"
+  quickFindPath?: string;   // e.g. "Settings → Apps → API keys"
+  dataSync?: string[];      // what data gets synced, e.g. ["Orders", "Customers"]
 }
 
 export interface SavedConnection {

@@ -39,18 +39,28 @@ interface ConnectorFieldDef {
   sensitive?: boolean;
 }
 
+interface SetupStep {
+  text: string;
+  url?: string;
+  urlLabel?: string;
+  tip?: string;
+}
+
 interface ConnectorDef {
   id: string;
   name: string;
   slug: string;
   category: 'ecommerce' | 'advertising' | 'analytics' | 'crm' | 'email' | 'payments' | 'custom';
   description: string;
-  icon: string; // emoji or icon key
-  color: string; // tailwind color
+  icon: string;
+  color: string;
   authType: 'api_key' | 'oauth2' | 'credentials' | 'webhook';
   fields: ConnectorFieldDef[];
   docsUrl?: string;
-  setupGuide: string[];
+  setupGuide: SetupStep[];
+  setupTime?: string;
+  quickFindPath?: string;
+  dataSync?: string[];
 }
 
 const CONNECTOR_CATALOG: ConnectorDef[] = [
@@ -65,17 +75,20 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'green',
     authType: 'api_key',
     fields: [
-      { key: 'shopDomain', label: 'Store Domain', type: 'text', placeholder: 'mystore.myshopify.com', required: true, help: 'Your Shopify store URL (without https://)' },
-      { key: 'accessToken', label: 'Admin API Access Token', type: 'password', placeholder: 'shpat_xxxxx', required: true, sensitive: true, help: 'Settings → Apps → Develop apps → Admin API access token' },
+      { key: 'shopDomain', label: 'Store Domain', type: 'text', placeholder: 'mystore.myshopify.com', required: true, help: 'Your .myshopify.com domain — find it in Settings → Domains' },
+      { key: 'accessToken', label: 'Admin API Access Token', type: 'password', placeholder: 'shpat_xxxxx', required: true, sensitive: true, help: 'Starts with shpat_ — generated when you install your custom app' },
       { key: 'apiVersion', label: 'API Version', type: 'select', options: [{ value: '2024-10', label: '2024-10 (Latest)' }, { value: '2024-07', label: '2024-07' }, { value: '2024-04', label: '2024-04' }], required: false },
     ],
     docsUrl: 'https://shopify.dev/docs/admin-api',
+    setupTime: '~3 min',
+    quickFindPath: 'Settings → Apps → Develop apps → Your app → API credentials',
+    dataSync: ['Orders', 'Customers', 'Products', 'Inventory'],
     setupGuide: [
-      'Go to Shopify Admin → Settings → Apps and sales channels',
-      'Click "Develop apps" → "Create an app"',
-      'Configure Admin API scopes: read_orders, read_customers, read_products',
-      'Install the app and copy the Admin API access token',
-      'Paste the token and your store domain below',
+      { text: 'Open your Shopify Admin and go to Settings → Apps and sales channels', url: 'https://admin.shopify.com/settings/apps', urlLabel: 'Open Shopify Apps Settings', tip: 'You need to be a store owner or have "Apps" permissions.' },
+      { text: 'Click "Develop apps" in the top-right, then "Create an app"', tip: 'If you don\'t see "Develop apps", ask your store owner to enable custom app development in Settings → Apps → Develop apps → Allow custom app development.' },
+      { text: 'Go to "Configuration" tab → Admin API integration, and select these scopes:', tip: 'Required scopes: read_orders, read_customers, read_products, read_inventory. Optional: read_analytics.' },
+      { text: 'Click "Install app" and confirm. Copy the Admin API access token shown.', tip: '⚠️ The token is only shown once! Copy it immediately. It starts with shpat_.' },
+      { text: 'Paste the token and your store domain (e.g. mystore.myshopify.com) below.' },
     ],
   },
   {
@@ -88,16 +101,19 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'purple',
     authType: 'credentials',
     fields: [
-      { key: 'siteUrl', label: 'Site URL', type: 'url', placeholder: 'https://mystore.com', required: true, help: 'Your WooCommerce site URL' },
-      { key: 'consumerKey', label: 'Consumer Key', type: 'password', placeholder: 'ck_xxxxx', required: true, sensitive: true, help: 'WooCommerce → Settings → Advanced → REST API' },
-      { key: 'consumerSecret', label: 'Consumer Secret', type: 'password', placeholder: 'cs_xxxxx', required: true, sensitive: true },
+      { key: 'siteUrl', label: 'Site URL', type: 'url', placeholder: 'https://mystore.com', required: true, help: 'Your full site URL including https://' },
+      { key: 'consumerKey', label: 'Consumer Key', type: 'password', placeholder: 'ck_xxxxx', required: true, sensitive: true, help: 'Starts with ck_ — generated in the REST API keys section' },
+      { key: 'consumerSecret', label: 'Consumer Secret', type: 'password', placeholder: 'cs_xxxxx', required: true, sensitive: true, help: 'Starts with cs_ — shown only once when you create the key' },
     ],
     docsUrl: 'https://woocommerce.github.io/woocommerce-rest-api-docs/',
+    setupTime: '~2 min',
+    quickFindPath: 'WP Admin → WooCommerce → Settings → Advanced → REST API',
+    dataSync: ['Orders', 'Customers', 'Products'],
     setupGuide: [
-      'Go to WooCommerce → Settings → Advanced → REST API',
-      'Click "Add key" — set permissions to "Read"',
-      'Copy the Consumer Key and Consumer Secret',
-      'Paste your site URL and credentials below',
+      { text: 'Log in to your WordPress admin panel and go to WooCommerce → Settings → Advanced → REST API', url: 'https://yourstore.com/wp-admin/admin.php?page=wc-settings&tab=advanced&section=keys', urlLabel: 'Open WooCommerce API Settings', tip: 'Replace "yourstore.com" with your actual domain.' },
+      { text: 'Click "Add key". Set Description to "Growth OS", User to your admin, Permissions to "Read"', tip: 'Read-only access is sufficient — we never write data to your store.' },
+      { text: 'Click "Generate API key". Copy both the Consumer Key and Consumer Secret immediately.', tip: '⚠️ The Consumer Secret is only shown once! Save it before closing.' },
+      { text: 'Paste your site URL and both keys below.' },
     ],
   },
 
@@ -112,18 +128,21 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'blue',
     authType: 'api_key',
     fields: [
-      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'EAAxxxxx', required: true, sensitive: true, help: 'Long-lived access token from Meta Business Suite' },
-      { key: 'adAccountId', label: 'Ad Account ID', type: 'text', placeholder: 'act_123456789', required: true, help: 'Starts with act_ — find in Business Settings → Ad Accounts' },
+      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'EAAxxxxx', required: true, sensitive: true, help: 'Starts with EAA — long-lived token from a System User' },
+      { key: 'adAccountId', label: 'Ad Account ID', type: 'text', placeholder: 'act_123456789', required: true, help: 'Starts with act_ — visible in Business Settings → Ad Accounts' },
       { key: 'pixelId', label: 'Pixel ID (optional)', type: 'text', placeholder: '123456789', required: false },
     ],
     docsUrl: 'https://developers.facebook.com/docs/marketing-apis',
+    setupTime: '~5 min',
+    quickFindPath: 'Business Settings → Users → System Users → Generate Token',
+    dataSync: ['Campaigns', 'Ad Sets', 'Ads', 'Spend', 'Conversions'],
     setupGuide: [
-      'Go to Meta Business Suite → Business Settings',
-      'Navigate to Users → System Users → Add',
-      'Create a system user with "Admin" role',
-      'Generate a token with ads_read, ads_management scopes',
-      'Copy your Ad Account ID from Ad Accounts section',
-      'Paste the token and account ID below',
+      { text: 'Open Meta Business Settings', url: 'https://business.facebook.com/settings/system-users', urlLabel: 'Open Business Settings', tip: 'You need Business Admin access. If you don\'t have it, ask your account admin.' },
+      { text: 'Go to Users → System Users → click "Add"', tip: 'Name it "Growth OS" and set role to "Admin". System Users are more secure than personal tokens.' },
+      { text: 'Select the new system user → click "Generate new token"', tip: 'Select the app (or create one), then check: ads_read, ads_management, business_management.' },
+      { text: 'Set token expiry to "Never" for a long-lived token, then copy it.', tip: 'The token starts with EAA and is very long. Copy the entire string.' },
+      { text: 'Find your Ad Account ID: Business Settings → Ad Accounts → copy the numeric ID', url: 'https://business.facebook.com/settings/ad-accounts', urlLabel: 'Open Ad Accounts', tip: 'The full ID is act_ followed by numbers, e.g. act_123456789.' },
+      { text: 'Paste the token and Ad Account ID below.' },
     ],
   },
   {
@@ -136,17 +155,20 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'yellow',
     authType: 'oauth2',
     fields: [
-      { key: 'customerId', label: 'Customer ID', type: 'text', placeholder: '123-456-7890', required: true, help: 'Found in top-right of Google Ads dashboard' },
-      { key: 'developerToken', label: 'Developer Token', type: 'password', placeholder: 'xxxxx', required: true, sensitive: true, help: 'Google Ads API Center → Developer Token' },
-      { key: 'managerAccountId', label: 'Manager Account ID (MCC)', type: 'text', placeholder: '123-456-7890', required: false, help: 'Only if using a Manager (MCC) account' },
+      { key: 'customerId', label: 'Customer ID', type: 'text', placeholder: '123-456-7890', required: true, help: 'The 10-digit number in the top-right of your Google Ads dashboard (XXX-XXX-XXXX)' },
+      { key: 'developerToken', label: 'Developer Token', type: 'password', placeholder: 'xxxxx', required: true, sensitive: true, help: 'Found in Tools & Settings → API Center → Developer token' },
+      { key: 'managerAccountId', label: 'Manager Account ID (MCC)', type: 'text', placeholder: '123-456-7890', required: false, help: 'Only needed if you manage multiple accounts via a Manager account' },
     ],
     docsUrl: 'https://developers.google.com/google-ads/api/docs/start',
+    setupTime: '~3 min',
+    quickFindPath: 'Google Ads → Tools & Settings → API Center',
+    dataSync: ['Campaigns', 'Ad Groups', 'Keywords', 'Spend', 'Clicks', 'Conversions'],
     setupGuide: [
-      'Sign in to Google Ads and click "Tools & Settings"',
-      'Go to API Center and note your Developer Token',
-      'Copy your Customer ID from the top-right corner',
-      'Click "Connect with Google" below to authorize',
-      'We\'ll handle the OAuth flow automatically',
+      { text: 'Sign in to Google Ads', url: 'https://ads.google.com', urlLabel: 'Open Google Ads', tip: 'Use the account that owns the campaigns you want to track.' },
+      { text: 'Click the Tools icon (🔧) in the top navigation → Setup → API Center', url: 'https://ads.google.com/aw/apicenter', urlLabel: 'Open API Center', tip: 'If you don\'t see API Center, your account may need to apply for API access first.' },
+      { text: 'Copy the Developer Token displayed on the API Center page', tip: 'The token is a short alphanumeric string. Basic access is sufficient for read-only.' },
+      { text: 'Copy your Customer ID from the top-right corner of the Google Ads dashboard', tip: 'It looks like 123-456-7890. Remove the dashes when pasting, or keep them — both work.' },
+      { text: 'Fill in the fields below, then click "Connect with Google" to authorize via OAuth', tip: 'We\'ll redirect you to Google for secure authorization. No passwords are stored.' },
     ],
   },
   {
@@ -159,15 +181,19 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'pink',
     authType: 'api_key',
     fields: [
-      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'xxxxx', required: true, sensitive: true, help: 'TikTok Marketing API access token' },
-      { key: 'advertiserId', label: 'Advertiser ID', type: 'text', placeholder: '123456789', required: true, help: 'Found in TikTok Ads Manager settings' },
+      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'xxxxx', required: true, sensitive: true, help: 'Long-lived token from the TikTok Marketing API developer portal' },
+      { key: 'advertiserId', label: 'Advertiser ID', type: 'text', placeholder: '123456789', required: true, help: 'Numeric ID — find it in Ads Manager top-right or in Business Center' },
     ],
     docsUrl: 'https://business-api.tiktok.com/portal/docs',
+    setupTime: '~5 min',
+    quickFindPath: 'TikTok Developer Portal → My Apps → App Details → Token',
+    dataSync: ['Campaigns', 'Ad Groups', 'Ads', 'Spend', 'Impressions'],
     setupGuide: [
-      'Go to TikTok for Business developer portal',
-      'Create an app and get your Access Token',
-      'Copy your Advertiser ID from Ads Manager',
-      'Paste both values below',
+      { text: 'Open the TikTok Marketing API developer portal', url: 'https://business-api.tiktok.com/portal/apps', urlLabel: 'Open TikTok Developer Portal', tip: 'You need a TikTok for Business account. Create one at business.tiktok.com if needed.' },
+      { text: 'Click "Create App" → name it "Growth OS" → select Marketing API', tip: 'For app type, select "Ads Management". Set the permissions to read-only.' },
+      { text: 'Once approved, go to your app → "Generate Long-term Token"', tip: 'Select the Advertiser Account(s) you want to connect, then generate.' },
+      { text: 'Copy the Access Token and your Advertiser ID', tip: 'The Advertiser ID is visible in the top-right of TikTok Ads Manager or in Business Center → Advertiser Accounts.' },
+      { text: 'Paste both values below.' },
     ],
   },
 
@@ -182,15 +208,18 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'orange',
     authType: 'oauth2',
     fields: [
-      { key: 'propertyId', label: 'Property ID', type: 'text', placeholder: '123456789', required: true, help: 'GA4 Admin → Property → Property Details → Property ID' },
-      { key: 'dataStreamId', label: 'Data Stream ID (optional)', type: 'text', placeholder: '1234567', required: false },
+      { key: 'propertyId', label: 'Property ID', type: 'text', placeholder: '123456789', required: true, help: 'The 9-digit number in Admin → Property Details (not the Measurement ID)' },
+      { key: 'dataStreamId', label: 'Data Stream ID (optional)', type: 'text', placeholder: '1234567', required: false, help: 'Optional — found in Admin → Data Streams → click your stream' },
     ],
     docsUrl: 'https://developers.google.com/analytics/devguides/reporting/data/v1',
+    setupTime: '~2 min',
+    quickFindPath: 'GA4 → Admin (⚙️) → Property Details → Property ID',
+    dataSync: ['Sessions', 'Page Views', 'Users', 'Conversions', 'Events'],
     setupGuide: [
-      'Go to Google Analytics → Admin → Property Settings',
-      'Copy the numeric Property ID',
-      'Click "Connect with Google" below to authorize',
-      'We\'ll request read-only analytics access',
+      { text: 'Open Google Analytics and go to Admin (⚙️ gear icon, bottom-left)', url: 'https://analytics.google.com/analytics/web/#/a0p0/admin', urlLabel: 'Open GA4 Admin', tip: 'Make sure you\'re looking at the correct property in the property selector.' },
+      { text: 'Click "Property Details" under the Property column', tip: 'The Property ID is the 9-digit number at the top of this page. Don\'t confuse it with the Measurement ID (G-XXXXX).' },
+      { text: 'Copy the numeric Property ID and paste it below', tip: 'Example: 123456789 — do not include the "G-" prefix, that\'s the Measurement ID.' },
+      { text: 'Click "Connect with Google" below to authorize read-only access', tip: 'We only request analytics.readonly scope — we can never modify your data.' },
     ],
   },
 
@@ -205,16 +234,19 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'orange',
     authType: 'api_key',
     fields: [
-      { key: 'accessToken', label: 'Private App Access Token', type: 'password', placeholder: 'pat-xxxxx', required: true, sensitive: true, help: 'Settings → Integrations → Private Apps' },
-      { key: 'portalId', label: 'Portal ID (optional)', type: 'text', placeholder: '12345678', required: false },
+      { key: 'accessToken', label: 'Private App Access Token', type: 'password', placeholder: 'pat-na1-xxxxx', required: true, sensitive: true, help: 'Starts with pat- — found after creating a Private App' },
+      { key: 'portalId', label: 'Portal ID (optional)', type: 'text', placeholder: '12345678', required: false, help: 'Your Hub ID — visible in the URL bar or in Account & Billing' },
     ],
     docsUrl: 'https://developers.hubspot.com/docs/api/overview',
+    setupTime: '~3 min',
+    quickFindPath: 'Settings (⚙️) → Integrations → Private Apps → Create',
+    dataSync: ['Contacts', 'Companies', 'Deals', 'Lifecycle Stages'],
     setupGuide: [
-      'Go to HubSpot → Settings → Integrations → Private Apps',
-      'Click "Create a private app"',
-      'Name it "Growth OS" and select scopes: crm.objects.contacts.read, crm.objects.deals.read',
-      'Create and copy the access token',
-      'Paste it below',
+      { text: 'Open HubSpot Settings → Integrations → Private Apps', url: 'https://app.hubspot.com/private-apps/', urlLabel: 'Open Private Apps', tip: 'You need Super Admin or App Marketplace permissions.' },
+      { text: 'Click "Create a private app" → name it "Growth OS"' },
+      { text: 'Go to the "Scopes" tab and select these read-only scopes:', tip: 'Required: crm.objects.contacts.read, crm.objects.deals.read, crm.objects.companies.read. These are under the "CRM" section.' },
+      { text: 'Click "Create app" → confirm → copy the Access Token shown', tip: 'The token starts with pat-na1- (or pat-eu1- for EU accounts). Copy the full string.' },
+      { text: 'Paste the token below. Portal ID is optional but helps with multi-hub setups.' },
     ],
   },
 
@@ -229,13 +261,16 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'emerald',
     authType: 'api_key',
     fields: [
-      { key: 'apiKey', label: 'Private API Key', type: 'password', placeholder: 'pk_xxxxx', required: true, sensitive: true, help: 'Account → Settings → API Keys → Private Keys' },
+      { key: 'apiKey', label: 'Private API Key', type: 'password', placeholder: 'pk_xxxxx', required: true, sensitive: true, help: 'Starts with pk_ — found in Account → Settings → API Keys' },
     ],
     docsUrl: 'https://developers.klaviyo.com/en/reference/api-overview',
+    setupTime: '~1 min',
+    quickFindPath: 'Account name (bottom-left) → Settings → API Keys',
+    dataSync: ['Campaigns', 'Flows', 'Lists', 'Subscribers', 'Metrics'],
     setupGuide: [
-      'Go to Klaviyo → Account → Settings → API Keys',
-      'Create a new Private API Key with Read access',
-      'Copy the key and paste it below',
+      { text: 'Open Klaviyo → click your account name (bottom-left) → Settings', url: 'https://www.klaviyo.com/settings/account/api-keys', urlLabel: 'Open Klaviyo API Keys', tip: 'You need account Owner or Admin access.' },
+      { text: 'Click "Create Private API Key"', tip: 'Name it "Growth OS". Under Access Level, select "Read-only" for full read access with no write risk.' },
+      { text: 'Copy the key (starts with pk_) and paste it below', tip: 'The key is only shown once. If you lose it, you\'ll need to create a new one.' },
     ],
   },
   {
@@ -248,15 +283,18 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'yellow',
     authType: 'api_key',
     fields: [
-      { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'xxxxx-us1', required: true, sensitive: true, help: 'Account → Extras → API keys' },
-      { key: 'server', label: 'Server Prefix', type: 'text', placeholder: 'us1', required: true, help: 'The suffix after the dash in your API key (e.g., us1)' },
+      { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'xxxxx-us1', required: true, sensitive: true, help: 'Looks like abc123def-us1 — the part after the dash is your server prefix' },
+      { key: 'server', label: 'Server Prefix', type: 'text', placeholder: 'us1', required: true, help: 'The 2-4 letter code after the dash in your API key (e.g., us1, us21, eu1)' },
     ],
     docsUrl: 'https://mailchimp.com/developer/marketing/api/',
+    setupTime: '~1 min',
+    quickFindPath: 'Profile icon → Account & billing → Extras → API keys',
+    dataSync: ['Campaigns', 'Audiences', 'Automations', 'Reports'],
     setupGuide: [
-      'Go to Mailchimp → Account → Extras → API keys',
-      'Generate a new API key',
-      'Note the server prefix (e.g., "us1") from the key suffix',
-      'Paste both values below',
+      { text: 'Open Mailchimp → click your profile icon → Account & billing', url: 'https://admin.mailchimp.com/account/api/', urlLabel: 'Open Mailchimp API Keys', tip: 'You need Manager or higher access to create API keys.' },
+      { text: 'Scroll down to "Your API keys" → click "Create A Key"', tip: 'Label it "Growth OS" for easy identification.' },
+      { text: 'Copy the full key. Note the server prefix — it\'s the part after the dash', tip: 'Example: abc123def456-us21 → the server is "us21". This tells us which Mailchimp data center to connect to.' },
+      { text: 'Paste the API key and server prefix below.' },
     ],
   },
 
@@ -271,15 +309,18 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'violet',
     authType: 'api_key',
     fields: [
-      { key: 'secretKey', label: 'Secret Key (Restricted)', type: 'password', placeholder: 'rk_live_xxxxx', required: true, sensitive: true, help: 'Use a restricted key with read-only access for security' },
-      { key: 'webhookSecret', label: 'Webhook Signing Secret (optional)', type: 'password', placeholder: 'whsec_xxxxx', required: false, sensitive: true },
+      { key: 'secretKey', label: 'Restricted Key', type: 'password', placeholder: 'rk_live_xxxxx', required: true, sensitive: true, help: 'Starts with rk_live_ — use a Restricted Key, not the Secret Key, for better security' },
+      { key: 'webhookSecret', label: 'Webhook Signing Secret (optional)', type: 'password', placeholder: 'whsec_xxxxx', required: false, sensitive: true, help: 'Starts with whsec_ — enables real-time event notifications' },
     ],
     docsUrl: 'https://stripe.com/docs/api',
+    setupTime: '~2 min',
+    quickFindPath: 'Dashboard → Developers → API Keys → Restricted keys',
+    dataSync: ['Payments', 'Subscriptions', 'Customers', 'Invoices', 'Refunds'],
     setupGuide: [
-      'Go to Stripe Dashboard → Developers → API keys',
-      'Create a Restricted key with read access to charges, subscriptions, customers',
-      'Copy the restricted key and paste it below',
-      'Optionally set up a webhook for real-time updates',
+      { text: 'Open the Stripe Dashboard → Developers → API keys', url: 'https://dashboard.stripe.com/apikeys', urlLabel: 'Open Stripe API Keys', tip: 'Make sure you\'re in Live mode (not Test mode) — toggle in the top bar.' },
+      { text: 'Click "Create restricted key" (recommended) or use an existing one', tip: 'Name it "Growth OS". Grant read access to: Charges, Customers, Subscriptions, Invoices. Deny write access to everything.' },
+      { text: 'Copy the restricted key (starts with rk_live_) and paste it below', tip: '🔒 Pro tip: Restricted keys are safer than your Secret Key because they can only access what you allow.' },
+      { text: '(Optional) Set up a webhook for real-time updates: Developers → Webhooks → Add endpoint', url: 'https://dashboard.stripe.com/webhooks', urlLabel: 'Open Stripe Webhooks', tip: 'Point it to your Growth OS webhook URL. Copy the Signing Secret (starts with whsec_).' },
     ],
   },
 
@@ -295,14 +336,17 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     authType: 'webhook',
     fields: [
       { key: 'label', label: 'Integration Name', type: 'text', placeholder: 'My CRM', required: true },
-      { key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Auto-generated', required: false, sensitive: true, help: 'Used to verify incoming webhook payloads' },
+      { key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Auto-generated if left blank', required: false, sensitive: true, help: 'We auto-generate one if you leave this blank. Use it to verify incoming payloads.' },
     ],
     docsUrl: undefined,
+    setupTime: '~1 min',
+    quickFindPath: 'No external setup needed — just name your integration',
+    dataSync: ['Any JSON payload'],
     setupGuide: [
-      'Give your integration a name',
-      'After saving, you\'ll get a unique webhook URL',
-      'POST JSON payloads to the URL from any system',
-      'We\'ll parse and ingest the data automatically',
+      { text: 'Name your integration — this is just for your reference', tip: 'Examples: "Internal CRM", "Zapier", "Custom ETL".' },
+      { text: 'Click Save — we\'ll generate a unique webhook URL and secret for you', tip: 'The URL will look like: https://your-api.com/api/webhooks/abc123' },
+      { text: 'POST JSON payloads to the webhook URL from any system', tip: 'Include a X-Webhook-Signature header using HMAC-SHA256 with your webhook secret for security.' },
+      { text: 'Growth OS will parse and ingest the data automatically' },
     ],
   },
   {
@@ -315,14 +359,17 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     color: 'cyan',
     authType: 'api_key',
     fields: [
-      { key: 'label', label: 'Dataset Name', type: 'text', placeholder: 'Historical Orders', required: true },
-      { key: 'dataType', label: 'Data Type', type: 'select', options: [{ value: 'orders', label: 'Orders' }, { value: 'customers', label: 'Customers' }, { value: 'spend', label: 'Ad Spend' }, { value: 'traffic', label: 'Traffic' }, { value: 'custom', label: 'Custom Events' }], required: true },
+      { key: 'label', label: 'Dataset Name', type: 'text', placeholder: 'Historical Orders', required: true, help: 'A friendly name for this dataset — used to identify uploads' },
+      { key: 'dataType', label: 'Data Type', type: 'select', options: [{ value: 'orders', label: 'Orders' }, { value: 'customers', label: 'Customers' }, { value: 'spend', label: 'Ad Spend' }, { value: 'traffic', label: 'Traffic' }, { value: 'custom', label: 'Custom Events' }], required: true, help: 'Determines how we map and validate your columns' },
     ],
+    setupTime: '~1 min',
+    quickFindPath: 'No external setup — just pick a name and data type',
+    dataSync: ['CSV files', 'TSV files', 'Excel (.xlsx)'],
     setupGuide: [
-      'Name your dataset and select the data type',
-      'After saving, use the upload button to import files',
-      'Supported formats: CSV, TSV, XLSX',
-      'We\'ll map columns automatically where possible',
+      { text: 'Name your dataset (e.g. "Q4 2024 Orders") and select the data type', tip: 'The data type helps us auto-map columns. For example, "Orders" expects columns like order_id, date, amount.' },
+      { text: 'Click Save to create the upload target', tip: 'You can create multiple CSV sources for different datasets.' },
+      { text: 'Use the upload button to import files', tip: 'Supported formats: .csv, .tsv, .xlsx. Max file size: 50MB. We\'ll preview and let you map columns.' },
+      { text: 'We\'ll validate, map columns, and ingest the data automatically', tip: 'If column names don\'t match exactly, you\'ll be prompted to map them manually.' },
     ],
   },
 ];

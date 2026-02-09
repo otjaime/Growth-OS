@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight, Clock, Database } from 'lucide-react';
 import { ConnectorIcon } from './connector-icon';
 import type { ConnectorDef } from './types';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from './types';
@@ -17,12 +17,26 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
 
   const filtered = connectors.filter((c) => {
-    const matchesSearch = !search ||
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.description.toLowerCase().includes(search.toLowerCase()) ||
-      c.category.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = !filterCategory || c.category === filterCategory;
-    return matchesSearch && matchesCategory;
+    if (filterCategory && c.category !== filterCategory) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    // Search across name, description, category, quickFindPath, and dataSync tags
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.description.toLowerCase().includes(q) ||
+      c.category.toLowerCase().includes(q) ||
+      (c.quickFindPath ?? '').toLowerCase().includes(q) ||
+      (c.dataSync ?? []).some((d) => d.toLowerCase().includes(q)) ||
+      // Also match common synonyms
+      (q === 'facebook' && c.id === 'meta_ads') ||
+      (q === 'instagram' && c.id === 'meta_ads') ||
+      (q === 'fb' && c.id === 'meta_ads') ||
+      (q === 'wordpress' && c.id === 'woocommerce') ||
+      (q === 'ga' && c.id === 'ga4') ||
+      (q === 'google analytics' && c.id === 'ga4') ||
+      (q === 'excel' && c.id === 'csv_upload') ||
+      (q === 'file' && c.id === 'csv_upload')
+    );
   });
 
   // Group by category
@@ -33,8 +47,6 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
   }
 
   const categories = CATEGORY_ORDER.filter((cat) => grouped[cat]?.length);
-
-  // Unique category tags
   const allCategories = [...new Set(connectors.map((c) => c.category))];
 
   return (
@@ -47,7 +59,7 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search connectors..."
+            placeholder="Search by name, data type, or platform..."
             className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder:text-slate-500"
           />
         </div>
@@ -103,6 +115,20 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
                         )}
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{connector.description}</p>
+
+                      {/* Quick info row */}
+                      <div className="flex items-center gap-3 mt-2">
+                        {connector.setupTime && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                            <Clock className="h-3 w-3" /> {connector.setupTime}
+                          </span>
+                        )}
+                        {connector.dataSync && connector.dataSync.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                            <Database className="h-3 w-3" /> {connector.dataSync.length} data types
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-blue-400 transition-colors flex-shrink-0 mt-1" />
                   </div>
@@ -116,6 +142,7 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
       {filtered.length === 0 && (
         <div className="text-center py-12">
           <p className="text-slate-400 text-sm">No connectors match your search.</p>
+          <p className="text-xs text-slate-500 mt-1">Try searching by data type (e.g. &quot;orders&quot;, &quot;campaigns&quot;) or platform name.</p>
         </div>
       )}
     </div>

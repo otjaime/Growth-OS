@@ -13,6 +13,10 @@ import {
   EyeOff,
   Copy,
   Check,
+  Clock,
+  ArrowUpRight,
+  Lightbulb,
+  Database,
 } from 'lucide-react';
 import { ConnectorIcon } from './connector-icon';
 import type { ConnectorDef } from './types';
@@ -170,16 +174,63 @@ export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
             <div className="space-y-5">
               <p className="text-slate-300 text-sm">{connector.description}</p>
 
-              <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
-                <h3 className="text-white font-medium text-sm mb-3">Setup Instructions</h3>
-                <ol className="space-y-3">
-                  {connector.setupGuide.map((step, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">{i + 1}</span>
-                      <span className="pt-0.5">{step}</span>
-                    </li>
+              {/* Quick-info pills */}
+              <div className="flex flex-wrap gap-2">
+                {connector.setupTime && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded-full border border-blue-500/20">
+                    <Clock className="h-3 w-3" /> {connector.setupTime}
+                  </span>
+                )}
+                {connector.quickFindPath && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 px-3 py-1.5 rounded-full border border-amber-500/20">
+                    <Lightbulb className="h-3 w-3" /> {connector.quickFindPath}
+                  </span>
+                )}
+              </div>
+
+              {/* Data synced preview */}
+              {connector.dataSync && connector.dataSync.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500 flex items-center gap-1"><Database className="h-3 w-3" /> Data synced:</span>
+                  {connector.dataSync.map((d) => (
+                    <span key={d} className="text-[11px] bg-slate-700/50 text-slate-300 px-2 py-0.5 rounded-md">{d}</span>
                   ))}
-                </ol>
+                </div>
+              )}
+
+              {/* Rich step-by-step guide */}
+              <div className="space-y-3">
+                {connector.setupGuide.map((guideStep, i) => {
+                  const s = typeof guideStep === 'string' ? { text: guideStep } : guideStep;
+                  return (
+                    <div key={i} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 hover:border-slate-600/70 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold ring-1 ring-blue-500/30">
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-200 leading-relaxed">{s.text}</p>
+                          {s.tip && (
+                            <p className="text-xs text-slate-400 mt-1.5 flex items-start gap-1.5">
+                              <Lightbulb className="h-3 w-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                              <span>{s.tip}</span>
+                            </p>
+                          )}
+                          {s.url && s.urlLabel && (
+                            <a
+                              href={s.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 mt-2 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition-colors font-medium"
+                            >
+                              <ArrowUpRight className="h-3 w-3" /> {s.urlLabel}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {connector.docsUrl && (
@@ -189,7 +240,7 @@ export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
                 >
-                  <ExternalLink className="h-4 w-4" /> View official documentation
+                  <ExternalLink className="h-4 w-4" /> View official API documentation
                 </a>
               )}
             </div>
