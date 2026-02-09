@@ -93,10 +93,10 @@ export default function FunnelPage() {
           const value = data.funnel[step.key];
           const pct = (value / maxVal) * 100;
           const dropoff = i > 0
-            ? data.funnel[STEPS[i - 1].key] - value
+            ? data.funnel[STEPS[i - 1]!.key] - value
             : 0;
-          const dropoffPct = i > 0 && data.funnel[STEPS[i - 1].key] > 0
-            ? (dropoff / data.funnel[STEPS[i - 1].key]) * 100
+          const dropoffPct = i > 0 && data.funnel[STEPS[i - 1]!.key] > 0
+            ? (dropoff / data.funnel[STEPS[i - 1]!.key]) * 100
             : 0;
 
           return (
