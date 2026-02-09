@@ -538,38 +538,42 @@ export async function connectionsRoutes(app: FastifyInstance) {
           return { success: false, message: 'Missing developer token or customer ID' };
         }
 
-        // Use the Google Ads REST API to list accessible customers
-        const resp = await fetch(
-          `https://googleads.googleapis.com/v16/customers/${customerId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'developer-token': devToken,
-              'Content-Type': 'application/json',
+        // If we have an OAuth access token, validate via the REST API
+        if (accessToken) {
+          const resp = await fetch(
+            'https://googleads.googleapis.com/v17/customers:listAccessibleCustomers',
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'developer-token': devToken,
+              },
             },
-          },
-        );
+          );
 
-        if (resp.ok) {
-          const data = await resp.json() as { resourceName?: string; descriptiveName?: string };
-          return {
-            success: true,
-            message: `Google Ads verified — account "${data.descriptiveName ?? customerId}"`,
-            latencyMs: Date.now() - start,
-          };
+          if (resp.ok) {
+            const data = await resp.json() as { resourceNames?: string[] };
+            const count = data.resourceNames?.length ?? 0;
+            return {
+              success: true,
+              message: `Google Ads verified — ${count} accessible account(s) found`,
+              latencyMs: Date.now() - start,
+            };
+          }
+
+          const errBody = await resp.text();
+          throw new Error(`Google Ads responded ${resp.status}: ${errBody.substring(0, 200)}`);
         }
 
-        // If OAuth token is missing/expired, try just validating the dev token format
-        if (resp.status === 401 && !accessToken) {
-          return {
-            success: true,
-            message: `Credentials saved (Customer: ${meta.customerId ?? customerId}). Connect via OAuth to enable full access.`,
-            latencyMs: Date.now() - start,
-          };
+        // No OAuth token yet — validate credentials format and confirm saved
+        if (customerId.length !== 10 || !/^\d{10}$/.test(customerId)) {
+          return { success: false, message: `Invalid Customer ID format: "${meta.customerId}". Expected 10 digits (e.g. 123-456-7890).` };
         }
 
-        const errBody = await resp.text();
-        throw new Error(`Google Ads responded ${resp.status}: ${errBody.substring(0, 200)}`);
+        return {
+          success: true,
+          message: `Credentials saved (Customer: ${meta.customerId ?? customerId}). Connect via OAuth to enable full API access.`,
+          latencyMs: Date.now() - start,
+        };
       }
 
       if (type === 'ga4') {
