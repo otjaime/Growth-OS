@@ -7,6 +7,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] },
     "incremental": true,
     "noEmit": true
