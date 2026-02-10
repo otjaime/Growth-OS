@@ -542,7 +542,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         // If we have an OAuth access token, validate via the REST API
         if (accessToken) {
           const resp = await fetch(
-            'https://googleads.googleapis.com/v18/customers:listAccessibleCustomers',
+            'https://googleads.googleapis.com/v23/customers:listAccessibleCustomers',
             {
               headers: {
                 Authorization: `Bearer ${accessToken}`,

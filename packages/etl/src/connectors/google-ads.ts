@@ -37,7 +37,7 @@ export async function fetchGoogleAdsInsights(
   const accessToken = await refreshGoogleToken(config);
 
   const records: RawRecord[] = [];
-  const url = `https://googleads.googleapis.com/v18/customers/${config.customerId}/googleAds:searchStream`;
+  const url = `https://googleads.googleapis.com/v23/customers/${config.customerId}/googleAds:searchStream`;
   let retries = 0;
   const MAX_RETRIES = 5;
 
