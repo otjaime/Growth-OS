@@ -748,12 +748,25 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       const tokens = await resp.json() as { access_token: string; refresh_token?: string };
 
-      // Security: do NOT persist clientSecret in per-connection data.
-      // It's always read from process.env at use-time.
-      const { encrypted, iv, authTag } = encrypt(JSON.stringify({
+      // Merge with existing credentials so we don't lose fields like developerToken
+      const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
+      let existingCreds: Record<string, string> = {};
+      let existingMeta: Record<string, unknown> = {};
+      if (existing) {
+        try {
+          existingCreds = JSON.parse(decrypt(existing.encryptedData, existing.iv, existing.authTag)) as Record<string, string>;
+        } catch { /* ignore */ }
+        existingMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+      }
+
+      const mergedCreds = {
+        ...existingCreds,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? '',
-      }));
+      };
+      const mergedMeta = { ...existingMeta, clientId, authType: 'oauth2' };
+
+      const { encrypted, iv, authTag } = encrypt(JSON.stringify(mergedCreds));
 
       await prisma.connectorCredential.upsert({
         where: { connectorType },
@@ -762,10 +775,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
           encryptedData: encrypted,
           iv,
           authTag,
-          metadata: { clientId, authType: 'oauth2' },
+          metadata: mergedMeta as Record<string, string>,
           lastSyncStatus: 'pending',
         },
-        update: { encryptedData: encrypted, iv, authTag, lastSyncStatus: 'pending' },
+        update: { encryptedData: encrypted, iv, authTag, metadata: mergedMeta as Record<string, string>, lastSyncStatus: 'pending' },
       });
 
       return reply.redirect(`${frontendUrl}/connections?connected=${connectorType}`);
