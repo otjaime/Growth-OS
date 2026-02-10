@@ -413,13 +413,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const credentials: Record<string, string> = {};
     const metadata: Record<string, unknown> = { label: fields.label ?? def.name };
 
+    // Load existing credentials so we don't lose them when updating
+    const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
+    let existingCreds: Record<string, string> = {};
+    if (existing) {
+      try {
+        existingCreds = JSON.parse(decrypt(existing.encryptedData, existing.iv, existing.authTag)) as Record<string, string>;
+      } catch { /* ignore */ }
+    }
+
     for (const fieldDef of def.fields) {
       const val = fields[fieldDef.key];
-      if (val === undefined || val === '') continue;
       if (fieldDef.sensitive) {
-        credentials[fieldDef.key] = val;
+        // Keep existing value if user didn't provide a new one
+        credentials[fieldDef.key] = (val && val !== '') ? val : (existingCreds[fieldDef.key] ?? '');
       } else {
-        metadata[fieldDef.key] = val;
+        if (val !== undefined && val !== '') {
+          metadata[fieldDef.key] = val;
+        }
       }
     }
 
@@ -496,11 +507,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'meta_ads') {
-        const resp = await fetch('https://graph.facebook.com/v21.0/me', {
-          headers: { Authorization: `Bearer ${creds.accessToken}` },
-        });
-        if (!resp.ok) throw new Error(`Meta responded ${resp.status}`);
-        return { success: true, message: 'Meta Ads connection verified', latencyMs: Date.now() - start };
+        const token = (creds.accessToken ?? '').trim();
+        if (!token) {
+          return { success: false, message: 'No access token found. Please re-enter your Meta access token.' };
+        }
+        const resp = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`);
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({})) as { error?: { message?: string; type?: string; code?: number } };
+          const metaMsg = body?.error?.message ?? `status ${resp.status}`;
+          throw new Error(`Meta API: ${metaMsg}`);
+        }
+        const me = await resp.json() as { name?: string; id?: string };
+        return { success: true, message: `Meta Ads verified — connected as "${me.name ?? me.id}"`, latencyMs: Date.now() - start };
       }
 
       if (type === 'google_ads') {
