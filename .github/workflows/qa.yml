@@ -161,8 +161,8 @@ jobs:
       # Generate Prisma client + migrate
       - name: Database setup
         run: |
-          pnpm --filter @growth-os/database db:generate
-          pnpm --filter @growth-os/database db:migrate
+          pnpm --filter @growth-os/database exec prisma generate
+          pnpm --filter @growth-os/database exec prisma migrate deploy
 
       # Seed demo data
       - name: Seed demo data
@@ -170,7 +170,7 @@ jobs:
 
       # Install Playwright browsers
       - name: Install Playwright
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter @growth-os/e2e exec playwright install --with-deps chromium
 
       # Start API server in background
       - name: Start API
@@ -195,7 +195,7 @@ jobs:
 
       # Run E2E tests
       - name: Run Playwright tests
-        run: pnpm test:e2e
+        run: pnpm --filter @growth-os/e2e exec playwright test
 
       # Upload test artifacts on failure
       - uses: actions/upload-artifact@v4
