@@ -306,3 +306,15 @@ model Cohort {
 
   @@map("cohorts")
 }
+
+// ══════════════════════════════════════════════════════════════
+// APP SETTINGS (persistent key-value store)
+// ══════════════════════════════════════════════════════════════
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

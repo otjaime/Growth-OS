@@ -1,4 +1,6 @@
 export { prisma } from './client';
+export { encrypt, decrypt } from './crypto.js';
+export { isDemoMode, setMode } from './mode.js';
 export type {
   RawEvent,
   JobRun,

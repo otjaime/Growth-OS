@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '@growth-os/database';
+import { prisma, isDemoMode } from '@growth-os/database';
 
 export async function healthRoutes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -9,11 +9,13 @@ export async function healthRoutes(app: FastifyInstance) {
       dbOk = true;
     } catch { /* db down */ }
 
+    const demoMode = await isDemoMode();
+
     return {
       status: dbOk ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
       db: dbOk ? 'connected' : 'disconnected',
-      demoMode: process.env.DEMO_MODE === 'true',
+      demoMode,
       version: '1.0.0',
     };
   });

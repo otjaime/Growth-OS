@@ -13,7 +13,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   app.get('/metrics/summary', async (request) => {
     const query = request.query as { days?: string };
     const days = parseInt(query.days ?? '7', 10);
-    const now = new Date('2026-02-09'); // Fixed for demo determinism
+    const now = new Date();
     const currentStart = subDays(now, days);
     const previousStart = subDays(currentStart, days);
 
@@ -85,7 +85,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   app.get('/metrics/timeseries', async (request) => {
     const query = request.query as { days?: string };
     const days = parseInt(query.days ?? '30', 10);
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const start = subDays(now, days);
 
     const dailyRevenue = await prisma.$queryRaw<
@@ -126,7 +126,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   app.get('/metrics/channels', async (request) => {
     const query = request.query as { days?: string };
     const days = parseInt(query.days ?? '7', 10);
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const currentStart = subDays(now, days);
     const previousStart = subDays(currentStart, days);
 
@@ -187,7 +187,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   app.get('/metrics/funnel', async (request) => {
     const query = request.query as { days?: string };
     const days = parseInt(query.days ?? '7', 10);
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const start = subDays(now, days);
 
     const agg = await prisma.factTraffic.aggregate({
@@ -228,7 +228,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   app.get('/metrics/unit-economics', async (request) => {
     const query = request.query as { days?: string };
     const days = parseInt(query.days ?? '30', 10);
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const start = subDays(now, days);
 
     const orders = await prisma.factOrder.findMany({

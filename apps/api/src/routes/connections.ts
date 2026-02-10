@@ -1,33 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '@growth-os/database';
+import { prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
 import crypto from 'crypto';
-
-if (!process.env.ENCRYPTION_KEY && process.env.NODE_ENV === 'production') {
-  throw new Error('FATAL: ENCRYPTION_KEY must be set in production. Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
-}
-if (!process.env.ENCRYPTION_KEY) {
-  console.warn('⚠️  ENCRYPTION_KEY not set — using random key (dev only, connections will not persist across restarts)');
-}
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? crypto.randomBytes(32).toString('hex');
-
-function encrypt(text: string): { encrypted: string; iv: string; authTag: string } {
-  const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return { encrypted, iv: iv.toString('hex'), authTag };
-}
-
-function decrypt(encrypted: string, iv: string, authTag: string): string {
-  const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-}
+import { runConnectorSync } from '../lib/run-connector-sync.js';
 
 // ── Connector Catalog (served to frontend) ──────────────────
 
@@ -488,8 +462,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post('/connections/:type/test', async (request) => {
     const { type } = request.params as { type: string };
 
-    if (process.env.DEMO_MODE === 'true') {
-      // Simulate realistic test latency
+    if (await isDemoMode()) {
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 400));
       const def = CONNECTOR_CATALOG.find((d) => d.id === type);
       return {
@@ -656,7 +629,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       data: { lastSyncStatus: 'syncing' },
     });
 
-    if (process.env.DEMO_MODE === 'true') {
+    if (await isDemoMode()) {
       // Simulate a sync in demo mode
       setTimeout(async () => {
         await prisma.connectorCredential.update({
@@ -667,20 +640,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return { success: true, message: 'Sync started (demo mode)' };
     }
 
-    // In production, this would kick off the ETL pipeline
-    // For now, mark as completed after a brief delay
-    setTimeout(async () => {
-      try {
+    // Live mode: run real ETL pipeline in background
+    runConnectorSync(type)
+      .then(async (result) => {
         await prisma.connectorCredential.update({
           where: { connectorType: type },
           data: { lastSyncAt: new Date(), lastSyncStatus: 'success' },
         });
-      } catch {
-        // Ignore cleanup errors
-      }
-    }, 5000);
+        app.log.info({ connectorType: type, rowsLoaded: result.rowsLoaded }, 'Sync completed');
+      })
+      .catch(async (error) => {
+        await prisma.connectorCredential.update({
+          where: { connectorType: type },
+          data: { lastSyncStatus: 'error' },
+        });
+        app.log.error({ connectorType: type, error: (error as Error).message }, 'Sync failed');
+      });
 
-    return { success: true, message: 'Sync started' };
+    return { success: true, message: 'Sync started — fetching real data from API' };
   });
 
   // ── Delete a connection ─────────────────────────────────────

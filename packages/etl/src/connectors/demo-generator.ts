@@ -44,7 +44,7 @@ interface DemoCustomer {
 
 function createContext(): DemoContext {
   const rng = seedrandom(SEED);
-  const endDate = new Date('2026-02-09');
+  const endDate = new Date();
   const startDate = subDays(endDate, DEMO_DAYS);
   return { rng, endDate, startDate, customers: [] };
 }

@@ -3,12 +3,28 @@
 // ──────────────────────────────────────────────────────────────
 
 import { FastifyInstance } from 'fastify';
-import { prisma } from '@growth-os/database';
+import { prisma, isDemoMode, setMode } from '@growth-os/database';
+
+async function clearAllData() {
+  return prisma.$transaction([
+    prisma.rawEvent.deleteMany(),
+    prisma.factOrder.deleteMany(),
+    prisma.factSpend.deleteMany(),
+    prisma.factTraffic.deleteMany(),
+    prisma.cohort.deleteMany(),
+    prisma.dimCustomer.deleteMany(),
+    prisma.dimCampaign.deleteMany(),
+    prisma.stgOrder.deleteMany(),
+    prisma.stgSpend.deleteMany(),
+    prisma.stgTraffic.deleteMany(),
+    prisma.jobRun.deleteMany(),
+  ]);
+}
 
 export async function settingsRoutes(app: FastifyInstance) {
   // ── GET /settings/mode — current mode + data overview ──────
   app.get('/settings/mode', async () => {
-    const demoMode = process.env.DEMO_MODE === 'true';
+    const demoMode = await isDemoMode();
 
     // Demo data comes from job_name='demo_ingest' job runs
     const demoJob = await prisma.jobRun.findFirst({
@@ -38,7 +54,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     const { mode } = req.body ?? {};
 
     if (mode === 'demo') {
-      process.env.DEMO_MODE = 'true';
+      await setMode('demo');
       return {
         success: true,
         mode: 'demo',
@@ -47,11 +63,25 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
 
     if (mode === 'live') {
-      process.env.DEMO_MODE = 'false';
+      const wasDemoMode = await isDemoMode();
+      await setMode('live');
+
+      if (wasDemoMode) {
+        // Clear demo data to prevent mixing with real data
+        const [rawDeleted] = await clearAllData();
+        return {
+          success: true,
+          mode: 'live',
+          message: `Switched to live mode. Cleared ${rawDeleted.count} demo records. Click Sync on your connections to fetch real data.`,
+          dataCleared: true,
+        };
+      }
+
       return {
         success: true,
         mode: 'live',
         message: 'Switched to live mode.',
+        dataCleared: false,
       };
     }
 
@@ -60,20 +90,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // ── POST /settings/clear-data — purge ALL data (demo + real) ──
   app.post('/settings/clear-data', async () => {
-    // Clear everything: marts, staging, raw events, job runs
-    const [rawDeleted] = await prisma.$transaction([
-      prisma.rawEvent.deleteMany(),
-      prisma.factOrder.deleteMany(),
-      prisma.factSpend.deleteMany(),
-      prisma.factTraffic.deleteMany(),
-      prisma.cohort.deleteMany(),
-      prisma.dimCustomer.deleteMany(),
-      prisma.dimCampaign.deleteMany(),
-      prisma.stagingOrder.deleteMany(),
-      prisma.stagingSpend.deleteMany(),
-      prisma.stagingTraffic.deleteMany(),
-      prisma.jobRun.deleteMany(),
-    ]);
+    const [rawDeleted] = await clearAllData();
     return {
       success: true,
       message: `Cleared all data (${rawDeleted.count} raw events + all marts). Ready for fresh sync.`,
@@ -84,7 +101,7 @@ export async function settingsRoutes(app: FastifyInstance) {
   // ── POST /settings/seed-demo — run demo pipeline ──────────
   app.post('/settings/seed-demo', async () => {
     try {
-      process.env.DEMO_MODE = 'true';
+      await setMode('demo');
       // Import and run the demo pipeline dynamically
       const { exec } = await import('child_process');
       const { promisify } = await import('util');

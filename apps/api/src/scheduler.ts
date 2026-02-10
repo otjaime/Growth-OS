@@ -5,7 +5,7 @@
 
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { prisma } from '@growth-os/database';
+import { prisma, isDemoMode } from '@growth-os/database';
 import { createLogger } from './logger.js';
 
 const log = createLogger('scheduler');
@@ -53,13 +53,13 @@ async function startScheduler() {
       const startTime = Date.now();
 
       try {
-        // Dynamic import to avoid circular deps
-        const { ingestRaw, normalizeStaging, buildMarts } = await import('@growth-os/etl');
-        const { generateAllDemoData } = await import('@growth-os/etl');
+        const { normalizeStaging, buildMarts } = await import('@growth-os/etl');
 
         if (job.data.type === 'incremental' || job.data.type === 'full') {
-          const isDemoMode = process.env.DEMO_MODE === 'true';
-          if (isDemoMode) {
+          const demoMode = await isDemoMode();
+
+          if (demoMode) {
+            const { ingestRaw, generateAllDemoData } = await import('@growth-os/etl');
             const data = generateAllDemoData();
             const all = [
               ...data.orders,
@@ -69,9 +69,13 @@ async function startScheduler() {
               ...data.ga4Traffic,
             ];
             await ingestRaw(all);
+            await normalizeStaging();
+            await buildMarts();
+          } else {
+            // Live mode: fetch real data from all configured connectors
+            const { runFullSync } = await import('./lib/run-connector-sync.js');
+            await runFullSync();
           }
-          await normalizeStaging();
-          await buildMarts();
         } else if (job.data.type === 'build-marts') {
           await buildMarts();
         }

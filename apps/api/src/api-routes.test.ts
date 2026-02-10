@@ -46,6 +46,10 @@ const mockPrisma = vi.hoisted(() => ({
 vi.mock('@growth-os/database', () => ({
   prisma: mockPrisma,
   Prisma: { sql: vi.fn(), raw: vi.fn() },
+  isDemoMode: vi.fn().mockResolvedValue(false),
+  setMode: vi.fn().mockResolvedValue(undefined),
+  encrypt: vi.fn().mockReturnValue({ encrypted: 'enc', iv: 'iv', authTag: 'tag' }),
+  decrypt: vi.fn().mockReturnValue('{}'),
 }));
 
 import { healthRoutes } from './routes/health.js';
