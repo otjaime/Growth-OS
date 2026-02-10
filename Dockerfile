@@ -32,4 +32,4 @@ COPY --from=build /app ./
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "pnpm --filter @growth-os/database db:push && (DEMO_MODE=true pnpm --filter @growth-os/etl demo || echo 'Demo seed skipped') && pnpm --filter @growth-os/api start"]
+CMD ["sh", "-c", "pnpm --filter @growth-os/database db:push || echo 'db:push failed, starting anyway'; exec pnpm --filter @growth-os/api start"]
