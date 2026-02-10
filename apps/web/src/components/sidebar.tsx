@@ -14,6 +14,7 @@ import {
   Cable,
   Activity,
   Filter,
+  Settings,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
   { href: '/connections', label: 'Data Connections', icon: Cable },
   { href: '/jobs', label: 'Job Runs', icon: Activity },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {
@@ -84,17 +86,17 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — mode indicator */}
       <div className="px-6 py-4 border-t border-[var(--card-border)]">
-        <div className="flex items-center gap-2">
+        <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className={clsx(
             'w-2 h-2 rounded-full animate-pulse',
-            apiOk ? 'bg-green-500' : 'bg-red-500',
+            !apiOk ? 'bg-red-500' : demoMode ? 'bg-purple-500' : 'bg-green-500',
           )} />
           <span className="text-xs text-slate-400">
             {!apiOk ? 'API Disconnected' : demoMode ? 'Demo Mode' : 'Live Mode'}
           </span>
-        </div>
+        </Link>
       </div>
     </aside>
   );

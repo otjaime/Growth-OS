@@ -11,6 +11,7 @@ import { metricsRoutes } from './routes/metrics.js';
 import { connectionsRoutes } from './routes/connections.js';
 import { alertsRoutes } from './routes/alerts.js';
 import { wbrRoutes } from './routes/wbr.js';
+import { settingsRoutes } from './routes/settings.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
 const HOST = process.env.API_HOST ?? '0.0.0.0';
@@ -35,6 +36,7 @@ async function main() {
   await app.register(connectionsRoutes, { prefix: '/api' });
   await app.register(alertsRoutes, { prefix: '/api' });
   await app.register(wbrRoutes, { prefix: '/api' });
+  await app.register(settingsRoutes, { prefix: '/api' });
 
   // Graceful shutdown
   const signals = ['SIGINT', 'SIGTERM'];
