@@ -15,22 +15,29 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState<SavedConnection[]>([]);
   const [catalog, setCatalog] = useState<ConnectorDef[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'catalog'>('active');
   const [wizardConnector, setWizardConnector] = useState<ConnectorDef | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
+    setError(null);
     try {
       const [connRes, catRes] = await Promise.all([
         fetch(`${API}/api/connections`),
         fetch(`${API}/api/connectors/catalog`),
       ]);
+      if (!connRes.ok || !catRes.ok) {
+        setError(`API returned ${connRes.ok ? catRes.status : connRes.status}. Check that the API is running.`);
+        setLoading(false);
+        return;
+      }
       const connData = await connRes.json();
       const catData = await catRes.json();
       setConnections(connData.connections ?? []);
       setCatalog(catData.connectors ?? []);
-    } catch {
-      // silently handle
+    } catch (err) {
+      setError('Could not connect to API. Make sure the server is running.');
     }
     setLoading(false);
   }, []);
@@ -88,6 +95,23 @@ export default function ConnectionsPage() {
         <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-500/10 border border-green-500/20 rounded-xl text-sm text-green-400 shadow-xl animate-in slide-in-from-top-2">
           <CheckCircle2 className="h-4 w-4" />
           {toastMsg}
+        </div>
+      )}
+
+      {/* API Error Banner */}
+      {error && (
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-5 py-4">
+          <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm text-red-300 font-medium">Connection Error</p>
+            <p className="text-xs text-slate-400 mt-0.5">{error}</p>
+          </div>
+          <button
+            onClick={fetchData}
+            className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-xs font-medium transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 

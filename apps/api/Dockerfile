@@ -28,5 +28,6 @@ WORKDIR /app
 
 EXPOSE 4000
 
-# Run migrations + seed demo data + start API
-CMD ["sh", "-c", "pnpm --filter @growth-os/database db:push && DEMO_MODE=true pnpm --filter @growth-os/etl demo && pnpm --filter @growth-os/api start"]
+# Apply schema to DB, then start API
+# DEMO_MODE is read from Railway env vars (not hardcoded)
+CMD ["sh", "-c", "pnpm --filter @growth-os/database db:push || echo 'db:push failed, starting anyway'; exec pnpm --filter @growth-os/api start"]

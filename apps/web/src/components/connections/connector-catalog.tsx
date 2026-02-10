@@ -139,7 +139,14 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
         </div>
       ))}
 
-      {filtered.length === 0 && (
+      {connectors.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-slate-400 text-sm">Failed to load connectors from the API.</p>
+          <p className="text-xs text-slate-500 mt-1">Please check your connection and try refreshing the page.</p>
+        </div>
+      )}
+
+      {connectors.length > 0 && filtered.length === 0 && (
         <div className="text-center py-12">
           <p className="text-slate-400 text-sm">No connectors match your search.</p>
           <p className="text-xs text-slate-500 mt-1">Try searching by data type (e.g. &quot;orders&quot;, &quot;campaigns&quot;) or platform name.</p>
