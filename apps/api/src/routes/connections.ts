@@ -531,8 +531,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'google_ads') {
-        const devToken = creds.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '';
-        const customerId = (meta.customerId ?? creds.customerId ?? '').replace(/-/g, '');
+        const devToken = (creds.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '').trim();
+        const customerId = (meta.customerId ?? creds.customerId ?? '').toString().trim().replace(/-/g, '');
         const accessToken = creds.accessToken ?? '';
 
         if (!devToken || !customerId) {

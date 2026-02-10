@@ -50,9 +50,9 @@ export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<Co
           refreshToken: decrypted.refreshToken ?? '',
           clientId: googleOAuth.clientId || meta.clientId || '',
           clientSecret: googleOAuth.clientSecret,
-          customerId: (meta.customerId ?? '').replace(/-/g, ''),
-          developerToken: decrypted.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
-          managerAccountId: (meta.managerAccountId as string) ?? '',
+          customerId: (meta.customerId ?? '').toString().trim().replace(/-/g, ''),
+          developerToken: (decrypted.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '').trim(),
+          managerAccountId: ((meta.managerAccountId as string) ?? '').trim(),
         };
         break;
 
