@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────────────────────
 // Growth OS — Google Ads Connector
 // Fetches campaign performance from Google Ads API
+// Supports both direct client accounts and Manager (MCC) accounts
 // ──────────────────────────────────────────────────────────────
 
 import type { RawRecord, GoogleAdsConfig } from '../types.js';
@@ -8,6 +9,8 @@ import { createLogger } from '../logger.js';
 import { generateGoogleAdsInsights } from './demo-generator.js';
 
 const log = createLogger('connector:google-ads');
+
+const API_VERSION = 'v23';
 
 const GAQL_QUERY = `
 SELECT
@@ -33,13 +36,8 @@ export async function fetchGoogleAdsInsights(
     return { records: generateGoogleAdsInsights() };
   }
 
-  // Refresh access token if needed
   const accessToken = await refreshGoogleToken(config);
-
-  const records: RawRecord[] = [];
-  const url = `https://googleads.googleapis.com/v23/customers/${config.customerId}/googleAds:searchStream`;
-  let retries = 0;
-  const MAX_RETRIES = 5;
+  const loginCustomerId = config.managerAccountId?.replace(/-/g, '') || config.customerId;
 
   const query = dateRange
     ? GAQL_QUERY.replace(
@@ -48,59 +46,134 @@ export async function fetchGoogleAdsInsights(
       )
     : GAQL_QUERY;
 
-  while (retries <= MAX_RETRIES) {
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-          'developer-token': config.developerToken,
-          'login-customer-id': config.customerId,
-        },
-        body: JSON.stringify({ query }),
-      });
+  // Try fetching directly first; if we get REQUESTED_METRICS_FOR_MANAGER,
+  // list child accounts and query each one.
+  const records: RawRecord[] = [];
 
-      if (resp.status === 429) {
-        const backoff = Math.pow(2, retries) * 1000;
-        log.warn({ backoff }, 'Rate limited by Google Ads, backing off');
-        await sleep(backoff);
-        retries++;
-        continue;
-      }
+  try {
+    const result = await queryCustomer(config.customerId, accessToken, config.developerToken, loginCustomerId, query);
+    records.push(...result);
+  } catch (err) {
+    const msg = (err as Error).message ?? '';
+    if (msg.includes('REQUESTED_METRICS_FOR_MANAGER')) {
+      log.info('Customer ID is a manager account, listing child accounts...');
+      const childIds = await listClientAccounts(config.customerId, accessToken, config.developerToken, loginCustomerId);
+      log.info({ count: childIds.length }, 'Found child accounts under manager');
 
-      if (!resp.ok) {
-        const body = await resp.text();
-        throw new Error(`Google Ads API error: ${resp.status} — ${body}`);
-      }
-
-      const data = (await resp.json()) as Array<{
-        results: Array<Record<string, unknown>>;
-      }>;
-
-      for (const batch of data) {
-        for (const row of batch.results) {
-          const campaign = row.campaign as { id: string; name: string };
-          const segments = row.segments as { date: string };
-          records.push({
-            source: 'google_ads',
-            entity: 'campaign_performance',
-            externalId: `${campaign.id}_${segments.date}`,
-            cursor: segments.date,
-            payload: row,
-          });
+      for (const childId of childIds) {
+        try {
+          const result = await queryCustomer(childId, accessToken, config.developerToken, loginCustomerId, query);
+          records.push(...result);
+        } catch (childErr) {
+          log.warn({ childId, err: childErr }, 'Failed to query child account, skipping');
         }
       }
-
-      break; // success
-    } catch (err) {
-      log.error({ err }, 'Error fetching Google Ads insights');
+    } else {
       throw err;
     }
   }
 
   log.info({ count: records.length }, 'Fetched Google Ads insights');
   return { records };
+}
+
+async function listClientAccounts(
+  managerId: string,
+  accessToken: string,
+  developerToken: string,
+  loginCustomerId: string,
+): Promise<string[]> {
+  const query = `SELECT customer_client.id, customer_client.manager, customer_client.status FROM customer_client WHERE customer_client.manager = false AND customer_client.status = 'ENABLED'`;
+  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${managerId}/googleAds:searchStream`;
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      'developer-token': developerToken,
+      'login-customer-id': loginCustomerId,
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Failed to list client accounts: ${resp.status} — ${body.substring(0, 300)}`);
+  }
+
+  const data = (await resp.json()) as Array<{
+    results: Array<{ customerClient: { id: string } }>;
+  }>;
+
+  const ids: string[] = [];
+  for (const batch of data) {
+    for (const row of batch.results) {
+      ids.push(String(row.customerClient.id));
+    }
+  }
+  return ids;
+}
+
+async function queryCustomer(
+  customerId: string,
+  accessToken: string,
+  developerToken: string,
+  loginCustomerId: string,
+  query: string,
+): Promise<RawRecord[]> {
+  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`;
+  let retries = 0;
+  const MAX_RETRIES = 5;
+  const records: RawRecord[] = [];
+
+  while (retries <= MAX_RETRIES) {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'developer-token': developerToken,
+        'login-customer-id': loginCustomerId,
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (resp.status === 429) {
+      const backoff = Math.pow(2, retries) * 1000;
+      log.warn({ backoff }, 'Rate limited by Google Ads, backing off');
+      await sleep(backoff);
+      retries++;
+      continue;
+    }
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Google Ads API error: ${resp.status} — ${body.substring(0, 300)}`);
+    }
+
+    const data = (await resp.json()) as Array<{
+      results: Array<Record<string, unknown>>;
+    }>;
+
+    for (const batch of data) {
+      for (const row of batch.results) {
+        const campaign = row.campaign as { id: string; name: string };
+        const segments = row.segments as { date: string };
+        records.push({
+          source: 'google_ads',
+          entity: 'campaign_performance',
+          externalId: `${customerId}_${campaign.id}_${segments.date}`,
+          cursor: segments.date,
+          payload: { ...row, _customerId: customerId },
+        });
+      }
+    }
+
+    break; // success
+  }
+
+  return records;
 }
 
 async function refreshGoogleToken(config: GoogleAdsConfig): Promise<string> {

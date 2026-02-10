@@ -27,6 +27,7 @@ export interface GoogleAdsConfig extends ConnectorConfig {
   clientSecret: string;
   customerId: string;
   developerToken: string;
+  managerAccountId?: string;
 }
 
 export interface GA4Config extends ConnectorConfig {
