@@ -413,20 +413,29 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const credentials: Record<string, string> = {};
     const metadata: Record<string, unknown> = { label: fields.label ?? def.name };
 
-    // Load existing credentials so we don't lose them when updating
+    // Load existing credentials and metadata so we don't lose them when updating
     const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
     let existingCreds: Record<string, string> = {};
+    let existingMeta: Record<string, unknown> = {};
     if (existing) {
       try {
         existingCreds = JSON.parse(decrypt(existing.encryptedData, existing.iv, existing.authTag)) as Record<string, string>;
       } catch { /* ignore */ }
+      existingMeta = (existing.metadata ?? {}) as Record<string, unknown>;
     }
+
+    // Start with all existing credentials (preserves OAuth tokens like accessToken/refreshToken)
+    Object.assign(credentials, existingCreds);
+    // Merge existing metadata (preserves authType, clientId from OAuth callback)
+    Object.assign(metadata, existingMeta, { label: fields.label ?? metadata.label ?? def.name });
 
     for (const fieldDef of def.fields) {
       const val = fields[fieldDef.key];
       if (fieldDef.sensitive) {
-        // Keep existing value if user didn't provide a new one
-        credentials[fieldDef.key] = (val && val !== '') ? val : (existingCreds[fieldDef.key] ?? '');
+        // Override with new value if user provided one
+        if (val && val !== '') {
+          credentials[fieldDef.key] = val;
+        }
       } else {
         if (val !== undefined && val !== '') {
           metadata[fieldDef.key] = val;
