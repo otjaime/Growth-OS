@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Database, Beaker, Trash2, RefreshCw,
+  Database, Beaker, Trash2,
   AlertTriangle, CheckCircle, Loader2, BarChart3,
   ArrowRight, Shield, Radio,
 } from 'lucide-react';
@@ -12,10 +12,8 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 interface ModeInfo {
   mode: 'demo' | 'live';
   data: {
-    hasRealData: boolean;
     hasDemoData: boolean;
-    realEvents: number;
-    demoEvents: number;
+    totalEvents: number;
     marts: { orders: number; spend: number; traffic: number };
   };
 }
@@ -25,7 +23,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const [rebuilding, setRebuilding] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   const fetchMode = useCallback(async () => {
@@ -60,35 +58,35 @@ export default function SettingsPage() {
     }
   };
 
-  const clearDemoData = async () => {
-    if (!confirm('Delete all demo data from the database?')) return;
+  const clearAllData = async () => {
+    if (!confirm('This will delete ALL data (demo + real) from the database. Are you sure?')) return;
     setClearing(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/clear-demo`, { method: 'POST' });
+      const res = await fetch(`${API}/api/settings/clear-data`, { method: 'POST' });
       const data = await res.json();
       setMessage({ type: data.success ? 'success' : 'error', text: data.message });
       if (data.success) await fetchMode();
     } catch {
-      setMessage({ type: 'error', text: 'Failed to clear demo data' });
+      setMessage({ type: 'error', text: 'Failed to clear data' });
     } finally {
       setClearing(false);
     }
   };
 
-  const rebuildMarts = async () => {
-    if (!confirm('Rebuild all analytics tables? This may take a minute.')) return;
-    setRebuilding(true);
+  const seedDemo = async () => {
+    if (!confirm('Seed demo data? This may take 2-3 minutes.')) return;
+    setSeeding(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/rebuild-marts`, { method: 'POST' });
+      const res = await fetch(`${API}/api/settings/seed-demo`, { method: 'POST' });
       const data = await res.json();
       setMessage({ type: data.success ? 'success' : 'error', text: data.message });
       if (data.success) await fetchMode();
     } catch {
-      setMessage({ type: 'error', text: 'Failed to rebuild' });
+      setMessage({ type: 'error', text: 'Failed to seed demo data' });
     } finally {
-      setRebuilding(false);
+      setSeeding(false);
     }
   };
 
@@ -101,8 +99,7 @@ export default function SettingsPage() {
   }
 
   const isDemo = modeInfo?.mode === 'demo';
-  const hasReal = modeInfo?.data.hasRealData ?? false;
-  const hasDemo = modeInfo?.data.hasDemoData ?? false;
+  const hasData = (modeInfo?.data.totalEvents ?? 0) > 0;
 
   return (
     <div className="space-y-8">
@@ -161,8 +158,8 @@ export default function SettingsPage() {
               Uses deterministic sample data (7,200+ orders, 2,400 customers) to showcase all dashboard features.
             </p>
             <div className="flex items-center gap-4 text-xs text-slate-500">
-              <span>📦 7,200+ orders</span>
-              <span>👥 2,400 customers</span>
+              <span>📦 ~7,200 orders</span>
+              <span>👥 ~2,400 customers</span>
               <span>📊 90 days</span>
             </div>
           </button>
@@ -194,15 +191,15 @@ export default function SettingsPage() {
             <p className="text-sm text-slate-400 mb-3">
               Shows real data from connected sources (Shopify, Meta Ads, Google Ads, GA4). Connect your data sources first.
             </p>
-            {hasReal ? (
+            {hasData ? (
               <div className="flex items-center gap-2 text-xs text-green-400">
                 <CheckCircle className="h-3 w-3" />
-                <span>{modeInfo?.data.realEvents.toLocaleString()} real events</span>
+                <span>{modeInfo?.data.totalEvents.toLocaleString()} events in database</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-xs text-yellow-400">
                 <AlertTriangle className="h-3 w-3" />
-                <span>No real data yet — connect sources first</span>
+                <span>No data yet — connect sources and sync</span>
               </div>
             )}
           </button>
@@ -221,10 +218,9 @@ export default function SettingsPage() {
           <BarChart3 className="h-5 w-5 text-blue-400" />
           Data Overview
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Demo Events', value: modeInfo?.data.demoEvents, color: 'text-purple-400' },
-            { label: 'Real Events', value: modeInfo?.data.realEvents, color: 'text-green-400' },
+            { label: 'Raw Events', value: modeInfo?.data.totalEvents, color: 'text-blue-400' },
             { label: 'Orders (Mart)', value: modeInfo?.data.marts.orders, color: 'text-white' },
             { label: 'Spend Records', value: modeInfo?.data.marts.spend, color: 'text-white' },
             { label: 'Traffic Records', value: modeInfo?.data.marts.traffic, color: 'text-white' },
@@ -245,67 +241,66 @@ export default function SettingsPage() {
         </h2>
 
         <div className="space-y-4">
-          {/* Clear Demo */}
+          {/* Seed Demo */}
           <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
             <div>
               <h3 className="font-medium flex items-center gap-2">
-                <Trash2 className="h-4 w-4 text-red-400" /> Clear Demo Data
+                <Beaker className="h-4 w-4 text-purple-400" /> Seed Demo Data
               </h3>
               <p className="text-sm text-slate-400 mt-1">
-                Remove all sample data. Only real synced data will remain.
+                Generate ~12,000 sample records (orders, ads, traffic) to explore the dashboard.
               </p>
             </div>
             <button
-              onClick={clearDemoData}
-              disabled={clearing || !hasDemo}
+              onClick={seedDemo}
+              disabled={seeding}
+              className="px-4 py-2 bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            >
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Beaker className="h-4 w-4" />}
+              {seeding ? 'Seeding…' : 'Seed Demo'}
+            </button>
+          </div>
+
+          {/* Clear All Data */}
+          <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <Trash2 className="h-4 w-4 text-red-400" /> Clear All Data
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Delete all raw events, marts, and job history. Use before switching from demo to real data.
+              </p>
+            </div>
+            <button
+              onClick={clearAllData}
+              disabled={clearing || !hasData}
               className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
-                hasDemo
+                hasData
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
                   : 'bg-slate-700 text-slate-500 cursor-not-allowed'
               }`}
             >
               {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {clearing ? 'Clearing…' : hasDemo ? 'Clear Demo' : 'No demo data'}
+              {clearing ? 'Clearing…' : hasData ? 'Clear All' : 'No data'}
             </button>
           </div>
 
-          {/* Rebuild */}
-          <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
-            <div>
-              <h3 className="font-medium flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-blue-400" /> Rebuild Analytics
-              </h3>
-              <p className="text-sm text-slate-400 mt-1">
-                Re-process all raw events through staging → marts. Use after clearing demo data.
-              </p>
-            </div>
-            <button
-              onClick={rebuildMarts}
-              disabled={rebuilding}
-              className="px-4 py-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-            >
-              {rebuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {rebuilding ? 'Rebuilding…' : 'Rebuild'}
-            </button>
-          </div>
-
-          {/* No real data warning */}
-          {!isDemo && !hasReal && (
+          {/* No data + live mode warning */}
+          {!isDemo && !hasData && (
             <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5 shrink-0" />
                 <div>
-                  <h3 className="font-medium text-yellow-400">No real data available</h3>
+                  <h3 className="font-medium text-yellow-400">No data available</h3>
                   <p className="text-sm text-slate-400 mt-1">
-                    You&apos;re in live mode but haven&apos;t synced any data yet.
-                    Connect your sources and sync, or switch to demo mode.
+                    Connect your data sources and run a sync, or seed demo data to explore the dashboard.
                   </p>
                   <div className="flex gap-3 mt-3">
                     <a href="/connections" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg flex items-center gap-1 transition-colors">
                       Connect Sources <ArrowRight className="h-3 w-3" />
                     </a>
-                    <button onClick={() => switchMode('demo')} className="px-3 py-1.5 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-sm rounded-lg flex items-center gap-1 transition-colors">
-                      <Beaker className="h-3 w-3" /> Use Demo
+                    <button onClick={() => seedDemo()} className="px-3 py-1.5 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-sm rounded-lg flex items-center gap-1 transition-colors">
+                      <Beaker className="h-3 w-3" /> Seed Demo
                     </button>
                   </div>
                 </div>

@@ -10,9 +10,14 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get('/settings/mode', async () => {
     const demoMode = process.env.DEMO_MODE === 'true';
 
-    const [demoEvents, realEvents, orders, spend, traffic] = await Promise.all([
-      prisma.rawEvent.count({ where: { source: 'demo' } }),
-      prisma.rawEvent.count({ where: { source: { not: 'demo' } } }),
+    // Demo data comes from job_name='demo_ingest' job runs
+    const demoJob = await prisma.jobRun.findFirst({
+      where: { jobName: 'demo_ingest' },
+      orderBy: { startedAt: 'desc' },
+    });
+
+    const [totalEvents, orders, spend, traffic] = await Promise.all([
+      prisma.rawEvent.count(),
       prisma.factOrder.count(),
       prisma.factSpend.count(),
       prisma.factTraffic.count(),
@@ -21,10 +26,8 @@ export async function settingsRoutes(app: FastifyInstance) {
     return {
       mode: demoMode ? 'demo' : 'live',
       data: {
-        hasRealData: realEvents > 0,
-        hasDemoData: demoEvents > 0,
-        realEvents,
-        demoEvents,
+        hasDemoData: !!demoJob,
+        totalEvents,
         marts: { orders, spend, traffic },
       },
     };
@@ -45,67 +48,59 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     if (mode === 'live') {
       process.env.DEMO_MODE = 'false';
-      const realCount = await prisma.rawEvent.count({
-        where: { source: { not: 'demo' } },
-      });
       return {
         success: true,
         mode: 'live',
-        hasRealData: realCount > 0,
-        message:
-          realCount > 0
-            ? `Switched to live mode. Showing ${realCount} real events.`
-            : 'Switched to live mode. No real data yet — connect sources and sync.',
+        message: 'Switched to live mode.',
       };
     }
 
     return { success: false, message: 'Invalid mode. Use "demo" or "live".' };
   });
 
-  // ── POST /settings/clear-demo — purge demo data ───────────
-  app.post('/settings/clear-demo', async () => {
-    const deleted = await prisma.rawEvent.deleteMany({
-      where: { source: 'demo' },
-    });
+  // ── POST /settings/clear-data — purge ALL data (demo + real) ──
+  app.post('/settings/clear-data', async () => {
+    // Clear everything: marts, staging, raw events, job runs
+    const [rawDeleted] = await prisma.$transaction([
+      prisma.rawEvent.deleteMany(),
+      prisma.factOrder.deleteMany(),
+      prisma.factSpend.deleteMany(),
+      prisma.factTraffic.deleteMany(),
+      prisma.cohort.deleteMany(),
+      prisma.dimCustomer.deleteMany(),
+      prisma.dimCampaign.deleteMany(),
+      prisma.stagingOrder.deleteMany(),
+      prisma.stagingSpend.deleteMany(),
+      prisma.stagingTraffic.deleteMany(),
+      prisma.jobRun.deleteMany(),
+    ]);
     return {
       success: true,
-      deletedEvents: deleted.count,
-      message: `Cleared ${deleted.count} demo events. Rebuild analytics to update marts.`,
+      message: `Cleared all data (${rawDeleted.count} raw events + all marts). Ready for fresh sync.`,
+      deletedEvents: rawDeleted.count,
     };
   });
 
-  // ── POST /settings/rebuild-marts — re-run staging→marts ───
-  app.post('/settings/rebuild-marts', async () => {
+  // ── POST /settings/seed-demo — run demo pipeline ──────────
+  app.post('/settings/seed-demo', async () => {
     try {
-      // 1) Clear all marts
-      await prisma.$transaction([
-        prisma.factOrder.deleteMany(),
-        prisma.factSpend.deleteMany(),
-        prisma.factTraffic.deleteMany(),
-        prisma.cohort.deleteMany(),
-        prisma.dimCustomer.deleteMany(),
-        prisma.dimCampaign.deleteMany(),
-      ]);
-
-      // 2) Re-run ETL pipeline on remaining raw events
-      const { normalizeStaging, buildMarts } = await import('@growth-os/etl');
-      await normalizeStaging();
-      await buildMarts();
-
-      const [orders, spend, traffic] = await Promise.all([
-        prisma.factOrder.count(),
-        prisma.factSpend.count(),
-        prisma.factTraffic.count(),
-      ]);
-
+      process.env.DEMO_MODE = 'true';
+      // Import and run the demo pipeline dynamically
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+      await execAsync('pnpm --filter @growth-os/etl demo', {
+        cwd: '/app',
+        env: { ...process.env, DEMO_MODE: 'true' },
+        timeout: 300_000, // 5 min max
+      });
       return {
         success: true,
-        message: 'Analytics rebuilt from raw events.',
-        marts: { orders, spend, traffic },
+        message: 'Demo data seeded successfully.',
       };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, message };
+      return { success: false, message: `Demo seed failed: ${message}` };
     }
   });
 }
