@@ -23,3 +23,20 @@ export async function setMode(mode: 'demo' | 'live'): Promise<void> {
   });
   process.env.DEMO_MODE = value;
 }
+
+export async function getAppSetting(key: string): Promise<string | null> {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key } });
+    return setting?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setAppSetting(key: string, value: string): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value },
+    update: { value },
+  });
+}

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Database, Beaker, Trash2,
   AlertTriangle, CheckCircle, Loader2, BarChart3,
-  ArrowRight, Shield, Radio,
+  ArrowRight, Shield, Radio, Key, Eye, EyeOff, Save,
 } from 'lucide-react';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -18,6 +18,13 @@ interface ModeInfo {
   };
 }
 
+interface GoogleOAuthInfo {
+  configured: boolean;
+  clientId: string;
+  hasSecret: boolean;
+  redirectUri: string;
+}
+
 export default function SettingsPage() {
   const [modeInfo, setModeInfo] = useState<ModeInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +32,14 @@ export default function SettingsPage() {
   const [clearing, setClearing] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+  // Google OAuth state
+  const [googleOAuth, setGoogleOAuth] = useState<GoogleOAuthInfo | null>(null);
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+  const [googleRedirectUri, setGoogleRedirectUri] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
+  const [savingGoogle, setSavingGoogle] = useState(false);
 
   const fetchMode = useCallback(async () => {
     try {
@@ -37,7 +52,19 @@ export default function SettingsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchMode(); }, [fetchMode]);
+  const fetchGoogleOAuth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/settings/google-oauth`);
+      if (res.ok) {
+        const data: GoogleOAuthInfo = await res.json();
+        setGoogleOAuth(data);
+        setGoogleClientId(data.clientId);
+        setGoogleRedirectUri(data.redirectUri);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchMode(); fetchGoogleOAuth(); }, [fetchMode, fetchGoogleOAuth]);
 
   const switchMode = async (mode: 'demo' | 'live') => {
     setSwitching(true);
@@ -87,6 +114,36 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: 'Failed to seed demo data' });
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const saveGoogleOAuth = async () => {
+    if (!googleClientId || !googleClientSecret) {
+      setMessage({ type: 'error', text: 'Client ID and Client Secret are required.' });
+      return;
+    }
+    setSavingGoogle(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API}/api/settings/google-oauth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: googleClientId,
+          clientSecret: googleClientSecret,
+          redirectUri: googleRedirectUri || undefined,
+        }),
+      });
+      const data = await res.json();
+      setMessage({ type: data.success ? 'success' : 'error', text: data.message });
+      if (data.success) {
+        setGoogleClientSecret('');
+        await fetchGoogleOAuth();
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to save Google OAuth credentials' });
+    } finally {
+      setSavingGoogle(false);
     }
   };
 
@@ -210,6 +267,85 @@ export default function SettingsPage() {
             <Loader2 className="h-4 w-4 animate-spin" /> Switching mode…
           </div>
         )}
+      </div>
+
+      {/* ── Google OAuth Configuration ─────────────────────── */}
+      <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+          <Key className="h-5 w-5 text-blue-400" />
+          Google OAuth
+        </h2>
+        <p className="text-sm text-slate-400 mb-4">
+          Required for Google Ads and GA4 connections. Get credentials from the{' '}
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+            Google Cloud Console
+          </a>.
+        </p>
+
+        {googleOAuth?.configured && (
+          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2 text-sm text-green-400">
+            <CheckCircle className="h-4 w-4 shrink-0" />
+            Google OAuth is configured. You can update the credentials below.
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Client ID</label>
+            <input
+              type="text"
+              value={googleClientId}
+              onChange={(e) => setGoogleClientId(e.target.value)}
+              placeholder="123456789-xxxxxxx.apps.googleusercontent.com"
+              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Client Secret</label>
+            <div className="relative">
+              <input
+                type={showSecret ? 'text' : 'password'}
+                value={googleClientSecret}
+                onChange={(e) => setGoogleClientSecret(e.target.value)}
+                placeholder={googleOAuth?.hasSecret ? '(saved — enter new value to update)' : 'GOCSPX-xxxxxxx'}
+                className="w-full px-3 py-2 pr-10 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret(!showSecret)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+              >
+                {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Redirect URI <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={googleRedirectUri}
+              onChange={(e) => setGoogleRedirectUri(e.target.value)}
+              placeholder="http://localhost:4000/api/auth/google/callback"
+              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Must match the authorized redirect URI in your Google Cloud Console.
+            </p>
+          </div>
+
+          <button
+            onClick={saveGoogleOAuth}
+            disabled={savingGoogle || (!googleClientId && !googleClientSecret)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            {savingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {savingGoogle ? 'Saving…' : 'Save Google Credentials'}
+          </button>
+        </div>
       </div>
 
       {/* ── Data Overview ────────────────────────────────────── */}

@@ -3,7 +3,7 @@
 // Reads credentials from DB when available, falls back to env vars
 // ──────────────────────────────────────────────────────────────
 
-import { prisma, isDemoMode, decrypt } from '@growth-os/database';
+import { prisma, isDemoMode, decrypt, getAppSetting } from '@growth-os/database';
 import { ingestRaw } from './pipeline/step1-ingest-raw.js';
 import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
@@ -16,6 +16,17 @@ import type { ShopifyConfig, MetaConfig, GoogleAdsConfig, GA4Config, RawRecord }
 
 const log = createLogger('sync');
 
+async function getGoogleClientSecret(): Promise<string> {
+  const secretJson = await getAppSetting('google_client_secret');
+  if (secretJson) {
+    try {
+      const parsed = JSON.parse(secretJson) as { encrypted: string; iv: string; authTag: string };
+      return decrypt(parsed.encrypted, parsed.iv, parsed.authTag);
+    } catch { /* fall through */ }
+  }
+  return process.env.GOOGLE_CLIENT_SECRET ?? '';
+}
+
 async function buildConfigsFromDB(demoMode: boolean) {
   const credentials = await prisma.connectorCredential.findMany();
   const configs: {
@@ -24,6 +35,9 @@ async function buildConfigsFromDB(demoMode: boolean) {
     googleAds?: GoogleAdsConfig;
     ga4?: GA4Config;
   } = {};
+
+  const googleClientId = (await getAppSetting('google_client_id')) ?? process.env.GOOGLE_CLIENT_ID ?? '';
+  const googleClientSecret = await getGoogleClientSecret();
 
   for (const cred of credentials) {
     let decrypted: Record<string, string> = {};
@@ -58,8 +72,8 @@ async function buildConfigsFromDB(demoMode: boolean) {
           isDemoMode: demoMode,
           accessToken: decrypted.accessToken ?? '',
           refreshToken: decrypted.refreshToken ?? '',
-          clientId: process.env.GOOGLE_CLIENT_ID ?? meta.clientId ?? '',
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+          clientId: googleClientId || meta.clientId || '',
+          clientSecret: googleClientSecret,
           customerId: (meta.customerId ?? '').replace(/-/g, ''),
           developerToken: decrypted.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
         };
@@ -70,8 +84,8 @@ async function buildConfigsFromDB(demoMode: boolean) {
           isDemoMode: demoMode,
           accessToken: decrypted.accessToken ?? '',
           refreshToken: decrypted.refreshToken ?? '',
-          clientId: process.env.GOOGLE_CLIENT_ID ?? meta.clientId ?? '',
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+          clientId: googleClientId || meta.clientId || '',
+          clientSecret: googleClientSecret,
           propertyId: meta.propertyId ?? '',
         };
         break;

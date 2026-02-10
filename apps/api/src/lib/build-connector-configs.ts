@@ -1,5 +1,6 @@
 import { prisma, decrypt } from '@growth-os/database';
 import type { ShopifyConfig, MetaConfig, GoogleAdsConfig, GA4Config } from '@growth-os/etl';
+import { getGoogleOAuthConfig } from './google-oauth-config.js';
 
 export interface ConnectorConfigs {
   shopify?: ShopifyConfig;
@@ -11,6 +12,7 @@ export interface ConnectorConfigs {
 export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<ConnectorConfigs> {
   const credentials = await prisma.connectorCredential.findMany();
   const configs: ConnectorConfigs = {};
+  const googleOAuth = await getGoogleOAuthConfig();
 
   for (const cred of credentials) {
     let decrypted: Record<string, string> = {};
@@ -46,8 +48,8 @@ export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<Co
           isDemoMode: demoMode,
           accessToken: decrypted.accessToken ?? '',
           refreshToken: decrypted.refreshToken ?? '',
-          clientId: process.env.GOOGLE_CLIENT_ID ?? meta.clientId ?? '',
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+          clientId: googleOAuth.clientId || meta.clientId || '',
+          clientSecret: googleOAuth.clientSecret,
           customerId: (meta.customerId ?? '').replace(/-/g, ''),
           developerToken: decrypted.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
         };
@@ -59,8 +61,8 @@ export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<Co
           isDemoMode: demoMode,
           accessToken: decrypted.accessToken ?? '',
           refreshToken: decrypted.refreshToken ?? '',
-          clientId: process.env.GOOGLE_CLIENT_ID ?? meta.clientId ?? '',
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+          clientId: googleOAuth.clientId || meta.clientId || '',
+          clientSecret: googleOAuth.clientSecret,
           propertyId: meta.propertyId ?? '',
         };
         break;

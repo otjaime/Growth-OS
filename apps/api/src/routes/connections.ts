@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
 import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
+import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
 
 // ── Connector Catalog (served to frontend) ──────────────────
 
@@ -670,11 +671,12 @@ export async function connectionsRoutes(app: FastifyInstance) {
   // ── Google OAuth initiation ─────────────────────────────────
   app.get('/auth/google', async (request, reply) => {
     const { source } = request.query as { source?: string };
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? `${process.env.PUBLIC_API_URL ?? 'http://localhost:4000'}/api/auth/google/callback`;
+    const googleOAuth = await getGoogleOAuthConfig();
+    const clientId = googleOAuth.clientId;
+    const redirectUri = googleOAuth.redirectUri;
 
     if (!clientId) {
-      return reply.status(400).send({ error: 'GOOGLE_CLIENT_ID not configured' });
+      return reply.status(400).send({ error: 'GOOGLE_CLIENT_ID not configured. Go to Settings → Google OAuth to set it up.' });
     }
 
     const scopeMap: Record<string, string[]> = {
@@ -695,9 +697,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
   // ── Google OAuth callback ───────────────────────────────────
   app.get('/auth/google/callback', async (request, reply) => {
     const { code, state: stateRaw } = request.query as { code: string; state?: string };
-    const clientId = process.env.GOOGLE_CLIENT_ID ?? '';
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? '';
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? `${process.env.PUBLIC_API_URL ?? 'http://localhost:4000'}/api/auth/google/callback`;
+    const googleOAuth = await getGoogleOAuthConfig();
+    const clientId = googleOAuth.clientId;
+    const clientSecret = googleOAuth.clientSecret;
+    const redirectUri = googleOAuth.redirectUri;
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
     let connectorType = 'google';

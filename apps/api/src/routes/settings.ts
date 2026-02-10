@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import { FastifyInstance } from 'fastify';
-import { prisma, isDemoMode, setMode } from '@growth-os/database';
+import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
 
 async function clearAllData() {
   return prisma.$transaction([
@@ -120,4 +120,51 @@ export async function settingsRoutes(app: FastifyInstance) {
       return { success: false, message: `Demo seed failed: ${message}` };
     }
   });
+
+  // ── GET /settings/google-oauth — check if Google OAuth is configured ──
+  app.get('/settings/google-oauth', async () => {
+    const clientId = (await getAppSetting('google_client_id')) ?? process.env.GOOGLE_CLIENT_ID ?? '';
+    const secretJson = await getAppSetting('google_client_secret');
+    let hasSecret = !!process.env.GOOGLE_CLIENT_SECRET;
+    if (secretJson) {
+      try {
+        const parsed = JSON.parse(secretJson) as { encrypted: string; iv: string; authTag: string };
+        const val = decrypt(parsed.encrypted, parsed.iv, parsed.authTag);
+        hasSecret = val.length > 0;
+      } catch {
+        hasSecret = !!process.env.GOOGLE_CLIENT_SECRET;
+      }
+    }
+    const redirectUri = (await getAppSetting('google_redirect_uri')) ?? process.env.GOOGLE_REDIRECT_URI ?? '';
+
+    return {
+      configured: clientId.length > 0 && hasSecret,
+      clientId,
+      hasSecret,
+      redirectUri,
+    };
+  });
+
+  // ── POST /settings/google-oauth — save Google OAuth credentials ──
+  app.post<{ Body: { clientId: string; clientSecret: string; redirectUri?: string } }>(
+    '/settings/google-oauth',
+    async (req) => {
+      const { clientId, clientSecret, redirectUri } = req.body ?? {};
+      if (!clientId || !clientSecret) {
+        return { success: false, message: 'Client ID and Client Secret are required.' };
+      }
+
+      await setAppSetting('google_client_id', clientId);
+      const { encrypted, iv, authTag } = encrypt(clientSecret);
+      await setAppSetting('google_client_secret', JSON.stringify({ encrypted, iv, authTag }));
+      if (redirectUri) {
+        await setAppSetting('google_redirect_uri', redirectUri);
+      }
+
+      return {
+        success: true,
+        message: 'Google OAuth credentials saved. You can now connect Google Ads and GA4.',
+      };
+    },
+  );
 }
