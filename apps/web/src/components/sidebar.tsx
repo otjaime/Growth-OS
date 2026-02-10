@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import {
   BarChart3,
   LayoutDashboard,
@@ -15,6 +16,8 @@ import {
   Filter,
 } from 'lucide-react';
 import clsx from 'clsx';
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Executive Summary', icon: LayoutDashboard },
@@ -30,6 +33,20 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [demoMode, setDemoMode] = useState<boolean | null>(null);
+  const [apiOk, setApiOk] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api/health`)
+      .then((r) => r.json())
+      .then((d) => {
+        setDemoMode(d.demoMode ?? null);
+        setApiOk(d.status === 'healthy');
+      })
+      .catch(() => {
+        setApiOk(false);
+      });
+  }, []);
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-[#0c1524] border-r border-[var(--card-border)] flex flex-col z-50">
@@ -70,8 +87,13 @@ export function Sidebar() {
       {/* Footer */}
       <div className="px-6 py-4 border-t border-[var(--card-border)]">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs text-slate-400">Demo Mode Active</span>
+          <div className={clsx(
+            'w-2 h-2 rounded-full animate-pulse',
+            apiOk ? 'bg-green-500' : 'bg-red-500',
+          )} />
+          <span className="text-xs text-slate-400">
+            {!apiOk ? 'API Disconnected' : demoMode ? 'Demo Mode' : 'Live Mode'}
+          </span>
         </div>
       </div>
     </aside>
