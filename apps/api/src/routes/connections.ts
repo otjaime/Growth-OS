@@ -678,11 +678,12 @@ export async function connectionsRoutes(app: FastifyInstance) {
         app.log.info({ connectorType: type, rowsLoaded: result.rowsLoaded }, 'Sync completed');
       })
       .catch(async (error) => {
+        const errMsg = (error as Error).message ?? String(error);
         await prisma.connectorCredential.update({
           where: { connectorType: type },
-          data: { lastSyncStatus: 'error' },
+          data: { lastSyncStatus: 'error', metadata: { ...(credential.metadata as Record<string, unknown>), lastSyncError: errMsg } },
         });
-        app.log.error({ connectorType: type, error: (error as Error).message }, 'Sync failed');
+        app.log.error({ connectorType: type, error: errMsg }, 'Sync failed');
       });
 
     return { success: true, message: 'Sync started — fetching real data from API' };
