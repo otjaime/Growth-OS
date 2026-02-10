@@ -495,7 +495,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'meta_ads') {
-        const resp = await fetch('https://graph.facebook.com/v19.0/me', {
+        const resp = await fetch('https://graph.facebook.com/v21.0/me', {
           headers: { Authorization: `Bearer ${creds.accessToken}` },
         });
         if (!resp.ok) throw new Error(`Meta responded ${resp.status}`);
@@ -514,7 +514,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         // If we have an OAuth access token, validate via the REST API
         if (accessToken) {
           const resp = await fetch(
-            'https://googleads.googleapis.com/v17/customers:listAccessibleCustomers',
+            'https://googleads.googleapis.com/v18/customers:listAccessibleCustomers',
             {
               headers: {
                 Authorization: `Bearer ${accessToken}`,
