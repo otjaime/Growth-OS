@@ -158,11 +158,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Generate Prisma client + migrate
+      # Generate Prisma client + push schema
       - name: Database setup
         run: |
           pnpm --filter @growth-os/database exec prisma generate
-          pnpm --filter @growth-os/database exec prisma migrate deploy
+          pnpm --filter @growth-os/database exec prisma db push --skip-generate
 
       # Seed demo data
       - name: Seed demo data
