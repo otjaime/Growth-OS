@@ -27,12 +27,13 @@ interface SetupWizardProps {
   connector: ConnectorDef;
   onClose: () => void;
   onSaved: () => void;
+  initialStep?: WizardStep;
 }
 
 type WizardStep = 'guide' | 'credentials' | 'test' | 'done';
 
-export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
-  const [step, setStep] = useState<WizardStep>('guide');
+export function SetupWizard({ connector, onClose, onSaved, initialStep }: SetupWizardProps) {
+  const [step, setStep] = useState<WizardStep>(initialStep ?? 'guide');
   const [fields, setFields] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);

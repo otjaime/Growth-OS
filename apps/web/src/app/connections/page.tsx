@@ -18,6 +18,7 @@ export default function ConnectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'catalog'>('active');
   const [wizardConnector, setWizardConnector] = useState<ConnectorDef | null>(null);
+  const [wizardEditMode, setWizardEditMode] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -223,6 +224,13 @@ export default function ConnectionsPage() {
                   key={conn.id}
                   connection={conn}
                   onRefresh={fetchData}
+                  onEdit={() => {
+                    const def = catalog.find((c) => c.id === conn.connectorType);
+                    if (def) {
+                      setWizardEditMode(true);
+                      setWizardConnector(def);
+                    }
+                  }}
                 />
               ))}
 
@@ -252,8 +260,9 @@ export default function ConnectionsPage() {
       {wizardConnector && (
         <SetupWizard
           connector={wizardConnector}
-          onClose={() => setWizardConnector(null)}
+          onClose={() => { setWizardConnector(null); setWizardEditMode(false); }}
           onSaved={handleWizardSaved}
+          initialStep={wizardEditMode ? 'credentials' : undefined}
         />
       )}
 

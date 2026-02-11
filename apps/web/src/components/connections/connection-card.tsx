@@ -11,6 +11,7 @@ import {
   MoreVertical,
   Clock,
   Zap,
+  Settings2,
 } from 'lucide-react';
 import { ConnectorIcon } from './connector-icon';
 import type { SavedConnection } from './types';
@@ -20,9 +21,10 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 interface ConnectionCardProps {
   connection: SavedConnection;
   onRefresh: () => void;
+  onEdit?: () => void;
 }
 
-export function ConnectionCard({ connection, onRefresh }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCardProps) {
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -111,6 +113,12 @@ export function ConnectionCard({ connection, onRefresh }: ConnectionCardProps) {
             <>
               <div className="fixed inset-0 z-10" onClick={() => { setShowMenu(false); setConfirmDelete(false); }} />
               <div className="absolute right-0 top-8 z-20 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                <button
+                  onClick={() => { onEdit?.(); setShowMenu(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                >
+                  <Settings2 className="h-4 w-4" /> Edit Keys
+                </button>
                 <button
                   onClick={() => { handleTest(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
