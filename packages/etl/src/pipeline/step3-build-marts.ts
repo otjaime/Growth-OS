@@ -20,6 +20,9 @@ export async function buildMarts(): Promise<{
 }> {
   log.info('Building mart tables');
 
+  // Ensure dim_channel is always seeded (required by all downstream mart builders)
+  await seedChannels();
+
   const campaigns = await buildDimCampaign();
   const customers = await buildDimCustomer();
   const orders = await buildFactOrders();
@@ -29,6 +32,27 @@ export async function buildMarts(): Promise<{
 
   log.info({ campaigns, customers, orders, spend, traffic, cohorts }, 'Marts built');
   return { campaigns, customers, orders, spend, traffic, cohorts };
+}
+
+// ── seed dim_channel ────────────────────────────────────────
+async function seedChannels(): Promise<void> {
+  const channels = [
+    { slug: 'meta', name: 'Meta Ads' },
+    { slug: 'google', name: 'Google Ads' },
+    { slug: 'email', name: 'Email' },
+    { slug: 'organic', name: 'Organic' },
+    { slug: 'affiliate', name: 'Affiliate' },
+    { slug: 'direct', name: 'Direct' },
+    { slug: 'other', name: 'Other' },
+  ];
+  for (const ch of channels) {
+    await prisma.dimChannel.upsert({
+      where: { slug: ch.slug },
+      update: { name: ch.name },
+      create: ch,
+    });
+  }
+  log.info('dim_channel seeded');
 }
 
 // ── dim_campaign ────────────────────────────────────────────
@@ -154,9 +178,15 @@ async function buildFactOrders(): Promise<number> {
   const channels = await prisma.dimChannel.findMany();
   const channelMap = new Map(channels.map((c) => [c.slug, c.id]));
 
-  // Pre-load existing dim_customer IDs so we can null-out references to missing customers
-  const existingCustomers = await prisma.dimCustomer.findMany({ select: { customerId: true } });
-  const validCustomerIds = new Set(existingCustomers.map((c) => c.customerId));
+  // Pre-load dim_customer with firstOrderDate so we can compute isNewCustomer
+  // and validate FK references
+  const dimCustomers = await prisma.dimCustomer.findMany({
+    select: { customerId: true, firstOrderDate: true },
+  });
+  const validCustomerIds = new Set(dimCustomers.map((c) => c.customerId));
+  const customerFirstDate = new Map(
+    dimCustomers.map((c) => [c.customerId, c.firstOrderDate]),
+  );
 
   let count = 0;
   for (const order of stgOrders) {
@@ -204,6 +234,11 @@ async function buildFactOrders(): Promise<number> {
     const opsCost = revenueNet * OPS_COST_RATE;
     const contributionMargin = revenueNet - cogs - shippingCost - opsCost;
 
+    // Compute isNewCustomer from dim_customer.firstOrderDate instead of Shopify tags
+    const firstDate = order.customerId ? customerFirstDate.get(order.customerId) : null;
+    const isNewCustomer = !!(firstDate && order.orderDate
+      && order.orderDate.toISOString().slice(0, 10) === firstDate.toISOString().slice(0, 10));
+
     await prisma.factOrder.upsert({
       where: { orderId: order.orderId },
       create: {
@@ -222,7 +257,7 @@ async function buildFactOrders(): Promise<number> {
         campaignId,
         category: firstProductType,
         region: order.region,
-        isNewCustomer: order.isNewCustomer,
+        isNewCustomer,
       },
       update: {
         revenueGross: order.revenueGross,
@@ -231,6 +266,8 @@ async function buildFactOrders(): Promise<number> {
         revenueNet: order.revenueNet,
         cogs: Math.round(cogs * 100) / 100,
         contributionMargin: Math.round(contributionMargin * 100) / 100,
+        channelId,
+        isNewCustomer,
       },
     });
     count++;
