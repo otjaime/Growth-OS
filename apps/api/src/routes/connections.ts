@@ -683,10 +683,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
       })
       .catch(async (error) => {
         const errMsg = (error as Error).message ?? String(error);
-        await prisma.connectorCredential.update({
-          where: { connectorType: type },
-          data: { lastSyncStatus: 'error', metadata: { ...(credential.metadata as Record<string, unknown>), lastSyncError: errMsg } },
-        });
+        try {
+          await prisma.connectorCredential.update({
+            where: { connectorType: type },
+            data: { lastSyncStatus: 'error', metadata: { ...(credential.metadata as Record<string, unknown>), lastSyncError: errMsg } },
+          });
+        } catch (updateErr) {
+          app.log.error({ connectorType: type, updateErr }, 'Failed to update sync error status');
+        }
         app.log.error({ connectorType: type, error: errMsg }, 'Sync failed');
       });
 

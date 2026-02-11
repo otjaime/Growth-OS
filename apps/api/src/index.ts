@@ -51,7 +51,16 @@ async function main() {
 
   try {
     await app.listen({ port: PORT, host: HOST });
-    app.log.info(`🚀 Growth OS API running at http://${HOST}:${PORT}`);
+    app.log.info(`Growth OS API running at http://${HOST}:${PORT}`);
+
+    // Reset any stale 'syncing' statuses left from previous server shutdown
+    const stale = await prisma.connectorCredential.updateMany({
+      where: { lastSyncStatus: 'syncing' },
+      data: { lastSyncStatus: 'error' },
+    });
+    if (stale.count > 0) {
+      app.log.warn({ count: stale.count }, 'Reset stale syncing statuses from previous run');
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);
