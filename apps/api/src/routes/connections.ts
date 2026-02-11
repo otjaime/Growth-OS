@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
 import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
+import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
 
 // ── Connector Catalog (served to frontend) ──────────────────
@@ -708,7 +709,44 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const factSpendCounts = await prisma.$queryRawUnsafe<Array<{ slug: string; cnt: number; total_spend: number }>>(
       `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id GROUP BY c.slug ORDER BY c.slug`
     );
-    return { rawCounts, stgSpendCounts, factSpendCounts };
+
+    // Extra diagnostics: dim_channel, channelRaw distribution, isNewCustomer, null channelIds
+    const dimChannels = await prisma.$queryRawUnsafe<Array<{ slug: string; name: string }>>(
+      `SELECT slug, name FROM dim_channel ORDER BY slug`
+    );
+    const stgChannelRaw = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number }>>(
+      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt FROM stg_orders GROUP BY channel_raw ORDER BY cnt DESC`
+    );
+    const factOrderChannels = await prisma.$queryRawUnsafe<Array<{ channel: string; cnt: number; new_customers: number }>>(
+      `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
+              SUM(CASE WHEN fo.is_new_customer THEN 1 ELSE 0 END)::int as new_customers
+       FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
+       GROUP BY c.slug ORDER BY cnt DESC`
+    );
+    const cohortCount = await prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
+      `SELECT COUNT(*)::int as cnt FROM cohorts`
+    );
+
+    return {
+      rawCounts, stgSpendCounts, factSpendCounts,
+      dimChannels, stgChannelRaw, factOrderChannels,
+      cohortCount: cohortCount[0]?.cnt ?? 0,
+    };
+  });
+
+  // ── Rebuild marts from existing staging data ───────────────
+  app.post('/connections/rebuild-marts', async () => {
+    // Re-run normalizeStaging + buildMarts without re-fetching from APIs
+    normalizeStaging()
+      .then(() => buildMarts())
+      .then((result) => {
+        app.log.info({ result }, 'Marts rebuilt successfully');
+      })
+      .catch((err) => {
+        app.log.error({ error: String(err) }, 'Mart rebuild failed');
+      });
+
+    return { success: true, message: 'Rebuilding marts from staging data (background)' };
   });
 
   // ── Delete a connection ─────────────────────────────────────
