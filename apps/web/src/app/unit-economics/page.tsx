@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { formatCurrency, formatPercent } from '@/lib/format';
+import { formatCurrency, formatPercent, formatDays, formatMultiplier } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -26,15 +26,29 @@ interface UnitEconData {
   };
 }
 
+interface CohortSnapshot {
+  latest: {
+    avgCac: number;
+    ltv90: number;
+    ltv180: number;
+    paybackDays: number | null;
+    ltvCacRatio: number;
+  } | null;
+}
+
 export default function UnitEconomicsPage() {
   const [data, setData] = useState<UnitEconData | null>(null);
+  const [cohort, setCohort] = useState<CohortSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/metrics/unit-economics?days=30`)
-      .then((r) => r.json())
-      .then((d: UnitEconData) => {
-        setData(d);
+    Promise.all([
+      fetch(`${API}/api/metrics/unit-economics?days=30`).then((r) => r.json()),
+      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.json()),
+    ])
+      .then(([unitData, cohortData]) => {
+        setData(unitData as UnitEconData);
+        setCohort(cohortData as CohortSnapshot);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -121,6 +135,58 @@ export default function UnitEconomicsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* CAC vs LTV Section */}
+      {cohort?.latest && (
+        <div className="card">
+          <h2 className="text-lg font-semibold text-white mb-4">CAC vs LTV</h2>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center">
+              <p className="text-xs text-slate-400 uppercase">LTV:CAC Ratio</p>
+              <p className={`text-2xl font-bold mt-1 ${cohort.latest.ltvCacRatio >= 3 ? 'text-green-400' : cohort.latest.ltvCacRatio >= 2 ? 'text-yellow-400' : 'text-red-400'}`}>
+                {formatMultiplier(cohort.latest.ltvCacRatio)}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                {cohort.latest.ltvCacRatio >= 3 ? 'Healthy' : cohort.latest.ltvCacRatio >= 2 ? 'Monitor' : 'Critical'}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-400 uppercase">Payback Period</p>
+              <p className="text-2xl font-bold text-white mt-1">{formatDays(cohort.latest.paybackDays)}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                {cohort.latest.paybackDays !== null && cohort.latest.paybackDays <= 90 ? 'Within target' : 'Above 90d target'}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-400 uppercase">LTV (180-day)</p>
+              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(cohort.latest.ltv180)}</p>
+            </div>
+          </div>
+          <div className="h-32">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={[
+                  { name: 'CAC', value: cohort.latest.avgCac, color: '#ef4444' },
+                  { name: 'LTV (180d)', value: cohort.latest.ltv180, color: '#22c55e' },
+                ]}
+                layout="vertical"
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis type="number" stroke="#94a3b8" fontSize={11} tickFormatter={(v: number) => `$${v}`} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={11} width={80} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }}
+                  formatter={(v: number) => formatCurrency(v)}
+                />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  <Cell fill="#ef4444" />
+                  <Cell fill="#22c55e" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

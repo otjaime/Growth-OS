@@ -26,3 +26,13 @@ export function changeColor(value: number, invert = false): string {
   if (Math.abs(value) < 0.001) return 'kpi-neutral';
   return isPositive ? 'kpi-positive' : 'kpi-negative';
 }
+
+export function formatDays(value: number | null): string {
+  if (value === null || value === 0) return '--';
+  return `${value}d`;
+}
+
+export function formatMultiplier(value: number): string {
+  if (value === 0) return '--';
+  return `${value.toFixed(1)}x`;
+}

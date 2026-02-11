@@ -7,7 +7,7 @@ import * as kpiCalcs from '@growth-os/etl';
 
 export async function alertsRoutes(app: FastifyInstance) {
   app.get('/alerts', async () => {
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const currentStart = subDays(now, 7);
     const previousStart = subDays(currentStart, 7);
 

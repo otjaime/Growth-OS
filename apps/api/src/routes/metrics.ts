@@ -63,6 +63,11 @@ export async function metricsRoutes(app: FastifyInstance) {
       sessions: previousTrafficAgg._sum.sessions ?? 0,
     };
 
+    // GM-level metrics from latest cohort
+    const latestCohort = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+    const currentCogs = currentOrders.reduce((s, o) => s + Number(o.cogs), 0);
+    const grossMarginPct = cur.revenueNet > 0 ? (cur.revenueNet - currentCogs) / cur.revenueNet : 0;
+
     return {
       period: { start: format(currentStart, 'yyyy-MM-dd'), end: format(now, 'yyyy-MM-dd'), days },
       kpis: {
@@ -77,6 +82,11 @@ export async function metricsRoutes(app: FastifyInstance) {
         newCustomers: { value: cur.newCustomers, change: kpiCalcs.kpis.percentChange(cur.newCustomers, prev.newCustomers) },
         sessions: { value: cur.sessions, change: kpiCalcs.kpis.percentChange(cur.sessions, prev.sessions) },
         spend: { value: cur.spend, change: kpiCalcs.kpis.percentChange(cur.spend, prev.spend) },
+        grossMarginPct: { value: grossMarginPct },
+        ltvCacRatio: { value: latestCohort && Number(latestCohort.avgCac) > 0 ? Number(latestCohort.ltv180) / Number(latestCohort.avgCac) : 0 },
+        paybackDays: { value: latestCohort?.paybackDays ?? null },
+        retentionD30: { value: latestCohort ? Number(latestCohort.d30Retention) : 0 },
+        ltv90: { value: latestCohort ? Number(latestCohort.ltv90) : 0 },
       },
     };
   });
@@ -119,7 +129,18 @@ export async function metricsRoutes(app: FastifyInstance) {
       GROUP BY date ORDER BY date
     `;
 
-    return { dailyRevenue, dailySpend, dailyTraffic };
+    const dailyMargin = await prisma.$queryRaw<
+      Array<{ date: Date; cm: number; revenue_net: number }>
+    >`
+      SELECT order_date as date,
+             SUM(contribution_margin)::float as cm,
+             SUM(revenue_net)::float as revenue_net
+      FROM fact_orders
+      WHERE order_date >= ${start} AND order_date <= ${now}
+      GROUP BY order_date ORDER BY order_date
+    `;
+
+    return { dailyRevenue, dailySpend, dailyTraffic, dailyMargin };
   });
 
   // ── Channel Performance ───────────────────────────────────
@@ -177,7 +198,15 @@ export async function metricsRoutes(app: FastifyInstance) {
         clicks: curSpendAgg._sum.clicks ?? 0,
         revenueChange: kpiCalcs.kpis.percentChange(curRevenue, prevRevenue),
         spendChange: kpiCalcs.kpis.percentChange(curSpend, prevSpend),
+        channelProfit: curCM - curSpend,
+        channelShare: 0,
       });
+    }
+
+    // Compute channel share as % of total revenue
+    const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
+    for (const r of result) {
+      r.channelShare = totalRevenue > 0 ? r.revenue / totalRevenue : 0;
     }
 
     return { channels: result.sort((a, b) => b.revenue - a.revenue) };
@@ -222,6 +251,53 @@ export async function metricsRoutes(app: FastifyInstance) {
     });
 
     return { cohorts };
+  });
+
+  // ── Cohort Snapshot (latest + trends) ─────────────────────
+  app.get('/metrics/cohort-snapshot', async () => {
+    const latest = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+
+    if (!latest) {
+      return { latest: null, recentCohorts: [] };
+    }
+
+    const avgCac = Number(latest.avgCac);
+    const ltv180 = Number(latest.ltv180);
+    const ltvCacRatio = avgCac > 0 ? ltv180 / avgCac : 0;
+
+    const recentCohorts = await prisma.cohort.findMany({
+      orderBy: { cohortMonth: 'desc' },
+      take: 3,
+      select: {
+        cohortMonth: true,
+        d30Retention: true,
+        ltv90: true,
+        cohortSize: true,
+      },
+    });
+
+    return {
+      latest: {
+        cohortMonth: latest.cohortMonth,
+        cohortSize: latest.cohortSize,
+        d7Retention: Number(latest.d7Retention),
+        d30Retention: Number(latest.d30Retention),
+        d60Retention: Number(latest.d60Retention),
+        d90Retention: Number(latest.d90Retention),
+        ltv30: Number(latest.ltv30),
+        ltv90: Number(latest.ltv90),
+        ltv180: ltv180,
+        avgCac: avgCac,
+        paybackDays: latest.paybackDays,
+        ltvCacRatio: Math.round(ltvCacRatio * 10) / 10,
+      },
+      recentCohorts: recentCohorts.map((c) => ({
+        cohortMonth: c.cohortMonth,
+        d30Retention: Number(c.d30Retention),
+        ltv90: Number(c.ltv90),
+        cohortSize: c.cohortSize,
+      })),
+    };
   });
 
   // ── Unit Economics ────────────────────────────────────────

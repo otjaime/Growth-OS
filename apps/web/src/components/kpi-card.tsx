@@ -6,7 +6,7 @@ import { MiniSparkline } from './sparkline';
 interface KpiCardProps {
   title: string;
   value: number;
-  change: number;
+  change?: number;
   format?: 'currency' | 'percent' | 'number' | 'multiplier';
   invertColor?: boolean;
   sparkData?: number[];
@@ -28,11 +28,11 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
       <div className="flex items-end justify-between">
         <p className="text-2xl font-bold text-white">{formatted}</p>
         {sparkData && sparkData.length > 0 && (
-          <MiniSparkline data={sparkData} color={change >= 0 ? '#22c55e' : '#ef4444'} />
+          <MiniSparkline data={sparkData} color={(change ?? 0) >= 0 ? '#22c55e' : '#ef4444'} />
         )}
       </div>
-      <p className={`text-sm font-medium ${changeColor(change, invertColor)}`}>
-        {formatPercentChange(change)} vs prior period
+      <p className={`text-sm font-medium ${changeColor(change ?? 0, invertColor)}`}>
+        {change !== undefined ? `${formatPercentChange(change)} vs prior period` : '\u00A0'}
       </p>
     </div>
   );

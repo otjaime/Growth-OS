@@ -12,7 +12,7 @@ import type { AlertInput } from '@growth-os/etl';
 
 export async function wbrRoutes(app: FastifyInstance) {
   app.get('/wbr', async () => {
-    const now = new Date('2026-02-09');
+    const now = new Date();
     const weekStart = subDays(now, 7);
     const prevWeekStart = subDays(weekStart, 7);
 
@@ -62,10 +62,17 @@ export async function wbrRoutes(app: FastifyInstance) {
     const curAOV = kpiCalcs.kpis.aov(curRevenueNet, currentOrders.length);
 
     // ── Get alerts ──
-    const cohorts = await prisma.cohort.findMany();
+    const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
     const baselineD30 = cohorts.length > 0
       ? cohorts.reduce((s, c) => s + Number(c.d30Retention), 0) / cohorts.length
       : 0.15;
+
+    // Latest cohort for unit economics
+    const latestCohort = cohorts.length > 0 ? cohorts[0] : null;
+    const ltvCacRatio = latestCohort && Number(latestCohort.avgCac) > 0
+      ? Number(latestCohort.ltv180) / Number(latestCohort.avgCac)
+      : 0;
+    const paybackDays = latestCohort?.paybackDays ?? null;
 
     const alertInput: AlertInput = {
       currentRevenue: curRevenue, currentSpend: curSpend,
@@ -123,6 +130,19 @@ export async function wbrRoutes(app: FastifyInstance) {
     }
     narrative += `\n`;
 
+    // Unit Economics
+    narrative += `## Unit Economics\n\n`;
+    if (latestCohort) {
+      const ratioLabel = ltvCacRatio >= 3 ? 'healthy' : ltvCacRatio >= 2 ? 'monitor' : 'critical';
+      narrative += `- LTV:CAC ratio: **${ltvCacRatio.toFixed(1)}x** (${ratioLabel})\n`;
+      narrative += `- Payback period: **${paybackDays !== null ? `${paybackDays} days` : 'N/A'}**\n`;
+      narrative += `- LTV (90-day): **$${Number(latestCohort.ltv90).toFixed(0)}**\n`;
+      narrative += `- D30 Retention: **${(Number(latestCohort.d30Retention) * 100).toFixed(1)}%**\n`;
+    } else {
+      narrative += `- No cohort data available yet.\n`;
+    }
+    narrative += `\n`;
+
     // Priorities
     narrative += `## Next Week Priorities\n\n`;
     if (alerts.some((a) => a.id === 'cac_increase')) {
@@ -154,6 +174,8 @@ export async function wbrRoutes(app: FastifyInstance) {
         mer: curMER,
         cmPct: curCMPct,
         newCustomers: curNewCust,
+        ltvCacRatio: Math.round(ltvCacRatio * 10) / 10,
+        paybackDays,
       },
       alerts,
       generatedAt: new Date().toISOString(),

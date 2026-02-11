@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { formatPercent, formatCurrency, formatNumber } from '@/lib/format';
+import { formatPercent, formatCurrency, formatNumber, formatMultiplier } from '@/lib/format';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -117,6 +117,7 @@ export default function CohortsPage() {
               <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV 180</th>
               <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">CAC</th>
               <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Payback</th>
+              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV:CAC</th>
             </tr>
           </thead>
           <tbody>
@@ -133,6 +134,9 @@ export default function CohortsPage() {
                 <td className="px-3 py-2 text-right">{formatCurrency(Number(c.ltv180))}</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(Number(c.avgCac))}</td>
                 <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '—'}</td>
+                <td className={`px-3 py-2 text-right font-medium ${Number(c.avgCac) > 0 && Number(c.ltv180) / Number(c.avgCac) >= 3 ? 'text-green-400' : Number(c.avgCac) > 0 && Number(c.ltv180) / Number(c.avgCac) >= 2 ? 'text-yellow-400' : 'text-red-400'}`}>
+                  {Number(c.avgCac) > 0 ? formatMultiplier(Number(c.ltv180) / Number(c.avgCac)) : '—'}
+                </td>
               </tr>
             ))}
           </tbody>
