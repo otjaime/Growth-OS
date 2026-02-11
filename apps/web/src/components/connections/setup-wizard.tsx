@@ -111,7 +111,11 @@ export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
         });
       } catch { /* continue to OAuth anyway */ }
       setSaving(false);
-      window.location.href = `${API}/api/auth/google?source=${connector.id}`;
+      if (connector.id === 'shopify') {
+        window.location.href = `${API}/api/auth/shopify`;
+      } else {
+        window.location.href = `${API}/api/auth/google?source=${connector.id}`;
+      }
     };
     save();
   };
@@ -251,7 +255,7 @@ export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
             <div className="space-y-5">
               {connector.authType === 'oauth2' && connector.fields.length > 0 && (
                 <p className="text-sm text-slate-400">
-                  Fill in the fields below, then click &quot;Connect with Google&quot; to authorize.
+                  Fill in the fields below, then click &quot;Connect with {connector.id === 'shopify' ? 'Shopify' : 'Google'}&quot; to authorize.
                 </p>
               )}
 
@@ -402,7 +406,7 @@ export function SetupWizard({ connector, onClose, onSaved }: SetupWizardProps) {
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-sm font-medium transition-colors"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Connect with Google
+                Connect with {connector.id === 'shopify' ? 'Shopify' : 'Google'}
               </button>
             )}
 

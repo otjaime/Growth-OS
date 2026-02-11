@@ -51,22 +51,22 @@ const CONNECTOR_CATALOG: ConnectorDef[] = [
     description: 'Import orders, customers, and product data from your Shopify store.',
     icon: 'shopify',
     color: 'green',
-    authType: 'api_key',
+    authType: 'oauth2',
     fields: [
       { key: 'shopDomain', label: 'Store Domain', type: 'text', placeholder: 'mystore.myshopify.com', required: true, help: 'Your .myshopify.com domain — find it in Settings → Domains' },
-      { key: 'accessToken', label: 'Admin API Access Token', type: 'password', placeholder: 'shpat_xxxxx', required: true, sensitive: true, help: 'Starts with shpat_ — generated when you install your custom app' },
-      { key: 'apiVersion', label: 'API Version', type: 'select', options: [{ value: '2024-10', label: '2024-10 (Latest)' }, { value: '2024-07', label: '2024-07' }, { value: '2024-04', label: '2024-04' }], required: false },
+      { key: 'clientId', label: 'Client ID', type: 'text', placeholder: '1fc37d7d2413a22f12495ba2afc9fab7', required: true, help: 'Found in your Shopify app → Overview → Client ID' },
+      { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'shpss_xxxxx', required: true, sensitive: true, help: 'Found in your Shopify app → Overview → Client secret' },
     ],
     docsUrl: 'https://shopify.dev/docs/admin-api',
     setupTime: '~3 min',
-    quickFindPath: 'Settings → Apps → Develop apps → Your app → API credentials',
+    quickFindPath: 'Settings → Apps → Develop apps → Your app → Overview',
     dataSync: ['Orders', 'Customers', 'Products', 'Inventory'],
     setupGuide: [
       { text: 'Open your Shopify Admin and go to Settings → Apps and sales channels', url: 'https://admin.shopify.com/settings/apps', urlLabel: 'Open Shopify Apps Settings', tip: 'You need to be a store owner or have "Apps" permissions.' },
       { text: 'Click "Develop apps" in the top-right, then "Create an app"', tip: 'If you don\'t see "Develop apps", ask your store owner to enable custom app development in Settings → Apps → Develop apps → Allow custom app development.' },
       { text: 'Go to "Configuration" tab → Admin API integration, and select these scopes:', tip: 'Required scopes: read_orders, read_customers, read_products, read_inventory. Optional: read_analytics.' },
-      { text: 'Click "Install app" and confirm. Copy the Admin API access token shown.', tip: '⚠️ The token is only shown once! Copy it immediately. It starts with shpat_.' },
-      { text: 'Paste the token and your store domain (e.g. mystore.myshopify.com) below.' },
+      { text: 'Copy the Client ID and Client secret from the app Overview page', tip: 'The Client ID is a long hex string. The Client secret starts with shpss_.' },
+      { text: 'Enter your store domain, Client ID and secret below, then click "Connect with Shopify"', tip: 'We\'ll redirect you to Shopify for secure authorization. No passwords are stored — you approve access directly in Shopify.' },
     ],
   },
   {
@@ -803,6 +803,128 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return reply.redirect(`${frontendUrl}/connections?connected=${connectorType}`);
     } catch (error) {
       return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent(String(error))}`);
+    }
+  });
+
+  // ── Shopify OAuth initiation ───────────────────────────────
+  app.get('/auth/shopify', async (request, reply) => {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+
+    // Read saved credentials to get shopDomain and clientId
+    const credential = await prisma.connectorCredential.findUnique({ where: { connectorType: 'shopify' } });
+    if (!credential) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Save your Shopify credentials first')}`);
+    }
+
+    const meta = (credential.metadata ?? {}) as Record<string, string>;
+    let creds: Record<string, string> = {};
+    try {
+      creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+    } catch { /* ignore */ }
+
+    const shopDomain = (meta.shopDomain ?? '').trim();
+    const clientId = (meta.clientId ?? creds.clientId ?? '').trim();
+
+    if (!shopDomain || !clientId) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Missing store domain or Client ID')}`);
+    }
+
+    const apiBaseUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.API_PORT ?? '4000'}`;
+    const redirectUri = `${apiBaseUrl}/api/auth/shopify/callback`;
+    const scopes = 'read_orders,read_customers,read_products,read_inventory,read_analytics';
+    const nonce = crypto.randomBytes(16).toString('hex');
+
+    const authUrl = `https://${shopDomain}/admin/oauth/authorize?` +
+      `client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${nonce}`;
+
+    return reply.redirect(authUrl);
+  });
+
+  // ── Shopify OAuth callback ────────────────────────────────
+  app.get('/auth/shopify/callback', async (request, reply) => {
+    const { code, shop } = request.query as { code?: string; shop?: string; state?: string; hmac?: string };
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+
+    if (!code || !shop) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Missing code or shop from Shopify')}`);
+    }
+
+    // Get saved client credentials
+    const credential = await prisma.connectorCredential.findUnique({ where: { connectorType: 'shopify' } });
+    if (!credential) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('No Shopify credentials found')}`);
+    }
+
+    let existingCreds: Record<string, string> = {};
+    const existingMeta = (credential.metadata ?? {}) as Record<string, unknown>;
+    try {
+      existingCreds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+    } catch { /* ignore */ }
+
+    const clientId = ((existingMeta.clientId as string) ?? existingCreds.clientId ?? '').trim();
+    const clientSecret = (existingCreds.clientSecret ?? '').trim();
+
+    if (!clientId || !clientSecret) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Missing Client ID or Client Secret')}`);
+    }
+
+    try {
+      // Exchange authorization code for a permanent access token
+      const resp = await fetch(`https://${shop}/admin/oauth/access_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Shopify token exchange failed: ${resp.status} — ${errText.substring(0, 300)}`);
+      }
+
+      const tokens = await resp.json() as { access_token: string; scope?: string };
+
+      // Merge with existing credentials
+      const mergedCreds = {
+        ...existingCreds,
+        accessToken: tokens.access_token,
+      };
+      const mergedMeta = {
+        ...existingMeta,
+        shopDomain: shop,
+        authType: 'oauth2',
+        oauthScope: tokens.scope ?? '',
+      };
+
+      const { encrypted, iv, authTag } = encrypt(JSON.stringify(mergedCreds));
+
+      await prisma.connectorCredential.upsert({
+        where: { connectorType: 'shopify' },
+        create: {
+          connectorType: 'shopify',
+          encryptedData: encrypted,
+          iv,
+          authTag,
+          metadata: mergedMeta as Record<string, string>,
+          lastSyncStatus: 'pending',
+        },
+        update: {
+          encryptedData: encrypted,
+          iv,
+          authTag,
+          metadata: mergedMeta as Record<string, string>,
+          lastSyncStatus: 'pending',
+        },
+      });
+
+      return reply.redirect(`${frontendUrl}/connections?connected=shopify`);
+    } catch (error) {
+      app.log.error({ error: (error as Error).message }, 'Shopify OAuth callback failed');
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent((error as Error).message)}`);
     }
   });
 
