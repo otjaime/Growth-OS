@@ -149,7 +149,11 @@ async function queryCustomer(
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Google Ads API error: ${resp.status} — ${body.substring(0, 300)}`);
+      // Check for manager account error before truncating
+      if (body.includes('REQUESTED_METRICS_FOR_MANAGER')) {
+        throw new Error('REQUESTED_METRICS_FOR_MANAGER');
+      }
+      throw new Error(`Google Ads API error: ${resp.status} — ${body.substring(0, 500)}`);
     }
 
     const data = (await resp.json()) as Array<{
