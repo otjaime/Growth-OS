@@ -673,7 +673,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
       .then(async (result) => {
         await prisma.connectorCredential.update({
           where: { connectorType: type },
-          data: { lastSyncAt: new Date(), lastSyncStatus: 'success' },
+          data: {
+            lastSyncAt: new Date(),
+            lastSyncStatus: 'success',
+            metadata: { ...(credential.metadata as Record<string, unknown>), lastSyncRows: result.rowsLoaded, lastSyncError: null },
+          },
         });
         app.log.info({ connectorType: type, rowsLoaded: result.rowsLoaded }, 'Sync completed');
       })
@@ -687,6 +691,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
       });
 
     return { success: true, message: 'Sync started — fetching real data from API' };
+  });
+
+  // ── Pipeline diagnostic ──────────────────────────────────────
+  app.get('/connections/debug/pipeline', async () => {
+    const rawCounts = await prisma.$queryRawUnsafe<Array<{ source: string; entity: string; cnt: number }>>(
+      `SELECT source, entity, COUNT(*)::int as cnt FROM raw_events GROUP BY source, entity ORDER BY source, entity`
+    );
+    const stgSpendCounts = await prisma.$queryRawUnsafe<Array<{ source: string; cnt: number; total_spend: number }>>(
+      `SELECT source, COUNT(*)::int as cnt, SUM(spend)::float as total_spend FROM stg_spend GROUP BY source ORDER BY source`
+    );
+    const factSpendCounts = await prisma.$queryRawUnsafe<Array<{ slug: string; cnt: number; total_spend: number }>>(
+      `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id GROUP BY c.slug ORDER BY c.slug`
+    );
+    return { rawCounts, stgSpendCounts, factSpendCounts };
   });
 
   // ── Delete a connection ─────────────────────────────────────
