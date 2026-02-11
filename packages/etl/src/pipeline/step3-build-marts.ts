@@ -66,18 +66,25 @@ async function buildDimCustomer(): Promise<number> {
   const stgCustomers = await prisma.stgCustomer.findMany();
   // Also get first-order info from stg_orders
   const firstOrders = await prisma.$queryRaw<
-    Array<{ customer_id: string; first_date: Date; channel: string }>
+    Array<{ customer_id: string; first_date: Date; channel: string; email: string | null; region: string | null; order_count: number; total_rev: number }>
   >`
-    SELECT customer_id, MIN(order_date) as first_date, 
-           (ARRAY_AGG(channel_raw ORDER BY order_date))[1] as channel
-    FROM stg_orders 
+    SELECT customer_id, MIN(order_date) as first_date,
+           (ARRAY_AGG(channel_raw ORDER BY order_date))[1] as channel,
+           (ARRAY_AGG(email ORDER BY order_date))[1] as email,
+           (ARRAY_AGG(region ORDER BY order_date))[1] as region,
+           COUNT(*)::int as order_count,
+           COALESCE(SUM(revenue_net), 0)::numeric as total_rev
+    FROM stg_orders
     WHERE customer_id IS NOT NULL
     GROUP BY customer_id
   `;
 
   const firstOrderMap = new Map(firstOrders.map((r) => [r.customer_id, r]));
+  const stgCustomerIds = new Set(stgCustomers.map((c) => c.customerId));
 
   let count = 0;
+
+  // 1. Upsert from stg_customers (dedicated customer sync)
   for (const cust of stgCustomers) {
     const fo = firstOrderMap.get(cust.customerId);
     const firstDate = fo?.first_date ?? cust.firstOrderDate;
@@ -106,6 +113,37 @@ async function buildDimCustomer(): Promise<number> {
     count++;
   }
 
+  // 2. Create dim_customer entries from orders for customers not in stg_customers.
+  //    This handles the case where the customer sync is unavailable (e.g. Shopify
+  //    GraphQL customer endpoint not implemented) but orders contain customer data.
+  for (const fo of firstOrders) {
+    if (stgCustomerIds.has(fo.customer_id)) continue; // already handled above
+
+    const cohortMonth = fo.first_date
+      ? `${fo.first_date.getFullYear()}-${String(fo.first_date.getMonth() + 1).padStart(2, '0')}`
+      : null;
+
+    await prisma.dimCustomer.upsert({
+      where: { customerId: fo.customer_id },
+      create: {
+        customerId: fo.customer_id,
+        firstOrderDate: fo.first_date,
+        acquisitionChannel: fo.channel ?? null,
+        region: fo.region ?? null,
+        isNewCustomer: true,
+        cohortMonth,
+        totalOrders: fo.order_count,
+        totalRevenue: fo.total_rev,
+      },
+      update: {
+        totalOrders: fo.order_count,
+        totalRevenue: fo.total_rev,
+        cohortMonth,
+      },
+    });
+    count++;
+  }
+
   log.info({ count }, 'dim_customer built');
   return count;
 }
@@ -116,10 +154,18 @@ async function buildFactOrders(): Promise<number> {
   const channels = await prisma.dimChannel.findMany();
   const channelMap = new Map(channels.map((c) => [c.slug, c.id]));
 
+  // Pre-load existing dim_customer IDs so we can null-out references to missing customers
+  const existingCustomers = await prisma.dimCustomer.findMany({ select: { customerId: true } });
+  const validCustomerIds = new Set(existingCustomers.map((c) => c.customerId));
+
   let count = 0;
   for (const order of stgOrders) {
     const channelSlug = order.channelRaw ?? 'direct';
     const channelId = channelMap.get(channelSlug) ?? channelMap.get('other') ?? null;
+    // Only set customerId if the customer exists in dim_customer (FK constraint)
+    const safeCustomerId = order.customerId && validCustomerIds.has(order.customerId)
+      ? order.customerId
+      : null;
 
     // Find campaign if UTM campaign matches
     let campaignId: string | null = null;
@@ -134,12 +180,20 @@ async function buildFactOrders(): Promise<number> {
     // Estimate COGS from line items
     const lineItems = order.lineItemsJson as Array<Record<string, unknown>> | null;
     let cogs = 0;
+    let firstProductType: string | null = null;
     if (lineItems) {
       for (const item of lineItems) {
-        const category = ((item.product_type as string) ?? 'default').toLowerCase();
+        // GraphQL: product.productType, demo: product_type
+        const product = item.product as Record<string, unknown> | undefined;
+        const productType = (item.product_type as string) ?? (product?.productType as string) ?? 'default';
+        if (!firstProductType) firstProductType = productType;
+        const category = productType.toLowerCase();
         const margin = CATEGORY_MARGINS[category] ?? CATEGORY_MARGINS['default']!;
-        const price = parseFloat((item.price as string) ?? '0');
-        cogs += price * (1 - margin);
+        // GraphQL: originalUnitPriceSet.shopMoney.amount, demo: price
+        const priceSet = item.originalUnitPriceSet as { shopMoney?: { amount?: string } } | undefined;
+        const price = parseFloat(priceSet?.shopMoney?.amount ?? (item.price as string) ?? '0');
+        const qty = parseInt(String(item.quantity ?? '1'), 10);
+        cogs += price * qty * (1 - margin);
       }
     } else {
       cogs = Number(order.revenueGross) * (1 - CATEGORY_MARGINS['default']!);
@@ -155,7 +209,7 @@ async function buildFactOrders(): Promise<number> {
       create: {
         orderId: order.orderId,
         orderDate: order.orderDate,
-        customerId: order.customerId,
+        customerId: safeCustomerId,
         revenueGross: order.revenueGross,
         discounts: order.discounts,
         refunds: order.refunds,
@@ -166,7 +220,7 @@ async function buildFactOrders(): Promise<number> {
         contributionMargin: Math.round(contributionMargin * 100) / 100,
         channelId,
         campaignId,
-        category: lineItems?.[0] ? (lineItems[0].product_type as string) : null,
+        category: firstProductType,
         region: order.region,
         isNewCustomer: order.isNewCustomer,
       },
