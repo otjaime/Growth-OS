@@ -24,7 +24,8 @@ export async function fetchMetaInsights(
   }
 
   const records: RawRecord[] = [];
-  const accountId = config.adAccountId.startsWith('act_') ? config.adAccountId : `act_${config.adAccountId}`;
+  const rawId = config.adAccountId.trim().replace(/^act_/, '');
+  const accountId = `act_${rawId}`;
   let url = `https://graph.facebook.com/v21.0/${accountId}/insights?` +
     `fields=${INSIGHTS_FIELDS}&level=campaign&time_increment=1` +
     (dateRange ? `&time_range={"since":"${dateRange.since}","until":"${dateRange.until}"}` : '') +

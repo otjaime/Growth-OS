@@ -38,7 +38,7 @@ export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<Co
           source: 'meta',
           isDemoMode: demoMode,
           accessToken: decrypted.accessToken ?? '',
-          adAccountId: meta.adAccountId ?? '',
+          adAccountId: ((meta.adAccountId as string) ?? '').trim(),
         };
         break;
 
