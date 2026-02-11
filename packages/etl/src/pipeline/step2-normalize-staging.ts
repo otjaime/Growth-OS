@@ -41,52 +41,87 @@ async function normalizeOrders(): Promise<number> {
     await prisma.$transaction(async (tx) => {
       for (const raw of batch) {
         const p = raw.payloadJson as Record<string, unknown>;
-        const customer = p.customer as Record<string, unknown> | null;
-        const lineItems = p.line_items as Array<Record<string, unknown>> | undefined;
-        const shippingAddr = p.shipping_address as Record<string, unknown> | null;
-        const landingSite = (p.landing_site as string) ?? '';
 
-        // Parse UTM params from landing_site
+        // Handle both GraphQL camelCase and demo snake_case formats
+        const customer = p.customer as Record<string, unknown> | null;
+
+        // Line items: GraphQL returns { edges: [{ node: {...} }] }, demo returns array
+        const lineItemsRaw = p.line_items as Array<Record<string, unknown>> | undefined;
+        const lineItemsGql = p.lineItems as { edges?: Array<{ node: Record<string, unknown> }> } | undefined;
+        const lineItems = lineItemsRaw ?? lineItemsGql?.edges?.map((e) => e.node);
+
+        // Shipping address: GraphQL camelCase vs demo snake_case
+        const shippingAddr = (p.shipping_address ?? p.shippingAddress) as Record<string, unknown> | null;
+
+        // Landing/referring: GraphQL uses landingPageUrl/referrerUrl, demo uses landing_site/referring_site
+        const landingSite = ((p.landing_site ?? p.landingPageUrl) as string) ?? '';
+        const referringSite = ((p.referring_site ?? p.referrerUrl) as string) ?? '';
+        const sourceName = ((p.source_name ?? p.sourceName) as string) ?? '';
+
+        // Parse UTM params from landing site
         const utmParams = parseUtmParams(landingSite);
         const channelRaw = mapChannelFromOrder({
-          sourceName: (p.source_name as string) ?? '',
+          sourceName,
           utmSource: utmParams.utm_source,
           utmMedium: utmParams.utm_medium,
-          referringSite: (p.referring_site as string) ?? '',
+          referringSite,
         });
 
-        const revenueGross = parseFloat((p.total_price as string) ?? '0');
-        const discounts = parseFloat((p.total_discounts as string) ?? '0');
+        // Revenue: GraphQL uses totalPriceSet.shopMoney.amount, demo uses total_price
+        const totalPriceSet = p.totalPriceSet as { shopMoney?: { amount?: string; currencyCode?: string } } | undefined;
+        const totalDiscountsSet = p.totalDiscountsSet as { shopMoney?: { amount?: string } } | undefined;
+        const revenueGross = parseFloat(totalPriceSet?.shopMoney?.amount ?? (p.total_price as string) ?? '0');
+        const discounts = parseFloat(totalDiscountsSet?.shopMoney?.amount ?? (p.total_discounts as string) ?? '0');
         const refunds = parseFloat((p.total_refunds as string) ?? '0');
         const revenueNet = revenueGross - discounts - refunds;
 
-        const orderId = (p.order_number as number)?.toString() ?? (p.id as string);
+        // Order ID: GraphQL uses name or id (GID), demo uses order_number
+        const orderId = (p.order_number as number)?.toString() ?? (p.name as string) ?? (p.id as string);
         const customerId = customer
-          ? (customer.id as string)?.replace('gid://shopify/Customer/', '')
+          ? String(customer.id).replace('gid://shopify/Customer/', '')
           : null;
+
+        // Date: GraphQL uses createdAt, demo uses created_at
+        const dateStr = (p.created_at ?? p.createdAt) as string | undefined;
+        const orderDate = dateStr ? new Date(dateStr) : new Date();
+        if (isNaN(orderDate.getTime())) {
+          log.warn({ orderId, dateStr }, 'Invalid order date, skipping');
+          continue;
+        }
+
+        // Tags: GraphQL returns string[], demo returns comma-separated string
+        const tags = Array.isArray(p.tags) ? (p.tags as string[]).join(',') : ((p.tags as string) ?? '');
+
+        // Region: GraphQL uses provinceCode, demo uses province_code
+        const region = shippingAddr
+          ? ((shippingAddr.province_code ?? shippingAddr.provinceCode) as string) ?? null
+          : null;
+
+        // Currency: GraphQL uses totalPriceSet.shopMoney.currencyCode, demo uses currency
+        const currency = totalPriceSet?.shopMoney?.currencyCode ?? (p.currency as string) ?? 'USD';
 
         await tx.stgOrder.upsert({
           where: { orderId },
           create: {
             orderId,
-            orderDate: new Date(p.created_at as string),
+            orderDate,
             customerId,
             email: (customer?.email as string) ?? null,
             revenueGross,
             discounts,
             refunds,
             revenueNet,
-            currency: (p.currency as string) ?? 'USD',
-            sourceName: (p.source_name as string) ?? null,
+            currency,
+            sourceName: sourceName || null,
             landingSite: landingSite || null,
-            referringSite: (p.referring_site as string) ?? null,
+            referringSite: referringSite || null,
             utmSource: utmParams.utm_source || null,
             utmMedium: utmParams.utm_medium || null,
             utmCampaign: utmParams.utm_campaign || null,
             channelRaw,
-            region: (shippingAddr?.province_code as string) ?? null,
+            region,
             lineItemsJson: lineItems ? (lineItems as unknown as Record<string, string>[]) : undefined,
-            isNewCustomer: ((p.tags as string) ?? '').includes('new_customer'),
+            isNewCustomer: tags.includes('new_customer'),
           },
           update: {
             revenueGross,
@@ -118,22 +153,26 @@ async function normalizeCustomers(): Promise<number> {
   let count = 0;
   for (const raw of rawCustomers) {
     const p = raw.payloadJson as Record<string, unknown>;
-    const customerId = (p.id as string)?.replace('gid://shopify/Customer/', '') ?? raw.externalId!;
-    const addr = p.default_address as Record<string, unknown> | null;
+    const customerId = String(p.id).replace('gid://shopify/Customer/', '') ?? raw.externalId!;
+    const addr = (p.default_address ?? p.defaultAddress) as Record<string, unknown> | null;
+
+    // Date: GraphQL uses createdAt, demo uses created_at
+    const dateStr = (p.created_at ?? p.createdAt) as string | undefined;
+    const firstOrderDate = dateStr ? new Date(dateStr) : null;
 
     await prisma.stgCustomer.upsert({
       where: { customerId },
       create: {
         customerId,
         email: (p.email as string) ?? null,
-        firstOrderDate: p.created_at ? new Date(p.created_at as string) : null,
-        region: (addr?.province_code as string) ?? null,
-        totalOrders: (p.orders_count as number) ?? 0,
-        totalRevenue: parseFloat((p.total_spent as string) ?? '0'),
+        firstOrderDate: firstOrderDate && !isNaN(firstOrderDate.getTime()) ? firstOrderDate : null,
+        region: ((addr?.province_code ?? addr?.provinceCode) as string) ?? null,
+        totalOrders: ((p.orders_count ?? p.ordersCount ?? p.numberOfOrders) as number) ?? 0,
+        totalRevenue: parseFloat(((p.total_spent ?? p.totalSpent) as string) ?? '0'),
       },
       update: {
-        totalOrders: (p.orders_count as number) ?? 0,
-        totalRevenue: parseFloat((p.total_spent as string) ?? '0'),
+        totalOrders: ((p.orders_count ?? p.ordersCount ?? p.numberOfOrders) as number) ?? 0,
+        totalRevenue: parseFloat(((p.total_spent ?? p.totalSpent) as string) ?? '0'),
       },
     });
     count++;
