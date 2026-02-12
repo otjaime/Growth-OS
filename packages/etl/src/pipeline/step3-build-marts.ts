@@ -374,6 +374,8 @@ async function buildFactTraffic(): Promise<number> {
 
 // ── Cohorts ─────────────────────────────────────────────────
 async function buildCohorts(): Promise<number> {
+  const now = new Date();
+
   // Get cohort months from dim_customer
   const cohortMonths = await prisma.$queryRaw<
     Array<{ cohort_month: string; cohort_size: number }>
@@ -389,7 +391,6 @@ async function buildCohorts(): Promise<number> {
   for (const cm of cohortMonths) {
     if (!cm.cohort_month) continue;
 
-    // Calculate retention (repeat purchase within D days)
     const cohortCustomers = await prisma.dimCustomer.findMany({
       where: { cohortMonth: cm.cohort_month },
       select: { customerId: true, firstOrderDate: true },
@@ -397,39 +398,60 @@ async function buildCohorts(): Promise<number> {
 
     const customerIds = cohortCustomers.map((c) => c.customerId);
 
-    // Get all orders for these customers
+    // Single batch query: all orders with revenue for all cohort customers
     const orders = await prisma.factOrder.findMany({
       where: { customerId: { in: customerIds } },
-      select: { customerId: true, orderDate: true },
+      select: { customerId: true, orderDate: true, revenueNet: true, contributionMargin: true },
       orderBy: { orderDate: 'asc' },
     });
 
-    // Build customer -> order dates map
-    const customerOrders = new Map<string, Date[]>();
+    // Build customer -> orders map (dates + revenue in one pass)
+    const customerOrders = new Map<string, Array<{ date: Date; rev: number; cm: number }>>();
     for (const o of orders) {
       if (!o.customerId) continue;
-      const dates = customerOrders.get(o.customerId) ?? [];
-      dates.push(o.orderDate);
-      customerOrders.set(o.customerId, dates);
+      const list = customerOrders.get(o.customerId) ?? [];
+      list.push({ date: o.orderDate, rev: Number(o.revenueNet), cm: Number(o.contributionMargin) });
+      customerOrders.set(o.customerId, list);
     }
 
     const cohortSize = cm.cohort_size;
-    // Use Sets to count unique customers per retention window (not per order)
     const d7Set = new Set<string>();
     const d30Set = new Set<string>();
     const d60Set = new Set<string>();
     const d90Set = new Set<string>();
     let totalRev30 = 0, totalRev90 = 0, totalRev180 = 0;
+    let totalCm30 = 0;
+
+    // Determine cohort maturity: how many days since the start of the cohort month
+    const [yearStr, monthStr] = cm.cohort_month.split('-');
+    const monthStart = new Date(`${yearStr}-${monthStr}-01T00:00:00Z`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    const cohortAgeDays = Math.floor(
+      (now.getTime() - monthEnd.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     for (const cust of cohortCustomers) {
-      const dates = customerOrders.get(cust.customerId) ?? [];
+      const custOrders = customerOrders.get(cust.customerId) ?? [];
       const firstDate = cust.firstOrderDate;
-      if (!firstDate || dates.length <= 1) continue;
+      if (!firstDate) continue;
 
-      const repeatDates = dates.slice(1);
-      for (const rd of repeatDates) {
+      // LTV: accumulate ALL orders (including first) within time windows
+      for (const o of custOrders) {
         const daysDiff = Math.floor(
-          (rd.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
+          (o.date.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        if (daysDiff <= 30) { totalRev30 += o.rev; totalCm30 += o.cm; }
+        if (daysDiff <= 90) totalRev90 += o.rev;
+        if (daysDiff <= 180) totalRev180 += o.rev;
+      }
+
+      // Retention: only repeat orders (skip first)
+      if (custOrders.length <= 1) continue;
+      const repeatOrders = custOrders.slice(1);
+      for (const o of repeatOrders) {
+        const daysDiff = Math.floor(
+          (o.date.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
         );
         if (daysDiff <= 7) d7Set.add(cust.customerId);
         if (daysDiff <= 30) d30Set.add(cust.customerId);
@@ -438,37 +460,13 @@ async function buildCohorts(): Promise<number> {
       }
     }
 
-    const d7 = d7Set.size;
-    const d30 = d30Set.size;
-    const d60 = d60Set.size;
-    const d90 = d90Set.size;
+    // Retention: use null for windows the cohort hasn't matured into yet
+    const d7Ret = cohortAgeDays >= 7 ? (cohortSize > 0 ? d7Set.size / cohortSize : 0) : null;
+    const d30Ret = cohortAgeDays >= 30 ? (cohortSize > 0 ? d30Set.size / cohortSize : 0) : null;
+    const d60Ret = cohortAgeDays >= 60 ? (cohortSize > 0 ? d60Set.size / cohortSize : 0) : null;
+    const d90Ret = cohortAgeDays >= 90 ? (cohortSize > 0 ? d90Set.size / cohortSize : 0) : null;
 
-    // LTV: total revenue for cohort within time windows
-    for (const cust of cohortCustomers) {
-      const custOrders = await prisma.factOrder.findMany({
-        where: { customerId: cust.customerId },
-        select: { orderDate: true, revenueNet: true },
-      });
-      const firstDate = cust.firstOrderDate;
-      if (!firstDate) continue;
-
-      for (const o of custOrders) {
-        const daysDiff = Math.floor(
-          (o.orderDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
-        );
-        const rev = Number(o.revenueNet);
-        if (daysDiff <= 30) totalRev30 += rev;
-        if (daysDiff <= 90) totalRev90 += rev;
-        if (daysDiff <= 180) totalRev180 += rev;
-      }
-    }
-
-    // Get average CAC for this cohort
-    const [yearStr, monthStr] = cm.cohort_month.split('-');
-    const monthStart = new Date(`${yearStr}-${monthStr}-01T00:00:00Z`);
-    const monthEnd = new Date(monthStart);
-    monthEnd.setMonth(monthEnd.getMonth() + 1);
-
+    // CAC: total ad spend / new customers acquired in the same month
     const totalSpendResult = await prisma.factSpend.aggregate({
       _sum: { spend: true },
       where: { date: { gte: monthStart, lt: monthEnd } },
@@ -487,8 +485,9 @@ async function buildCohorts(): Promise<number> {
     const ltv90 = cohortSize > 0 ? totalRev90 / cohortSize : 0;
     const ltv180 = cohortSize > 0 ? totalRev180 / cohortSize : 0;
 
-    // Payback days: rough estimate (CAC / daily avg contribution)
-    const dailyContrib = ltv30 > 0 ? (ltv30 * 0.35) / 30 : 1; // 35% margin estimate
+    // Payback days: use actual CM% from the cohort's orders (not hardcoded)
+    const actualCmPct = totalRev30 > 0 ? totalCm30 / totalRev30 : 0;
+    const dailyContrib = ltv30 > 0 && actualCmPct > 0 ? (ltv30 * actualCmPct) / 30 : 0;
     const paybackDays = avgCac > 0 && dailyContrib > 0 ? Math.round(avgCac / dailyContrib) : null;
 
     await prisma.cohort.upsert({
@@ -496,10 +495,10 @@ async function buildCohorts(): Promise<number> {
       create: {
         cohortMonth: cm.cohort_month,
         cohortSize,
-        d7Retention: cohortSize > 0 ? d7 / cohortSize : 0,
-        d30Retention: cohortSize > 0 ? d30 / cohortSize : 0,
-        d60Retention: cohortSize > 0 ? d60 / cohortSize : 0,
-        d90Retention: cohortSize > 0 ? d90 / cohortSize : 0,
+        d7Retention: d7Ret ?? 0,
+        d30Retention: d30Ret ?? 0,
+        d60Retention: d60Ret ?? 0,
+        d90Retention: d90Ret ?? 0,
         ltv30: Math.round(ltv30 * 100) / 100,
         ltv90: Math.round(ltv90 * 100) / 100,
         ltv180: Math.round(ltv180 * 100) / 100,
@@ -508,10 +507,10 @@ async function buildCohorts(): Promise<number> {
       },
       update: {
         cohortSize,
-        d7Retention: cohortSize > 0 ? d7 / cohortSize : 0,
-        d30Retention: cohortSize > 0 ? d30 / cohortSize : 0,
-        d60Retention: cohortSize > 0 ? d60 / cohortSize : 0,
-        d90Retention: cohortSize > 0 ? d90 / cohortSize : 0,
+        d7Retention: d7Ret ?? 0,
+        d30Retention: d30Ret ?? 0,
+        d60Retention: d60Ret ?? 0,
+        d90Retention: d90Ret ?? 0,
         ltv30: Math.round(ltv30 * 100) / 100,
         ltv90: Math.round(ltv90 * 100) / 100,
         ltv180: Math.round(ltv180 * 100) / 100,

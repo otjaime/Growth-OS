@@ -23,13 +23,20 @@ interface CohortData {
   avgCac: number;
 }
 
+// Calculate how many days since the end of a cohort month
+function cohortAgeDays(cohortMonth: string): number {
+  const [y, m] = cohortMonth.split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(y!, m!, 1)); // first day of NEXT month
+  return Math.floor((Date.now() - monthEnd.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export default function CohortsPage() {
   const [cohorts, setCohorts] = useState<CohortData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${API}/api/metrics/cohorts`)
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : { cohorts: [] })
       .then((data: { cohorts: CohortData[] }) => {
         setCohorts(data.cohorts);
         setLoading(false);
@@ -41,21 +48,47 @@ export default function CohortsPage() {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
   }
 
-  // Prepare chart data
-  const retentionChartData = cohorts.map((c) => ({
-    cohort: c.cohortMonth,
-    D7: Number(c.d7Retention) * 100,
-    D30: Number(c.d30Retention) * 100,
-    D60: Number(c.d60Retention) * 100,
-    D90: Number(c.d90Retention) * 100,
-  })).reverse();
+  if (cohorts.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
+        <div className="card flex flex-col items-center justify-center h-64 text-slate-400">
+          <p className="text-lg font-medium">No cohort data yet</p>
+          <p className="text-sm mt-2">Cohorts will appear after your first data sync completes.</p>
+        </div>
+      </div>
+    );
+  }
 
-  const ltvChartData = cohorts.map((c) => ({
-    cohort: c.cohortMonth,
-    LTV30: Number(c.ltv30),
-    LTV90: Number(c.ltv90),
-    LTV180: Number(c.ltv180),
-  })).reverse();
+  // Prepare chart data — only include retention values for mature cohorts
+  const retentionChartData = cohorts.map((c) => {
+    const age = cohortAgeDays(c.cohortMonth);
+    return {
+      cohort: c.cohortMonth,
+      D7: age >= 7 ? Number(c.d7Retention) * 100 : undefined,
+      D30: age >= 30 ? Number(c.d30Retention) * 100 : undefined,
+      D60: age >= 60 ? Number(c.d60Retention) * 100 : undefined,
+      D90: age >= 90 ? Number(c.d90Retention) * 100 : undefined,
+    };
+  }).reverse();
+
+  const ltvChartData = cohorts.map((c) => {
+    const age = cohortAgeDays(c.cohortMonth);
+    return {
+      cohort: c.cohortMonth,
+      LTV30: age >= 30 ? Number(c.ltv30) : undefined,
+      LTV90: age >= 90 ? Number(c.ltv90) : undefined,
+      LTV180: age >= 180 ? Number(c.ltv180) : undefined,
+    };
+  }).reverse();
+
+  // Format retention cell: show "—" for immature windows
+  const retCell = (value: number, minAgeDays: number, age: number) =>
+    age >= minAgeDays ? formatPercent(Number(value)) : '—';
+
+  // Format LTV cell: show "—" for immature windows
+  const ltvCell = (value: number, minAgeDays: number, age: number) =>
+    age >= minAgeDays ? formatCurrency(Number(value)) : '—';
 
   return (
     <div className="space-y-6">
@@ -72,10 +105,10 @@ export default function CohortsPage() {
               <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v: number) => `${v}%`} />
               <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }} />
               <Legend />
-              <Line type="monotone" dataKey="D7" stroke="#22c55e" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="D30" stroke="#3b82f6" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="D60" stroke="#f59e0b" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="D90" stroke="#ef4444" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="D7" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D30" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D60" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D90" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -92,9 +125,9 @@ export default function CohortsPage() {
               <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v: number) => `$${v}`} />
               <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }} />
               <Legend />
-              <Line type="monotone" dataKey="LTV30" stroke="#3b82f6" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="LTV90" stroke="#22c55e" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="LTV180" stroke="#f59e0b" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="LTV30" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="LTV90" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="LTV180" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -121,24 +154,30 @@ export default function CohortsPage() {
             </tr>
           </thead>
           <tbody>
-            {cohorts.map((c) => (
-              <tr key={c.cohortMonth} className="border-b border-slate-800 hover:bg-slate-800/50">
-                <td className="px-3 py-2 font-medium text-white">{c.cohortMonth}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(c.cohortSize)}</td>
-                <td className="px-3 py-2 text-right">{formatPercent(Number(c.d7Retention))}</td>
-                <td className="px-3 py-2 text-right">{formatPercent(Number(c.d30Retention))}</td>
-                <td className="px-3 py-2 text-right">{formatPercent(Number(c.d60Retention))}</td>
-                <td className="px-3 py-2 text-right">{formatPercent(Number(c.d90Retention))}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(Number(c.ltv30))}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(Number(c.ltv90))}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(Number(c.ltv180))}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(Number(c.avgCac))}</td>
-                <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '—'}</td>
-                <td className={`px-3 py-2 text-right font-medium ${Number(c.avgCac) > 0 && Number(c.ltv180) / Number(c.avgCac) >= 3 ? 'text-green-400' : Number(c.avgCac) > 0 && Number(c.ltv180) / Number(c.avgCac) >= 2 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {Number(c.avgCac) > 0 ? formatMultiplier(Number(c.ltv180) / Number(c.avgCac)) : '—'}
-                </td>
-              </tr>
-            ))}
+            {cohorts.map((c) => {
+              const age = cohortAgeDays(c.cohortMonth);
+              const cac = Number(c.avgCac);
+              const ltv180 = Number(c.ltv180);
+              const ratio = cac > 0 ? ltv180 / cac : 0;
+              return (
+                <tr key={c.cohortMonth} className="border-b border-slate-800 hover:bg-slate-800/50">
+                  <td className="px-3 py-2 font-medium text-white">{c.cohortMonth}</td>
+                  <td className="px-3 py-2 text-right">{formatNumber(c.cohortSize)}</td>
+                  <td className="px-3 py-2 text-right">{retCell(c.d7Retention, 7, age)}</td>
+                  <td className="px-3 py-2 text-right">{retCell(c.d30Retention, 30, age)}</td>
+                  <td className="px-3 py-2 text-right">{retCell(c.d60Retention, 60, age)}</td>
+                  <td className="px-3 py-2 text-right">{retCell(c.d90Retention, 90, age)}</td>
+                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv30, 30, age)}</td>
+                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv90, 90, age)}</td>
+                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv180, 180, age)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(cac)}</td>
+                  <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '—'}</td>
+                  <td className={`px-3 py-2 text-right font-medium ${cac > 0 && ratio >= 3 ? 'text-green-400' : cac > 0 && ratio >= 2 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {cac > 0 && age >= 180 ? formatMultiplier(ratio) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
