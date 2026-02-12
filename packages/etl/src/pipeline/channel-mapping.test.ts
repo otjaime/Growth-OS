@@ -83,6 +83,39 @@ describe('mapChannelFromOrder', () => {
       referringSite: 'https://facebook.com',
     })).toBe('google');
   });
+
+  // Click ID based (auto-tagging)
+  it('maps gclid to google (auto-tagging)', () => {
+    expect(mapChannelFromOrder({ sourceName: 'web', gclid: 'CjwKCAjw...' })).toBe('google');
+  });
+
+  it('maps gclid to google even with google.com referrer', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      referringSite: 'https://www.google.com/',
+      gclid: 'CjwKCAjw...',
+    })).toBe('google');
+  });
+
+  it('maps fbclid to meta (auto-tagging)', () => {
+    expect(mapChannelFromOrder({ sourceName: 'web', fbclid: 'IwAR3...' })).toBe('meta');
+  });
+
+  it('gclid takes priority over UTM source', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      utmSource: 'newsletter',
+      utmMedium: 'email',
+      gclid: 'CjwKCAjw...',
+    })).toBe('google');
+  });
+
+  it('google.com referrer without gclid maps to organic', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      referringSite: 'https://www.google.com/',
+    })).toBe('organic');
+  });
 });
 
 describe('mapGA4ChannelToSlug', () => {

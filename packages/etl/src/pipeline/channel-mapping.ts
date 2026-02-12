@@ -8,19 +8,25 @@ export interface OrderChannelInput {
   utmSource?: string;
   utmMedium?: string;
   referringSite?: string;
+  gclid?: string;
+  fbclid?: string;
 }
 
 /**
  * Maps Shopify order attributes to a channel slug.
- * Priority: UTM params > referring site > source name > fallback
+ * Priority: click IDs > UTM params > referring site > source name > fallback
  */
 export function mapChannelFromOrder(input: OrderChannelInput): string {
-  const { utmSource, utmMedium, referringSite, sourceName } = input;
+  const { utmSource, utmMedium, referringSite, sourceName, gclid, fbclid } = input;
   const src = (utmSource ?? '').toLowerCase();
   const med = (utmMedium ?? '').toLowerCase();
   const ref = (referringSite ?? '').toLowerCase();
 
-  // UTM-based mapping (highest priority)
+  // Click-ID based mapping (highest priority — auto-tagging by ad platforms)
+  if (gclid) return 'google';
+  if (fbclid) return 'meta';
+
+  // UTM-based mapping
   if (src) {
     // Meta: facebook, fb, instagram (exact word boundaries to avoid false positives)
     if (src.includes('facebook') || src === 'fb' || src.includes('instagram') || src === 'ig') {

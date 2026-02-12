@@ -65,6 +65,8 @@ async function normalizeOrders(): Promise<number> {
           utmSource: utmParams.utm_source,
           utmMedium: utmParams.utm_medium,
           referringSite,
+          gclid: utmParams.gclid,
+          fbclid: utmParams.fbclid,
         });
 
         // Revenue: GraphQL uses totalPriceSet.shopMoney.amount, demo uses total_price
