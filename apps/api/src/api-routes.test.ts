@@ -27,6 +27,7 @@ const mockPrisma = vi.hoisted(() => ({
   },
   cohort: {
     findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
   },
   dimChannel: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -135,6 +136,7 @@ describe('Metrics Routes', () => {
     });
     mockPrisma.dimChannel.findMany.mockResolvedValue([]);
     mockPrisma.cohort.findMany.mockResolvedValue([]);
+    mockPrisma.cohort.findFirst.mockResolvedValue(null);
   });
 
   // ── /metrics/summary ──────────────────────────────────────
@@ -461,6 +463,7 @@ describe('API Edge Cases', () => {
     mockPrisma.factOrder.findMany.mockResolvedValue([]);
     mockPrisma.factSpend.aggregate.mockResolvedValue({ _sum: { spend: 0 } });
     mockPrisma.factTraffic.aggregate.mockResolvedValue({ _sum: { sessions: 0, purchases: 0 } });
+    mockPrisma.cohort.findFirst.mockResolvedValue(null);
 
     const app = Fastify();
     await app.register(metricsRoutes, { prefix: '/api' });

@@ -44,7 +44,10 @@ interface DemoCustomer {
 
 function createContext(): DemoContext {
   const rng = seedrandom(SEED);
-  const endDate = new Date();
+  const now = new Date();
+  // Truncate to start of day so consecutive calls within the same day
+  // produce identical timestamps (fixes determinism test flakiness).
+  const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startDate = subDays(endDate, DEMO_DAYS);
   return { rng, endDate, startDate, customers: [] };
 }
