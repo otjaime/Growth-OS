@@ -29,6 +29,11 @@ export async function fetchShopifyOrders(
     limit: '250',
     status: 'any',
   });
+  // Incremental sync: only fetch orders updated since last sync cursor
+  if (afterCursor) {
+    params.set('updated_at_min', afterCursor);
+    log.info({ updatedAtMin: afterCursor }, 'Incremental sync from cursor');
+  }
   let nextUrl: string | null = `${baseUrl}?${params.toString()}`;
 
   while (nextUrl) {

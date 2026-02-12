@@ -8,16 +8,18 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 export default function WbrPage() {
   const [markdown, setMarkdown] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/wbr`)
-      .then((r) => r.json())
-      .then((data: { narrative: string }) => {
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { narrative: string } | null) => {
+        if (!data) { setError(true); setLoading(false); return; }
         setMarkdown(data.narrative);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setError(true); setLoading(false); });
   }, []);
 
   const handleCopy = async () => {
@@ -28,6 +30,17 @@ export default function WbrPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+  }
+
+  if (error || !markdown) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Weekly Business Review</h1>
+        <div className="card border-red-500/50 flex items-center justify-center h-64">
+          <p className="text-red-400">Failed to load WBR data. Check that your API is running.</p>
+        </div>
+      </div>
+    );
   }
 
   /* Simple markdown-to-HTML sections parser */

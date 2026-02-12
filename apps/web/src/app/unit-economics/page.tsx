@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { formatCurrency, formatPercent, formatDays, formatMultiplier } from '@/lib/format';
+import { DateRangePicker } from '@/components/date-range-picker';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -37,25 +38,41 @@ interface CohortSnapshot {
 }
 
 export default function UnitEconomicsPage() {
+  const [days, setDays] = useState(30);
   const [data, setData] = useState<UnitEconData | null>(null);
   const [cohort, setCohort] = useState<CohortSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
+    setError(false);
     Promise.all([
-      fetch(`${API}/api/metrics/unit-economics?days=30`).then((r) => r.json()),
-      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.json()),
+      fetch(`${API}/api/metrics/unit-economics?days=${days}`).then((r) => r.ok ? r.json() : null),
+      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
     ])
       .then(([unitData, cohortData]) => {
+        if (!unitData) { setError(true); setLoading(false); return; }
         setData(unitData as UnitEconData);
         setCohort(cohortData as CohortSnapshot);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch(() => { setError(true); setLoading(false); });
+  }, [days]);
 
-  if (loading || !data) {
+  if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+  }
+
+  if (error || !data) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Unit Economics & Payback</h1>
+        <div className="card border-red-500/50 flex items-center justify-center h-64">
+          <p className="text-red-400">Failed to load unit economics data. Check that your API is running.</p>
+        </div>
+      </div>
+    );
   }
 
   const b = data.breakdown;
@@ -69,7 +86,10 @@ export default function UnitEconomicsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Unit Economics & Payback</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">Unit Economics & Payback</h1>
+        <DateRangePicker onChange={setDays} defaultDays={days} />
+      </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-4">
@@ -116,7 +136,7 @@ export default function UnitEconomicsPage() {
 
       {/* Cost Breakdown Table */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-white mb-4">Cost Breakdown (Last 30 Days)</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Cost Breakdown (Last {days} Days)</h2>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-700">

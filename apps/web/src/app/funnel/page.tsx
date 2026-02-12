@@ -43,22 +43,36 @@ export default function FunnelPage() {
   const [days, setDays] = useState(7);
   const [data, setData] = useState<FunnelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     fetch(`${API}/api/metrics/funnel?days=${days}`)
-      .then((r) => r.json())
-      .then((d: FunnelData) => {
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: FunnelData | null) => {
+        if (!d) { setError(true); setLoading(false); return; }
         setData(d);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setError(true); setLoading(false); });
   }, [days]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Conversion Funnel</h1>
+        <div className="card border-red-500/50 flex items-center justify-center h-64">
+          <p className="text-red-400">Failed to load funnel data. Check that your API is running.</p>
+        </div>
       </div>
     );
   }

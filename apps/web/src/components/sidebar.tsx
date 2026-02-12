@@ -20,6 +20,17 @@ import clsx from 'clsx';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+function formatRelativeTime(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 const NAV_ITEMS = [
   { href: '/', label: 'Executive Summary', icon: LayoutDashboard },
   { href: '/channels', label: 'Channel Performance', icon: Megaphone },
@@ -37,18 +48,30 @@ export function Sidebar() {
   const pathname = usePathname();
   const [demoMode, setDemoMode] = useState<boolean | null>(null);
   const [apiOk, setApiOk] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/api/health`)
-      .then((r) => r.json())
-      .then((d) => {
-        setDemoMode(d.demoMode ?? null);
-        setApiOk(d.status === 'healthy');
-      })
-      .catch(() => {
-        setApiOk(false);
-      });
+    const fetchHealth = () => {
+      fetch(`${API}/api/health`)
+        .then((r) => r.json())
+        .then((d) => {
+          setDemoMode(d.demoMode ?? null);
+          setApiOk(d.status === 'healthy');
+          setLastSyncAt(d.lastSyncAt ?? null);
+        })
+        .catch(() => {
+          setApiOk(false);
+        });
+    };
+    fetchHealth();
+    // Refresh health every 60s to keep sync timestamp current
+    const id = setInterval(fetchHealth, 60_000);
+    return () => clearInterval(id);
   }, []);
+
+  const syncLabel = lastSyncAt
+    ? `Synced ${formatRelativeTime(lastSyncAt)}`
+    : 'Not synced yet';
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-[#0c1524] border-r border-[var(--card-border)] flex flex-col z-50">
@@ -86,8 +109,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer — mode indicator */}
-      <div className="px-6 py-4 border-t border-[var(--card-border)]">
+      {/* Footer — mode + sync indicator */}
+      <div className="px-6 py-4 border-t border-[var(--card-border)] space-y-2">
         <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className={clsx(
             'w-2 h-2 rounded-full animate-pulse',
@@ -97,6 +120,9 @@ export function Sidebar() {
             {!apiOk ? 'API Disconnected' : demoMode ? 'Demo Mode' : 'Live Mode'}
           </span>
         </Link>
+        {apiOk && (
+          <p className="text-[10px] text-slate-500 pl-4">{syncLabel}</p>
+        )}
       </div>
     </aside>
   );

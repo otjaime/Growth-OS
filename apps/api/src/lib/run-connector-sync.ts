@@ -82,7 +82,13 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
   const allRecords: RawRecord[] = [];
 
   if (configs.shopify) {
-    const orders = await fetchShopifyOrders(configs.shopify);
+    // Incremental sync: use last sync timestamp as cursor
+    const shopifyCred = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'shopify' },
+      select: { lastSyncAt: true },
+    });
+    const cursor = shopifyCred?.lastSyncAt?.toISOString();
+    const orders = await fetchShopifyOrders(configs.shopify, cursor);
     const customers = await fetchShopifyCustomers(configs.shopify);
     allRecords.push(...orders.records, ...customers.records);
   }
@@ -103,12 +109,23 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
   }
 
   if (allRecords.length === 0) {
+    // Still update lastSyncAt even if no new records (sync was successful)
+    await prisma.connectorCredential.updateMany({
+      where: { lastSyncStatus: { not: 'syncing' } },
+      data: { lastSyncAt: new Date(), lastSyncStatus: 'ok' },
+    });
     return { rowsLoaded: 0 };
   }
 
   const rowsLoaded = await ingestRaw(allRecords);
   await normalizeStaging();
   await buildMarts();
+
+  // Update all connector credentials with successful sync timestamp
+  await prisma.connectorCredential.updateMany({
+    where: { lastSyncStatus: { not: 'syncing' } },
+    data: { lastSyncAt: new Date(), lastSyncStatus: 'ok' },
+  });
 
   return { rowsLoaded };
 }

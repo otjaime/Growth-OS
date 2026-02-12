@@ -11,11 +11,23 @@ export async function healthRoutes(app: FastifyInstance) {
 
     const demoMode = await isDemoMode();
 
+    // Get latest sync timestamp from any connector
+    let lastSyncAt: string | null = null;
+    try {
+      const latestSync = await prisma.connectorCredential.findFirst({
+        where: { lastSyncAt: { not: null } },
+        orderBy: { lastSyncAt: 'desc' },
+        select: { lastSyncAt: true },
+      });
+      lastSyncAt = latestSync?.lastSyncAt?.toISOString() ?? null;
+    } catch { /* table may not exist */ }
+
     return {
       status: dbOk ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
       db: dbOk ? 'connected' : 'disconnected',
       demoMode,
+      lastSyncAt,
       version: '1.0.0',
     };
   });
