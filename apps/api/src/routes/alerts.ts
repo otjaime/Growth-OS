@@ -28,8 +28,64 @@ export async function alertsRoutes(app: FastifyInstance) {
       where: { date: { gte: previousStart, lt: currentStart } },
     });
 
+    // Per-channel breakdowns
+    const channelSpendCur = await prisma.factSpend.groupBy({
+      by: ['channelId'],
+      _sum: { spend: true },
+      where: { date: { gte: currentStart, lte: now } },
+    });
+    const channelSpendPrev = await prisma.factSpend.groupBy({
+      by: ['channelId'],
+      _sum: { spend: true },
+      where: { date: { gte: previousStart, lt: currentStart } },
+    });
+    const dimChannels = await prisma.dimChannel.findMany();
+    const channelMap = new Map(dimChannels.map((c) => [c.id, c.slug]));
+
+    const channelRevCur = new Map<string, { revenue: number; newCust: number }>();
+    const channelRevPrev = new Map<string, { revenue: number; newCust: number }>();
+    for (const o of currentOrders) {
+      const slug = (o.channelId && channelMap.get(o.channelId)) ?? 'other';
+      const entry = channelRevCur.get(slug) ?? { revenue: 0, newCust: 0 };
+      entry.revenue += Number(o.revenueGross);
+      if (o.isNewCustomer) entry.newCust++;
+      channelRevCur.set(slug, entry);
+    }
+    for (const o of previousOrders) {
+      const slug = (o.channelId && channelMap.get(o.channelId)) ?? 'other';
+      const entry = channelRevPrev.get(slug) ?? { revenue: 0, newCust: 0 };
+      entry.revenue += Number(o.revenueGross);
+      if (o.isNewCustomer) entry.newCust++;
+      channelRevPrev.set(slug, entry);
+    }
+
+    const spendCurMap = new Map<string, number>();
+    const spendPrevMap = new Map<string, number>();
+    for (const row of channelSpendCur) {
+      const slug = channelMap.get(row.channelId) ?? 'other';
+      spendCurMap.set(slug, (spendCurMap.get(slug) ?? 0) + Number(row._sum.spend ?? 0));
+    }
+    for (const row of channelSpendPrev) {
+      const slug = channelMap.get(row.channelId) ?? 'other';
+      spendPrevMap.set(slug, (spendPrevMap.get(slug) ?? 0) + Number(row._sum.spend ?? 0));
+    }
+
+    const allSlugs = new Set([...spendCurMap.keys(), ...spendPrevMap.keys(), ...channelRevCur.keys(), ...channelRevPrev.keys()]);
+    const channelBreakdowns: AlertInput['channels'] = [];
+    for (const slug of allSlugs) {
+      channelBreakdowns.push({
+        name: slug,
+        currentSpend: spendCurMap.get(slug) ?? 0,
+        currentRevenue: channelRevCur.get(slug)?.revenue ?? 0,
+        previousSpend: spendPrevMap.get(slug) ?? 0,
+        previousRevenue: channelRevPrev.get(slug)?.revenue ?? 0,
+        currentNewCustomers: channelRevCur.get(slug)?.newCust ?? 0,
+        previousNewCustomers: channelRevPrev.get(slug)?.newCust ?? 0,
+      });
+    }
+
     // Get baseline retention (average of all cohorts)
-    const cohorts = await prisma.cohort.findMany();
+    const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
     const baselineD30 = cohorts.length > 0
       ? cohorts.reduce((s, c) => s + Number(c.d30Retention), 0) / cohorts.length
       : 0.15;
@@ -54,6 +110,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       previousRevenueNet: previousOrders.reduce((s, o) => s + Number(o.revenueNet), 0),
       previousD30Retention: baselineD30,
       baselineD30Retention: baselineD30,
+      channels: channelBreakdowns,
     };
 
     const alerts = evaluateAlerts(input);

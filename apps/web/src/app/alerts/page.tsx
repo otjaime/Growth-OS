@@ -19,19 +19,32 @@ interface Alert {
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/alerts`)
-      .then((r) => r.json())
-      .then((data: { alerts: Alert[] }) => {
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { alerts: Alert[] } | null) => {
+        if (!data) { setError(true); setLoading(false); return; }
         setAlerts(data.alerts);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setError(true); setLoading(false); });
   }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Alerts & Recommendations</h1>
+        <div className="card border-red-500/50 flex items-center justify-center h-64">
+          <p className="text-red-400">Failed to load alerts. Check that your API is running.</p>
+        </div>
+      </div>
+    );
   }
 
   const severityIcon = (severity: string) => {

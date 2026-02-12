@@ -17,6 +17,7 @@ const mockPrisma = vi.hoisted(() => ({
   },
   factSpend: {
     aggregate: vi.fn().mockResolvedValue({ _sum: { spend: 0, impressions: 0, clicks: 0 } }),
+    groupBy: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
   },
   factTraffic: {
@@ -299,6 +300,8 @@ describe('Alerts Routes', () => {
     vi.clearAllMocks();
     mockPrisma.factOrder.findMany.mockResolvedValue([]);
     mockPrisma.factSpend.aggregate.mockResolvedValue({ _sum: { spend: 0 } });
+    mockPrisma.factSpend.groupBy.mockResolvedValue([]);
+    mockPrisma.dimChannel.findMany.mockResolvedValue([]);
     mockPrisma.cohort.findMany.mockResolvedValue([]);
   });
 
@@ -354,6 +357,7 @@ describe('WBR Routes', () => {
     vi.clearAllMocks();
     mockPrisma.factOrder.findMany.mockResolvedValue([]);
     mockPrisma.factSpend.aggregate.mockResolvedValue({ _sum: { spend: 0 } });
+    mockPrisma.factSpend.groupBy.mockResolvedValue([]);
     mockPrisma.factTraffic.aggregate.mockResolvedValue({ _sum: { sessions: 0, purchases: 0 } });
     mockPrisma.cohort.findMany.mockResolvedValue([]);
     mockPrisma.dimChannel.findMany.mockResolvedValue([]);
