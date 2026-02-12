@@ -734,6 +734,35 @@ export async function connectionsRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── Raw attribution sample (debug) ─────────────────────────
+  app.get('/connections/debug/attribution', async () => {
+    const samples = await prisma.$queryRawUnsafe<Array<{
+      order_id: string;
+      channel_raw: string;
+      source_name: string;
+      landing_site: string | null;
+      referring_site: string | null;
+      utm_source: string | null;
+      utm_medium: string | null;
+      journey: unknown;
+    }>>(
+      `SELECT re.external_id as order_id,
+              so.channel_raw,
+              so.source_name,
+              so.landing_site,
+              so.referring_site,
+              so.utm_source,
+              so.utm_medium,
+              re.payload_json->'customerJourneySummary' as journey
+       FROM raw_events re
+       LEFT JOIN stg_orders so ON so.order_id = re.external_id
+       WHERE re.source = 'shopify' AND re.entity = 'orders'
+       ORDER BY re.fetched_at DESC
+       LIMIT 20`
+    );
+    return { samples };
+  });
+
   // ── Rebuild marts from existing staging data ───────────────
   app.post('/connections/rebuild-marts', async () => {
     // Re-run normalizeStaging + buildMarts without re-fetching from APIs

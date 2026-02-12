@@ -127,11 +127,20 @@ describe('mapChannelFromOrder', () => {
     })).toBe('google');
   });
 
-  it('maps shopifySource=google without paid medium to organic', () => {
+  it('maps shopifySource=google without medium to google (auto-tagging default)', () => {
     expect(mapChannelFromOrder({
       sourceName: 'web',
       shopifySource: 'google',
       shopifySourceType: 'search',
+    })).toBe('google');
+  });
+
+  it('maps shopifySource=google + organic medium to organic', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'google',
+      shopifySourceType: 'search',
+      utmMedium: 'organic',
     })).toBe('organic');
   });
 

@@ -32,11 +32,12 @@ export function mapChannelFromOrder(input: OrderChannelInput): string {
 
   // Shopify structured attribution (from customerJourneySummary)
   if (sSrc) {
-    const isPaid = med === 'cpc' || med === 'ppc' || med === 'paid' || med === 'shopping';
+    const isOrganic = med === 'organic';
 
     // Google (search + shopping)
     if (sSrc === 'google') {
-      return isPaid ? 'google' : 'organic';
+      // Google Ads auto-tagging has NO UTM params; organic explicitly has medium=organic
+      return isOrganic ? 'organic' : 'google';
     }
     // Meta (Facebook + Instagram)
     if (sSrc === 'facebook' || sSrc === 'instagram') {
