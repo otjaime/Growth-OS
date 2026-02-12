@@ -5,6 +5,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { prisma } from '@growth-os/database';
+import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { healthRoutes } from './routes/health.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { metricsRoutes } from './routes/metrics.js';
@@ -61,6 +62,17 @@ async function main() {
     if (stale.count > 0) {
       app.log.warn({ count: stale.count }, 'Reset stale syncing statuses from previous run');
     }
+
+    // Rebuild marts on startup so every deploy picks up the latest pipeline code
+    app.log.info('Starting background rebuild: normalizeStaging → buildMarts');
+    normalizeStaging()
+      .then(() => buildMarts())
+      .then((result) => {
+        app.log.info({ result }, 'Startup rebuild complete');
+      })
+      .catch((err) => {
+        app.log.error({ error: String(err) }, 'Startup rebuild failed');
+      });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
