@@ -60,10 +60,26 @@ async function normalizeOrders(): Promise<number> {
 
         // Parse UTM params from landing site
         const utmParams = parseUtmParams(landingSite);
+
+        // Extract Shopify's structured attribution (most reliable)
+        const journey = p.customerJourneySummary as {
+          lastVisit?: {
+            source?: string;
+            sourceType?: string;
+            utmParameters?: { source?: string; medium?: string; campaign?: string };
+          };
+        } | null;
+
+        const shopifySource = journey?.lastVisit?.source?.toLowerCase() ?? '';
+        const shopifySourceType = journey?.lastVisit?.sourceType?.toLowerCase() ?? '';
+        const shopifyUtm = journey?.lastVisit?.utmParameters;
+
         const channelRaw = mapChannelFromOrder({
           sourceName,
-          utmSource: utmParams.utm_source,
-          utmMedium: utmParams.utm_medium,
+          shopifySource,
+          shopifySourceType,
+          utmSource: shopifyUtm?.source ?? utmParams.utm_source,
+          utmMedium: shopifyUtm?.medium ?? utmParams.utm_medium,
           referringSite,
           gclid: utmParams.gclid,
           fbclid: utmParams.fbclid,
@@ -119,7 +135,7 @@ async function normalizeOrders(): Promise<number> {
             referringSite: referringSite || null,
             utmSource: utmParams.utm_source || null,
             utmMedium: utmParams.utm_medium || null,
-            utmCampaign: utmParams.utm_campaign || null,
+            utmCampaign: (shopifyUtm?.campaign ?? utmParams.utm_campaign) || null,
             channelRaw,
             region,
             lineItemsJson: lineItems ? (lineItems as unknown as Record<string, string>[]) : undefined,

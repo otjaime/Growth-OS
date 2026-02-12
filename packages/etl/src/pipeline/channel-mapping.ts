@@ -10,21 +10,51 @@ export interface OrderChannelInput {
   referringSite?: string;
   gclid?: string;
   fbclid?: string;
+  shopifySource?: string;     // from customerJourneySummary lastVisit.source
+  shopifySourceType?: string; // SEARCH, SOCIAL, DIRECT, UNKNOWN
 }
 
 /**
  * Maps Shopify order attributes to a channel slug.
- * Priority: click IDs > UTM params > referring site > source name > fallback
+ * Priority: click IDs > Shopify attribution > UTM params > referring site > source name > fallback
  */
 export function mapChannelFromOrder(input: OrderChannelInput): string {
-  const { utmSource, utmMedium, referringSite, sourceName, gclid, fbclid } = input;
+  const { utmSource, utmMedium, referringSite, sourceName, gclid, fbclid, shopifySource, shopifySourceType } = input;
   const src = (utmSource ?? '').toLowerCase();
   const med = (utmMedium ?? '').toLowerCase();
   const ref = (referringSite ?? '').toLowerCase();
+  const sSrc = (shopifySource ?? '').toLowerCase();
+  const sType = (shopifySourceType ?? '').toLowerCase();
 
   // Click-ID based mapping (highest priority — auto-tagging by ad platforms)
   if (gclid) return 'google';
   if (fbclid) return 'meta';
+
+  // Shopify structured attribution (from customerJourneySummary)
+  if (sSrc) {
+    const isPaid = med === 'cpc' || med === 'ppc' || med === 'paid' || med === 'shopping';
+
+    // Google (search + shopping)
+    if (sSrc === 'google') {
+      return isPaid ? 'google' : 'organic';
+    }
+    // Meta (Facebook + Instagram)
+    if (sSrc === 'facebook' || sSrc === 'instagram') {
+      return 'meta';
+    }
+    // Email providers
+    if (sType === 'email' || sSrc.includes('klaviyo') || sSrc.includes('mailchimp')) {
+      return 'email';
+    }
+    // Social platforms (non-Meta)
+    if (sType === 'social') {
+      return 'other';
+    }
+    // Direct
+    if (sType === 'direct') {
+      return 'direct';
+    }
+  }
 
   // UTM-based mapping
   if (src) {

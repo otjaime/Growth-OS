@@ -38,6 +38,26 @@ query ($cursor: String, $query: String) {
         landingPageUrl
         referrerUrl
         tags
+        customerJourneySummary {
+          firstVisit {
+            source
+            sourceType
+            utmParameters {
+              source
+              medium
+              campaign
+            }
+          }
+          lastVisit {
+            source
+            sourceType
+            utmParameters {
+              source
+              medium
+              campaign
+            }
+          }
+        }
       }
     }
     pageInfo { hasNextPage }

@@ -116,6 +116,72 @@ describe('mapChannelFromOrder', () => {
       referringSite: 'https://www.google.com/',
     })).toBe('organic');
   });
+
+  // Shopify customerJourneySummary attribution
+  it('maps shopifySource=google + cpc medium to google (paid)', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'google',
+      shopifySourceType: 'search',
+      utmMedium: 'cpc',
+    })).toBe('google');
+  });
+
+  it('maps shopifySource=google without paid medium to organic', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'google',
+      shopifySourceType: 'search',
+    })).toBe('organic');
+  });
+
+  it('maps shopifySource=facebook to meta', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'facebook',
+      shopifySourceType: 'social',
+    })).toBe('meta');
+  });
+
+  it('maps shopifySource=instagram to meta', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'instagram',
+      shopifySourceType: 'social',
+    })).toBe('meta');
+  });
+
+  it('gclid overrides shopifySource', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'facebook',
+      shopifySourceType: 'social',
+      gclid: 'CjwKCAjw...',
+    })).toBe('google');
+  });
+
+  it('falls back to UTM when shopifySource is empty', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      utmSource: 'klaviyo',
+      utmMedium: 'email',
+    })).toBe('email');
+  });
+
+  it('falls back to referrer when shopifySource and UTM are empty', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      referringSite: 'https://facebook.com/post',
+    })).toBe('meta');
+  });
+
+  it('maps shopifySourceType=direct to direct', () => {
+    expect(mapChannelFromOrder({
+      sourceName: 'web',
+      shopifySource: 'some-source',
+      shopifySourceType: 'direct',
+    })).toBe('direct');
+  });
 });
 
 describe('mapGA4ChannelToSlug', () => {
