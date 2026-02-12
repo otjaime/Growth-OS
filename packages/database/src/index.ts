@@ -1,4 +1,4 @@
-export { prisma } from './client';
+export { prisma } from './client.js';
 export { encrypt, decrypt } from './crypto.js';
 export { isDemoMode, setMode, getAppSetting, setAppSetting } from './mode.js';
 export type {

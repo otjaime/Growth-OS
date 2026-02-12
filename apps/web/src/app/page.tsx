@@ -88,16 +88,17 @@ export default function DashboardPage() {
     setError(null);
 
     Promise.all([
-      fetch(`${API}/api/metrics/summary?days=${days}`).then((r) => r.json()),
-      fetch(`${API}/api/metrics/timeseries?days=${days}`).then((r) => r.json()),
-      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.json()),
-      fetch(`${API}/api/metrics/channels?days=${days}`).then((r) => r.json()),
+      fetch(`${API}/api/metrics/summary?days=${days}`).then((r) => r.ok ? r.json() : null),
+      fetch(`${API}/api/metrics/timeseries?days=${days}`).then((r) => r.ok ? r.json() : null),
+      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
+      fetch(`${API}/api/metrics/channels?days=${days}`).then((r) => r.ok ? r.json() : null),
     ])
       .then(([summaryData, tsData, cohortData, channelsData]) => {
-        setSummary(summaryData as SummaryData);
-        setTimeseries(tsData as TimeseriesData);
-        setCohortSnap(cohortData as CohortSnapshot);
-        setChannels(channelsData as ChannelsData);
+        if (summaryData?.kpis) setSummary(summaryData as SummaryData);
+        if (tsData?.dailyRevenue) setTimeseries(tsData as TimeseriesData);
+        if (cohortData) setCohortSnap(cohortData as CohortSnapshot);
+        if (channelsData?.channels) setChannels(channelsData as ChannelsData);
+        if (!summaryData?.kpis) setError('API returned no data');
         setLoading(false);
       })
       .catch((err) => {

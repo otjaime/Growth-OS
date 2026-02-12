@@ -12,6 +12,7 @@ const CHANNEL_COLORS: Record<string, string> = {
   google: '#22c55e',
   email: '#f59e0b',
   organic: '#8b5cf6',
+  affiliate: '#ec4899',
   direct: '#64748b',
   other: '#94a3b8',
 };
@@ -48,9 +49,9 @@ export default function ChannelsPage() {
   useEffect(() => {
     setLoading(true);
     fetch(`${API}/api/metrics/channels?days=${days}`)
-      .then((r) => r.json())
-      .then((data: { channels: ChannelData[] }) => {
-        setChannels(data.channels);
+      .then((r) => r.ok ? r.json() : { channels: [] })
+      .then((data: { channels?: ChannelData[] }) => {
+        setChannels(data.channels ?? []);
         setLoading(false);
       })
       .catch(() => setLoading(false));

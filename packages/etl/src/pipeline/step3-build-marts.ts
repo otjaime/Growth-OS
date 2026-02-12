@@ -188,6 +188,19 @@ async function buildFactOrders(): Promise<number> {
     dimCustomers.map((c) => [c.customerId, c.firstOrderDate]),
   );
 
+  // Pre-compute the earliest order per customer so only ONE order is flagged isNewCustomer
+  const firstOrderPerCustomer = new Map<string, string>();
+  const sortedOrders = [...stgOrders].sort((a, b) => {
+    const da = a.orderDate?.getTime() ?? 0;
+    const db = b.orderDate?.getTime() ?? 0;
+    return da - db || a.orderId.localeCompare(b.orderId);
+  });
+  for (const order of sortedOrders) {
+    if (order.customerId && !firstOrderPerCustomer.has(order.customerId)) {
+      firstOrderPerCustomer.set(order.customerId, order.orderId);
+    }
+  }
+
   let count = 0;
   for (const order of stgOrders) {
     const channelSlug = order.channelRaw ?? 'direct';
@@ -234,10 +247,9 @@ async function buildFactOrders(): Promise<number> {
     const opsCost = revenueNet * OPS_COST_RATE;
     const contributionMargin = revenueNet - cogs - shippingCost - opsCost;
 
-    // Compute isNewCustomer from dim_customer.firstOrderDate instead of Shopify tags
-    const firstDate = order.customerId ? customerFirstDate.get(order.customerId) : null;
-    const isNewCustomer = !!(firstDate && order.orderDate
-      && order.orderDate.toISOString().slice(0, 10) === firstDate.toISOString().slice(0, 10));
+    // isNewCustomer = true only for the customer's very first order
+    const isNewCustomer = !!(order.customerId
+      && firstOrderPerCustomer.get(order.customerId) === order.orderId);
 
     await prisma.factOrder.upsert({
       where: { orderId: order.orderId },

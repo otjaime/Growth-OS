@@ -13,12 +13,13 @@ interface KpiCardProps {
 }
 
 export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData }: KpiCardProps) {
+  const safeValue = Number.isFinite(value) ? value : 0;
   const formatted = (() => {
     switch (format) {
-      case 'currency': return formatCurrency(value);
-      case 'percent': return formatPercent(value);
-      case 'number': return formatNumber(value);
-      case 'multiplier': return `${value.toFixed(2)}x`;
+      case 'currency': return formatCurrency(safeValue);
+      case 'percent': return formatPercent(safeValue);
+      case 'number': return formatNumber(safeValue);
+      case 'multiplier': return safeValue === 0 ? '--' : `${safeValue.toFixed(1)}x`;
     }
   })();
 

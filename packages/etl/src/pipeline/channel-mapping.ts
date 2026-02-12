@@ -22,28 +22,35 @@ export function mapChannelFromOrder(input: OrderChannelInput): string {
 
   // UTM-based mapping (highest priority)
   if (src) {
-    if (src.includes('facebook') || src.includes('fb') || src.includes('instagram') || src.includes('ig')) {
+    // Meta: facebook, fb, instagram (exact word boundaries to avoid false positives)
+    if (src.includes('facebook') || src === 'fb' || src.includes('instagram') || src === 'ig') {
       return 'meta';
     }
-    if (src.includes('google') && (med === 'cpc' || med === 'ppc')) {
+    // Google paid
+    if (src.includes('google') && (med === 'cpc' || med === 'ppc' || med === 'paid' || med === 'shopping')) {
       return 'google';
     }
-    if (src.includes('google') && med === 'organic') {
+    // Google organic
+    if (src.includes('google') && (med === 'organic' || med === '' || med === 'surfaces')) {
       return 'organic';
     }
+    // Email
     if (src.includes('klaviyo') || src.includes('mailchimp') || med === 'email') {
       return 'email';
     }
+    // Affiliates
     if (src.includes('affiliate') || med === 'referral') {
       return 'affiliate';
     }
+    // Any other recognized UTM source (not direct)
+    return 'other';
   }
 
   // Referring site based
   if (ref) {
     if (ref.includes('facebook.com') || ref.includes('instagram.com')) return 'meta';
-    if (ref.includes('google.com') && med !== 'cpc') return 'organic';
     if (ref.includes('google.com') && med === 'cpc') return 'google';
+    if (ref.includes('google.com')) return 'organic';
   }
 
   // Source name based
