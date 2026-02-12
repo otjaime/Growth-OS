@@ -736,31 +736,80 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   // ── Raw attribution sample (debug) ─────────────────────────
   app.get('/connections/debug/attribution', async () => {
-    const samples = await prisma.$queryRawUnsafe<Array<{
-      order_id: string;
-      channel_raw: string;
-      source_name: string;
-      landing_site: string | null;
-      referring_site: string | null;
-      utm_source: string | null;
-      utm_medium: string | null;
-      journey: unknown;
+    // Check if customerJourneySummary exists in raw payloads
+    const journeyCheck = await prisma.$queryRawUnsafe<Array<{
+      has_journey: number;
+      no_journey: number;
+      total: number;
     }>>(
-      `SELECT re.external_id as order_id,
-              so.channel_raw,
-              so.source_name,
-              so.landing_site,
-              so.referring_site,
-              so.utm_source,
-              so.utm_medium,
-              re.payload_json->'customerJourneySummary' as journey
-       FROM raw_events re
-       LEFT JOIN stg_orders so ON so.order_id = re.external_id
-       WHERE re.source = 'shopify' AND re.entity = 'orders'
-       ORDER BY re.fetched_at DESC
+      `SELECT
+        SUM(CASE WHEN payload_json->'customerJourneySummary' IS NOT NULL
+                  AND payload_json->'customerJourneySummary' != 'null'::jsonb
+             THEN 1 ELSE 0 END)::int as has_journey,
+        SUM(CASE WHEN payload_json->'customerJourneySummary' IS NULL
+                  OR payload_json->'customerJourneySummary' = 'null'::jsonb
+             THEN 1 ELSE 0 END)::int as no_journey,
+        COUNT(*)::int as total
+       FROM raw_events
+       WHERE source = 'shopify' AND entity = 'orders'`
+    );
+
+    // Sample raw payloads showing attribution fields
+    const rawSamples = await prisma.$queryRawUnsafe<Array<{
+      external_id: string;
+      name: string;
+      source_name: string;
+      landing_page_url: string | null;
+      referrer_url: string | null;
+      journey_last_source: string | null;
+      journey_last_type: string | null;
+      journey_last_utm_source: string | null;
+      journey_last_utm_medium: string | null;
+    }>>(
+      `SELECT
+        external_id,
+        payload_json->>'name' as name,
+        payload_json->>'sourceName' as source_name,
+        payload_json->>'landingPageUrl' as landing_page_url,
+        payload_json->>'referrerUrl' as referrer_url,
+        payload_json->'customerJourneySummary'->'lastVisit'->>'source' as journey_last_source,
+        payload_json->'customerJourneySummary'->'lastVisit'->>'sourceType' as journey_last_type,
+        payload_json->'customerJourneySummary'->'lastVisit'->'utmParameters'->>'source' as journey_last_utm_source,
+        payload_json->'customerJourneySummary'->'lastVisit'->'utmParameters'->>'medium' as journey_last_utm_medium
+       FROM raw_events
+       WHERE source = 'shopify' AND entity = 'orders'
+       ORDER BY fetched_at DESC
        LIMIT 20`
     );
-    return { samples };
+
+    // Channel distribution in stg_orders
+    const stgChannels = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number; rev: number }>>(
+      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt,
+              COALESCE(SUM(revenue_net), 0)::float as rev
+       FROM stg_orders GROUP BY channel_raw ORDER BY cnt DESC`
+    );
+
+    // Channel distribution in fact_orders (final)
+    const factChannels = await prisma.$queryRawUnsafe<Array<{ channel: string; cnt: number; rev: number }>>(
+      `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
+              COALESCE(SUM(fo.revenue_net), 0)::float as rev
+       FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
+       GROUP BY c.slug ORDER BY cnt DESC`
+    );
+
+    // Shopify connector sync status
+    const syncStatus = await prisma.connectorCredential.findUnique({
+      where: { connectorType: 'shopify' },
+      select: { lastSyncAt: true, lastSyncStatus: true, metadata: true },
+    });
+
+    return {
+      journeyCheck: journeyCheck[0] ?? { has_journey: 0, no_journey: 0, total: 0 },
+      rawSamples,
+      stgChannels,
+      factChannels,
+      syncStatus,
+    };
   });
 
   // ── Rebuild marts from existing staging data ───────────────
