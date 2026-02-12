@@ -28,7 +28,6 @@ export async function fetchShopifyOrders(
   const params = new URLSearchParams({
     limit: '250',
     status: 'any',
-    order: 'updated_at asc',
   });
   let nextUrl: string | null = `${baseUrl}?${params.toString()}`;
 

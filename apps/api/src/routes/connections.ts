@@ -754,28 +754,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
        WHERE source = 'shopify' AND entity = 'orders'`
     );
 
-    // Sample raw payloads showing attribution fields
+    // Sample raw payloads showing attribution fields (supports both REST + GraphQL formats)
     const rawSamples = await prisma.$queryRawUnsafe<Array<{
       external_id: string;
       name: string;
       source_name: string;
-      landing_page_url: string | null;
-      referrer_url: string | null;
-      journey_last_source: string | null;
-      journey_last_type: string | null;
-      journey_last_utm_source: string | null;
-      journey_last_utm_medium: string | null;
+      landing_site: string | null;
+      referring_site: string | null;
     }>>(
       `SELECT
         external_id,
-        payload_json->>'name' as name,
-        payload_json->>'sourceName' as source_name,
-        payload_json->>'landingPageUrl' as landing_page_url,
-        payload_json->>'referrerUrl' as referrer_url,
-        payload_json->'customerJourneySummary'->'lastVisit'->>'source' as journey_last_source,
-        payload_json->'customerJourneySummary'->'lastVisit'->>'sourceType' as journey_last_type,
-        payload_json->'customerJourneySummary'->'lastVisit'->'utmParameters'->>'source' as journey_last_utm_source,
-        payload_json->'customerJourneySummary'->'lastVisit'->'utmParameters'->>'medium' as journey_last_utm_medium
+        COALESCE(payload_json->>'name', (payload_json->>'order_number')) as name,
+        COALESCE(payload_json->>'source_name', payload_json->>'sourceName') as source_name,
+        COALESCE(payload_json->>'landing_site', payload_json->>'landingPageUrl') as landing_site,
+        COALESCE(payload_json->>'referring_site', payload_json->>'referrerUrl') as referring_site
        FROM raw_events
        WHERE source = 'shopify' AND entity = 'orders'
        ORDER BY fetched_at DESC
