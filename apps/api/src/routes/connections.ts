@@ -579,7 +579,66 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'ga4') {
-        return { success: true, message: 'Google OAuth token is valid', latencyMs: Date.now() - start };
+        const propertyId = (meta.propertyId ?? '').trim();
+        const accessToken = creds.accessToken ?? '';
+        const refreshToken = creds.refreshToken ?? '';
+
+        if (!propertyId) {
+          return { success: false, message: 'No Property ID configured. Enter your GA4 Property ID and reconnect.' };
+        }
+        if (!accessToken) {
+          return { success: false, message: 'No OAuth token found. Click "Connect with Google" to authorize.' };
+        }
+
+        // Try to refresh the token first
+        let token = accessToken;
+        const googleOAuth = await getGoogleOAuthConfig();
+        if (refreshToken && googleOAuth.clientId && googleOAuth.clientSecret) {
+          try {
+            const refreshResp = await fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: googleOAuth.clientId,
+                client_secret: googleOAuth.clientSecret,
+                refresh_token: refreshToken,
+                grant_type: 'refresh_token',
+              }),
+            });
+            if (refreshResp.ok) {
+              const refreshData = await refreshResp.json() as { access_token: string };
+              token = refreshData.access_token;
+              // Persist the refreshed access token
+              const updatedCreds = { ...creds, accessToken: token };
+              const enc = encrypt(JSON.stringify(updatedCreds));
+              await prisma.connectorCredential.update({
+                where: { connectorType: 'ga4' },
+                data: { encryptedData: enc.encrypted, iv: enc.iv, authTag: enc.authTag },
+              });
+            } else {
+              const refreshErr = await refreshResp.text();
+              app.log.warn({ status: refreshResp.status, body: refreshErr.substring(0, 200) }, 'GA4 token refresh failed');
+            }
+          } catch (refreshError) {
+            app.log.warn({ error: (refreshError as Error).message }, 'GA4 token refresh error');
+          }
+        }
+
+        // Test with GA4 Data API metadata endpoint
+        const testResp = await fetch(
+          `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}/metadata`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        if (!testResp.ok) {
+          const errBody = await testResp.text();
+          if (testResp.status === 401 || testResp.status === 403) {
+            throw new Error(`GA4 auth failed (${testResp.status}). Try reconnecting via Google OAuth. Details: ${errBody.substring(0, 200)}`);
+          }
+          throw new Error(`GA4 API responded ${testResp.status}: ${errBody.substring(0, 200)}`);
+        }
+
+        return { success: true, message: `GA4 property ${propertyId} verified — connection is working`, latencyMs: Date.now() - start };
       }
 
       if (type === 'woocommerce') {
@@ -947,7 +1006,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
         }),
       });
 
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({})) as { error?: string; error_description?: string };
+        throw new Error(`Token exchange failed: ${errBody.error ?? resp.status} — ${errBody.error_description ?? 'Unknown error'}`);
+      }
+
       const tokens = await resp.json() as { access_token: string; refresh_token?: string };
+
+      if (!tokens.access_token) {
+        throw new Error('Google returned no access token. Please try authorizing again.');
+      }
 
       // Merge with existing credentials so we don't lose fields like developerToken
       const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
@@ -963,7 +1031,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       const mergedCreds = {
         ...existingCreds,
         accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token ?? '',
+        // Preserve existing refresh token if Google doesn't return a new one (re-auth)
+        refreshToken: tokens.refresh_token ?? existingCreds.refreshToken ?? '',
       };
       const mergedMeta = { ...existingMeta, clientId, authType: 'oauth2' };
 
