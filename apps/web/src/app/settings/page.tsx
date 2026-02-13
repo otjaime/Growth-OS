@@ -6,8 +6,7 @@ import {
   AlertTriangle, CheckCircle, Loader2, BarChart3,
   ArrowRight, Shield, Radio, Key, Eye, EyeOff, Save,
 } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface ModeInfo {
   mode: 'demo' | 'live';
@@ -43,7 +42,7 @@ export default function SettingsPage() {
 
   const fetchMode = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/settings/mode`);
+      const res = await apiFetch(`/api/settings/mode`);
       if (res.ok) setModeInfo(await res.json());
     } catch {
       setMessage({ type: 'error', text: 'Failed to connect to API' });
@@ -54,7 +53,7 @@ export default function SettingsPage() {
 
   const fetchGoogleOAuth = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/settings/google-oauth`);
+      const res = await apiFetch(`/api/settings/google-oauth`);
       if (res.ok) {
         const data: GoogleOAuthInfo = await res.json();
         setGoogleOAuth(data);
@@ -70,7 +69,7 @@ export default function SettingsPage() {
     setSwitching(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/mode`, {
+      const res = await apiFetch(`/api/settings/mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
@@ -90,7 +89,7 @@ export default function SettingsPage() {
     setClearing(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/clear-data`, { method: 'POST' });
+      const res = await apiFetch(`/api/settings/clear-data`, { method: 'POST' });
       const data = await res.json();
       setMessage({ type: data.success ? 'success' : 'error', text: data.message });
       if (data.success) await fetchMode();
@@ -106,7 +105,7 @@ export default function SettingsPage() {
     setSeeding(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/seed-demo`, { method: 'POST' });
+      const res = await apiFetch(`/api/settings/seed-demo`, { method: 'POST' });
       const data = await res.json();
       setMessage({ type: data.success ? 'success' : 'error', text: data.message });
       if (data.success) await fetchMode();
@@ -125,7 +124,7 @@ export default function SettingsPage() {
     setSavingGoogle(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/api/settings/google-oauth`, {
+      const res = await apiFetch(`/api/settings/google-oauth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

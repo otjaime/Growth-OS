@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Clock, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface Job {
   id: string;
@@ -23,7 +22,7 @@ export default function JobsPage() {
 
   const fetchJobs = () => {
     const params = filter !== 'all' ? `?status=${filter}` : '';
-    fetch(`${API}/api/jobs${params}`)
+    apiFetch(`/api/jobs${params}`)
       .then((r) => r.json())
       .then((data: { jobs: Job[] }) => {
         setJobs(data.jobs);

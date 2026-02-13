@@ -15,8 +15,7 @@ import {
 } from 'lucide-react';
 import { ConnectorIcon } from './connector-icon';
 import type { SavedConnection } from './types';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface ConnectionCardProps {
   connection: SavedConnection;
@@ -36,7 +35,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(`${API}/api/connections/${connection.connectorType}/test`, { method: 'POST' });
+      const res = await apiFetch(`/api/connections/${connection.connectorType}/test`, { method: 'POST' });
       const data = await res.json();
       setTestResult({ success: data.success, message: data.message });
     } catch {
@@ -49,7 +48,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await fetch(`${API}/api/connections/${connection.connectorType}/sync`, { method: 'POST' });
+      await apiFetch(`/api/connections/${connection.connectorType}/sync`, { method: 'POST' });
     } catch { /* ignore */ }
     setTimeout(() => {
       setSyncing(false);
@@ -59,7 +58,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
 
   const handleDelete = async () => {
     setDeleting(true);
-    await fetch(`${API}/api/connections/${connection.connectorType}`, { method: 'DELETE' });
+    await apiFetch(`/api/connections/${connection.connectorType}`, { method: 'DELETE' });
     setDeleting(false);
     setConfirmDelete(false);
     setShowMenu(false);

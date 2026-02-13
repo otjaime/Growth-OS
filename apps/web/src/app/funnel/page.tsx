@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { formatNumber, formatPercent } from '@/lib/format';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface FunnelData {
   funnel: {
@@ -48,7 +47,7 @@ export default function FunnelPage() {
   useEffect(() => {
     setLoading(true);
     setError(false);
-    fetch(`${API}/api/metrics/funnel?days=${days}`)
+    apiFetch(`/api/metrics/funnel?days=${days}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d: FunnelData | null) => {
         if (!d) { setError(true); setLoading(false); return; }

@@ -6,6 +6,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { prisma } from '@growth-os/database';
 import { normalizeStaging, buildMarts } from '@growth-os/etl';
+import { authRoutes, registerAuthHook } from './lib/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { metricsRoutes } from './routes/metrics.js';
@@ -31,7 +32,15 @@ async function main() {
     },
   });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: process.env.FRONTEND_URL
+      ? [process.env.FRONTEND_URL]
+      : [/localhost/],
+  });
+
+  // Auth: register login endpoint + global Bearer-token hook
+  registerAuthHook(app);
+  await app.register(authRoutes, { prefix: '/api' });
 
   // Register routes
   await app.register(healthRoutes, { prefix: '/api' });

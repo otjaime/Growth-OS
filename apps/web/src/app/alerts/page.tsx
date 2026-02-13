@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface Alert {
   id: string;
@@ -22,7 +21,7 @@ export default function AlertsPage() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/api/alerts`)
+    apiFetch(`/api/alerts`)
       .then((r) => r.ok ? r.json() : null)
       .then((data: { alerts: Alert[] } | null) => {
         if (!data) { setError(true); setLoading(false); return; }

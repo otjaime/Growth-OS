@@ -6,8 +6,7 @@ import { KpiCard } from '@/components/kpi-card';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { RevenueChart } from '@/components/revenue-chart';
 import { formatCurrency, formatPercent, formatDays, formatMultiplier } from '@/lib/format';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface KpiValue {
   value: number;
@@ -88,10 +87,10 @@ export default function DashboardPage() {
     setError(null);
 
     Promise.all([
-      fetch(`${API}/api/metrics/summary?days=${days}`).then((r) => r.ok ? r.json() : null),
-      fetch(`${API}/api/metrics/timeseries?days=${days}`).then((r) => r.ok ? r.json() : null),
-      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
-      fetch(`${API}/api/metrics/channels?days=${days}`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/summary?days=${days}`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/timeseries?days=${days}`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/channels?days=${days}`).then((r) => r.ok ? r.json() : null),
     ])
       .then(([summaryData, tsData, cohortData, channelsData]) => {
         if (summaryData?.kpis) setSummary(summaryData as SummaryData);

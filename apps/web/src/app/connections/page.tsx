@@ -8,8 +8,7 @@ import {
   SetupWizard,
 } from '@/components/connections';
 import type { ConnectorDef, SavedConnection } from '@/components/connections/types';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<SavedConnection[]>([]);
@@ -25,8 +24,8 @@ export default function ConnectionsPage() {
     setError(null);
     try {
       const [connRes, catRes] = await Promise.all([
-        fetch(`${API}/api/connections`),
-        fetch(`${API}/api/connectors/catalog`),
+        apiFetch(`/api/connections`),
+        apiFetch(`/api/connectors/catalog`),
       ]);
       if (!connRes.ok || !catRes.ok) {
         setError(`API returned ${connRes.ok ? catRes.status : connRes.status}. Check that the API is running.`);

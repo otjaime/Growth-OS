@@ -17,8 +17,8 @@ import {
   Settings,
 } from 'lucide-react';
 import clsx from 'clsx';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
+import { LogoutButton } from '@/components/auth-gate';
 
 function formatRelativeTime(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime();
@@ -52,7 +52,7 @@ export function Sidebar() {
 
   useEffect(() => {
     const fetchHealth = () => {
-      fetch(`${API}/api/health`)
+      apiFetch(`/api/health`)
         .then((r) => r.json())
         .then((d) => {
           setDemoMode(d.demoMode ?? null);
@@ -123,6 +123,7 @@ export function Sidebar() {
         {apiOk && (
           <p className="text-[10px] text-slate-500 pl-4">{syncLabel}</p>
         )}
+        <LogoutButton />
       </div>
     </aside>
   );

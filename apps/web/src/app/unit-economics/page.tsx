@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { formatCurrency, formatPercent, formatDays, formatMultiplier } from '@/lib/format';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface UnitEconData {
   breakdown: {
@@ -48,8 +47,8 @@ export default function UnitEconomicsPage() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch(`${API}/api/metrics/unit-economics?days=${days}`).then((r) => r.ok ? r.json() : null),
-      fetch(`${API}/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/unit-economics?days=${days}`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
     ])
       .then(([unitData, cohortData]) => {
         if (!unitData) { setError(true); setLoading(false); return; }

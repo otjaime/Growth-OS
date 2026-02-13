@@ -20,8 +20,7 @@ import {
 } from 'lucide-react';
 import { ConnectorIcon } from './connector-icon';
 import type { ConnectorDef } from './types';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { API, apiFetch } from '@/lib/api';
 
 interface SetupWizardProps {
   connector: ConnectorDef;
@@ -63,7 +62,7 @@ export function SetupWizard({ connector, onClose, onSaved, initialStep }: SetupW
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/connections`, {
+      const res = await apiFetch(`/api/connections`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectorType: connector.id, fields }),
@@ -88,7 +87,7 @@ export function SetupWizard({ connector, onClose, onSaved, initialStep }: SetupW
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(`${API}/api/connections/${connector.id}/test`, { method: 'POST' });
+      const res = await apiFetch(`/api/connections/${connector.id}/test`, { method: 'POST' });
       const data = await res.json();
       setTestResult({ success: data.success, message: data.message });
       if (data.success) {
@@ -105,7 +104,7 @@ export function SetupWizard({ connector, onClose, onSaved, initialStep }: SetupW
     const save = async () => {
       setSaving(true);
       try {
-        await fetch(`${API}/api/connections`, {
+        await apiFetch(`/api/connections`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connectorType: connector.id, fields }),

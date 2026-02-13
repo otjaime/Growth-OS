@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { formatCurrency, formatPercent, formatNumber, changeColor, formatPercentChange } from '@/lib/format';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 const CHANNEL_COLORS: Record<string, string> = {
   meta: '#3b82f6',
@@ -48,7 +47,7 @@ export default function ChannelsPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API}/api/metrics/channels?days=${days}`)
+    apiFetch(`/api/metrics/channels?days=${days}`)
       .then((r) => r.ok ? r.json() : { channels: [] })
       .then((data: { channels?: ChannelData[] }) => {
         setChannels(data.channels ?? []);

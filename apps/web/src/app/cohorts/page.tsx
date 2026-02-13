@@ -6,8 +6,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from 'recharts';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface CohortData {
   cohortMonth: string;
@@ -35,7 +34,7 @@ export default function CohortsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/metrics/cohorts`)
+    apiFetch(`/api/metrics/cohorts`)
       .then((r) => r.ok ? r.json() : { cohorts: [] })
       .then((data: { cohorts: CohortData[] }) => {
         setCohorts(data.cohorts);

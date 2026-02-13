@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { formatCurrency, formatPercent, formatPercentChange, changeColor, formatDays, formatMultiplier } from '@/lib/format';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+import { apiFetch } from '@/lib/api';
 
 interface WbrSummary {
   revenue: number;
@@ -45,7 +44,7 @@ export default function WbrPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/api/wbr`)
+    apiFetch(`/api/wbr`)
       .then((r) => r.ok ? r.json() : null)
       .then((d: WbrData | null) => {
         if (!d) { setError(true); setLoading(false); return; }
