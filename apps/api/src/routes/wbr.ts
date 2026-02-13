@@ -427,7 +427,7 @@ export async function wbrRoutes(app: FastifyInstance) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': process.env.FRONTEND_URL ?? '*',
+      'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:3000',
     });
 
     try {

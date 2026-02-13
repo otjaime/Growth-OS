@@ -8,13 +8,13 @@ services:
     ports:
       - '5432:5432'
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-growthuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-growthpass}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-growth_os}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U growthuser -d growth_os']
+      test: ['CMD-SHELL', 'pg_isready -d growth_os']
       interval: 5s
       timeout: 5s
       retries: 5

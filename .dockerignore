@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+node_modules
+**/node_modules
+*.md
+LICENSE
+.github
+.vscode
+.idea
+apps/e2e
+test-results
+coverage
+*.log

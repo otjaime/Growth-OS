@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 env:
-  DATABASE_URL: postgresql://postgres:growth@localhost:5432/growth_os
+  CI_DB_PASSWORD: ci_test_only_ephemeral
+  DATABASE_URL: postgresql://postgres:ci_test_only_ephemeral@localhost:5432/growth_os
   REDIS_URL: redis://localhost:6379
   DEMO_MODE: 'true'
   NODE_ENV: test
@@ -130,7 +131,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: growth
+          POSTGRES_PASSWORD: ci_test_only_ephemeral
           POSTGRES_DB: growth_os
         ports:
           - 5432:5432
