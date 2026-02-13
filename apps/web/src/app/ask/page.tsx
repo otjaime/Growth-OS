@@ -49,14 +49,9 @@ export default function AskPage() {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('growth_os_token') : null;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-      const res = await fetch(`${apiBase}/api/ask`, {
+      const res = await apiFetch('/api/ask', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q }),
       });
 
