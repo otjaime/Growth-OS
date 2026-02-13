@@ -64,7 +64,7 @@
           "pdpToAtc": 0.25,
           "atcToCheckout": 0.5,
           "checkoutToPurchase": 0.4,
-          "sessionToPurchase": 0.02
+          "overall": 0.02
         },
         "notes": "Standard e-commerce funnel"
       }

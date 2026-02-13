@@ -136,7 +136,7 @@ describe('KPI Boundary Conditions', () => {
       expect(result.pdpToAtc).toBe(0);
       expect(result.atcToCheckout).toBe(0);
       expect(result.checkoutToPurchase).toBe(0);
-      expect(result.sessionToPurchase).toBe(0);
+      expect(result.overall).toBe(0);
     });
 
     it('handles partial funnel (traffic but no purchases)', () => {
@@ -151,7 +151,7 @@ describe('KPI Boundary Conditions', () => {
       expect(result.pdpToAtc).toBe(0.2);
       expect(result.atcToCheckout).toBe(0);
       expect(result.checkoutToPurchase).toBe(0);
-      expect(result.sessionToPurchase).toBe(0);
+      expect(result.overall).toBe(0);
     });
   });
 

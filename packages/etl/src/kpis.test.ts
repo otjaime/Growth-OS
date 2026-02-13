@@ -340,7 +340,7 @@ describe('funnelCvr', () => {
     expect(result.pdpToAtc).toBeCloseTo(0.25);
     expect(result.atcToCheckout).toBeCloseTo(0.5);
     expect(result.checkoutToPurchase).toBeCloseTo(0.4);
-    expect(result.sessionToPurchase).toBeCloseTo(0.02);
+    expect(result.overall).toBeCloseTo(0.02);
   });
 
   it('handles zero sessions', () => {
@@ -353,7 +353,7 @@ describe('funnelCvr', () => {
     };
     const result = funnelCvr(traffic);
     expect(result.sessionToPdp).toBe(0);
-    expect(result.sessionToPurchase).toBe(0);
+    expect(result.overall).toBe(0);
   });
 
   it('handles perfect funnel', () => {
@@ -365,7 +365,7 @@ describe('funnelCvr', () => {
       purchases: 100,
     };
     const result = funnelCvr(traffic);
-    expect(result.sessionToPurchase).toBe(1.0);
+    expect(result.overall).toBe(1.0);
   });
 });
 

@@ -255,7 +255,7 @@ describe('Metrics Routes', () => {
       const body = JSON.parse(res.payload);
       expect(body).toHaveProperty('funnel');
       expect(body).toHaveProperty('cvr');
-      expect(body.cvr.sessionToPurchase).toBeCloseTo(0.02);
+      expect(body.cvr.overall).toBeCloseTo(0.02);
     });
   });
 
@@ -492,7 +492,7 @@ describe('API Edge Cases', () => {
     await app.register(metricsRoutes, { prefix: '/api' });
     const res = await app.inject({ method: 'GET', url: '/api/metrics/funnel' });
     const body = JSON.parse(res.payload);
-    expect(body.cvr.sessionToPurchase).toBe(0);
+    expect(body.cvr.overall).toBe(0);
     expect(body.cvr.sessionToPdp).toBe(0);
     await app.close();
   });

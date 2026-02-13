@@ -117,14 +117,14 @@ export function funnelCvr(
   pdpToAtc: number;
   atcToCheckout: number;
   checkoutToPurchase: number;
-  sessionToPurchase: number;
+  overall: number;
 } {
   return {
     sessionToPdp: traffic.sessions > 0 ? traffic.pdpViews / traffic.sessions : 0,
     pdpToAtc: traffic.pdpViews > 0 ? traffic.addToCart / traffic.pdpViews : 0,
     atcToCheckout: traffic.addToCart > 0 ? traffic.checkouts / traffic.addToCart : 0,
     checkoutToPurchase: traffic.checkouts > 0 ? traffic.purchases / traffic.checkouts : 0,
-    sessionToPurchase: traffic.sessions > 0 ? traffic.purchases / traffic.sessions : 0,
+    overall: traffic.sessions > 0 ? traffic.purchases / traffic.sessions : 0,
   };
 }
 
