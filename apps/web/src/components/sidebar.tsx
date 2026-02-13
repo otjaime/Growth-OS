@@ -15,6 +15,10 @@ import {
   Activity,
   Filter,
   Settings,
+  Sparkles,
+  Gauge,
+  Menu,
+  X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
@@ -39,7 +43,9 @@ const NAV_ITEMS = [
   { href: '/unit-economics', label: 'Unit Economics', icon: DollarSign },
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
+  { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
   { href: '/connections', label: 'Data Connections', icon: Cable },
+  { href: '/pipeline', label: 'Pipeline Health', icon: Gauge },
   { href: '/jobs', label: 'Job Runs', icon: Activity },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -49,6 +55,7 @@ export function Sidebar() {
   const [demoMode, setDemoMode] = useState<boolean | null>(null);
   const [apiOk, setApiOk] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const fetchHealth = () => {
@@ -64,25 +71,38 @@ export function Sidebar() {
         });
     };
     fetchHealth();
-    // Refresh health every 60s to keep sync timestamp current
     const id = setInterval(fetchHealth, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const syncLabel = lastSyncAt
     ? `Synced ${formatRelativeTime(lastSyncAt)}`
     : 'Not synced yet';
 
-  return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-[#0c1524] border-r border-[var(--card-border)] flex flex-col z-50">
+  const sidebarContent = (
+    <>
       {/* Logo */}
       <div className="px-6 py-5 border-b border-[var(--card-border)]">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-7 w-7 text-blue-500" />
-          <div>
-            <h1 className="text-lg font-bold text-white">Growth OS</h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Analytics Platform</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-7 w-7 text-blue-500" />
+            <div>
+              <h1 className="text-lg font-bold text-white">Growth OS</h1>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">Analytics Platform</p>
+            </div>
           </div>
+          {/* Close button on mobile */}
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="lg:hidden p-1 text-slate-400 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
@@ -109,7 +129,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer — mode + sync indicator */}
+      {/* Footer */}
       <div className="px-6 py-4 border-t border-[var(--card-border)] space-y-2">
         <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className={clsx(
@@ -125,6 +145,40 @@ export function Sidebar() {
         )}
         <LogoutButton />
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-slate-800 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — desktop: fixed, mobile: slide-out */}
+      <aside
+        className={clsx(
+          'fixed left-0 top-0 h-screen w-64 bg-[#0c1524] border-r border-[var(--card-border)] flex flex-col z-50 transition-transform duration-200',
+          // Desktop: always visible
+          'lg:translate-x-0',
+          // Mobile: slide in/out
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        )}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

@@ -159,6 +159,36 @@ export function generateShopifyOrders(ctx?: DemoContext): RawRecord[] {
         utmMedium = 'referral';
       }
 
+      // Build customerJourneySummary matching Shopify's GraphQL format
+      const journeySource = utmSource === 'facebook' ? 'facebook'
+        : utmSource === 'google' ? 'google'
+        : utmSource === 'klaviyo' ? 'klaviyo'
+        : utmSource === 'affiliate' ? 'affiliate'
+        : null;
+      const journeySourceType = utmSource === 'facebook' ? 'SOCIAL'
+        : utmSource === 'google' ? 'SEARCH'
+        : utmSource === 'klaviyo' ? 'EMAIL'
+        : utmSource === 'affiliate' ? 'REFERRAL'
+        : customer.acquisitionChannel === 'direct' ? 'DIRECT'
+        : customer.acquisitionChannel === 'organic' ? 'SEARCH'
+        : 'UNKNOWN';
+
+      const customerJourneySummary = journeySource ? {
+        firstVisit: {
+          source: journeySource,
+          sourceType: journeySourceType,
+          utmParameters: utmSource ? { source: utmSource, medium: utmMedium, campaign: utmCampaign } : null,
+        },
+        lastVisit: {
+          source: journeySource,
+          sourceType: journeySourceType,
+          utmParameters: utmSource ? { source: utmSource, medium: utmMedium, campaign: utmCampaign } : null,
+        },
+      } : (customer.acquisitionChannel === 'organic' ? {
+        firstVisit: { source: 'google', sourceType: 'SEARCH', utmParameters: { source: 'google', medium: 'organic', campaign: null } },
+        lastVisit: { source: 'google', sourceType: 'SEARCH', utmParameters: { source: 'google', medium: 'organic', campaign: null } },
+      } : null);
+
       const order = {
         id: `gid://shopify/Order/${orderId}`,
         order_number: orderId,
@@ -178,6 +208,7 @@ export function generateShopifyOrders(ctx?: DemoContext): RawRecord[] {
         source_name: sourceName,
         landing_site: utmSource ? `/?utm_source=${utmSource}&utm_medium=${utmMedium}&utm_campaign=${utmCampaign}` : '/',
         referring_site: utmSource === 'facebook' ? 'https://www.facebook.com/' : utmSource === 'google' ? 'https://www.google.com/' : null,
+        customerJourneySummary,
         line_items: Array.from({ length: numItems }, (_, i) => ({
           id: `li_${orderId}_${i}`,
           title: `${category.charAt(0).toUpperCase() + category.slice(1)} Item ${randInt(100, 999, c.rng)}`,

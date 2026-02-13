@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────────────────────
 // Growth OS — Shopify Connector
-// Uses REST API for orders (landing_site preserves gclid/UTM params)
+// Uses GraphQL Admin API for orders (includes customerJourneySummary
+// for accurate channel attribution matching Shopify's own analytics)
 // Supports both real API and demo mode
 // ──────────────────────────────────────────────────────────────
 
@@ -9,6 +10,56 @@ import { createLogger } from '../logger.js';
 import { generateShopifyOrders, generateShopifyCustomers } from './demo-generator.js';
 
 const log = createLogger('connector:shopify');
+
+const ORDERS_QUERY = `
+  query OrdersQuery($first: Int!, $after: String, $query: String) {
+    orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          createdAt
+          updatedAt
+          totalPriceSet { shopMoney { amount currencyCode } }
+          totalDiscountsSet { shopMoney { amount } }
+          sourceName
+          landingPageUrl
+          referrerUrl
+          tags
+          customer { id email }
+          shippingAddress { provinceCode }
+          lineItems(first: 50) {
+            edges {
+              node {
+                title
+                quantity
+                originalUnitPriceSet { shopMoney { amount } }
+                variant { product { productType } }
+              }
+            }
+          }
+          customerJourneySummary {
+            firstVisit {
+              source
+              sourceType
+              utmParameters { source medium campaign }
+            }
+            lastVisit {
+              source
+              sourceType
+              utmParameters { source medium campaign }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
 
 export async function fetchShopifyOrders(
   config: ShopifyConfig,
@@ -19,31 +70,33 @@ export async function fetchShopifyOrders(
     return { records: generateShopifyOrders(), nextCursor: undefined };
   }
 
-  const baseUrl = `https://${config.shopDomain}/admin/api/2024-01/orders.json`;
+  const graphqlUrl = `https://${config.shopDomain}/admin/api/2024-01/graphql.json`;
   const records: RawRecord[] = [];
   let retries = 0;
   const MAX_RETRIES = 5;
 
-  // Build initial URL with params
-  const params = new URLSearchParams({
-    limit: '250',
-    status: 'any',
-  });
-  // Incremental sync: only fetch orders updated since last sync cursor
-  if (afterCursor) {
-    params.set('updated_at_min', afterCursor);
-    log.info({ updatedAtMin: afterCursor }, 'Incremental sync from cursor');
-  }
-  let nextUrl: string | null = `${baseUrl}?${params.toString()}`;
+  // Build query filter for incremental sync
+  const queryFilter = afterCursor ? `updated_at:>'${afterCursor}'` : null;
 
-  while (nextUrl) {
+  let hasNextPage = true;
+  let cursor: string | null = null;
+
+  while (hasNextPage) {
     try {
-      const resp = await fetch(nextUrl, {
-        method: 'GET',
+      const resp = await fetch(graphqlUrl, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Shopify-Access-Token': config.accessToken,
         },
+        body: JSON.stringify({
+          query: ORDERS_QUERY,
+          variables: {
+            first: 250,
+            after: cursor,
+            query: queryFilter,
+          },
+        }),
       });
 
       if (resp.status === 429) {
@@ -56,48 +109,53 @@ export async function fetchShopifyOrders(
       }
 
       if (!resp.ok) {
-        throw new Error(`Shopify API error: ${resp.status} ${resp.statusText}`);
+        throw new Error(`Shopify GraphQL error: ${resp.status} ${resp.statusText}`);
       }
 
-      const data = (await resp.json()) as {
-        orders: Array<Record<string, unknown>>;
+      const json = (await resp.json()) as {
+        data?: {
+          orders?: {
+            edges: Array<{ cursor: string; node: Record<string, unknown> }>;
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          };
+        };
+        errors?: Array<{ message: string }>;
       };
 
-      for (const order of data.orders) {
+      if (json.errors?.length) {
+        const messages = json.errors.map((e) => e.message).join('; ');
+        throw new Error(`Shopify GraphQL errors: ${messages}`);
+      }
+
+      const ordersData = json.data?.orders;
+      if (!ordersData) {
+        log.warn('No orders data in GraphQL response');
+        break;
+      }
+
+      for (const edge of ordersData.edges) {
+        const node = edge.node;
         records.push({
           source: 'shopify',
           entity: 'orders',
-          externalId: `gid://shopify/Order/${order.id}`,
-          cursor: String(order.updated_at),
-          payload: order,
+          externalId: node.id as string,
+          cursor: node.updatedAt as string,
+          payload: node,
         });
       }
 
       retries = 0;
-
-      // Pagination: Shopify REST uses Link header
-      const linkHeader = resp.headers.get('Link');
-      nextUrl = parseLinkNext(linkHeader);
+      hasNextPage = ordersData.pageInfo.hasNextPage;
+      cursor = ordersData.pageInfo.endCursor;
     } catch (err) {
       log.error({ err }, 'Error fetching Shopify orders');
       throw err;
     }
   }
 
-  log.info({ count: records.length }, 'Fetched Shopify orders (REST)');
+  log.info({ count: records.length }, 'Fetched Shopify orders (GraphQL)');
   const lastRecord = records[records.length - 1];
   return { records, nextCursor: lastRecord ? lastRecord.cursor : undefined };
-}
-
-function parseLinkNext(linkHeader: string | null): string | null {
-  if (!linkHeader) return null;
-  // Format: <https://...>; rel="next", <https://...>; rel="previous"
-  const parts = linkHeader.split(',');
-  for (const part of parts) {
-    const match = part.match(/<([^>]+)>;\s*rel="next"/);
-    if (match) return match[1] ?? null;
-  }
-  return null;
 }
 
 export async function fetchShopifyCustomers(
@@ -108,7 +166,7 @@ export async function fetchShopifyCustomers(
     return { records: generateShopifyCustomers() };
   }
 
-  // Real implementation would use similar REST pagination
+  // Real implementation would use similar GraphQL pagination
   log.warn('Real Shopify customer fetch not fully implemented; use demo mode');
   return { records: [] };
 }

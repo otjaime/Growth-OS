@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info } from 'lucide-react';
-import { formatCurrency, formatPercent, formatPercentChange, changeColor, formatDays, formatMultiplier } from '@/lib/format';
-import { apiFetch } from '@/lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info, Sparkles, Loader2, Download } from 'lucide-react';
+import { formatCurrency, formatPercent, formatPercentChange, changeColor, formatMultiplier } from '@/lib/format';
+import { apiFetch, API, getAuthToken } from '@/lib/api';
 
 interface WbrSummary {
   revenue: number;
@@ -34,6 +34,7 @@ interface WbrData {
   narrative: string;
   summary: WbrSummary;
   alerts: WbrAlert[];
+  aiEnabled: boolean;
   generatedAt: string;
 }
 
@@ -42,6 +43,12 @@ export default function WbrPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // AI streaming state
+  const [aiNarrative, setAiNarrative] = useState('');
+  const [aiStreaming, setAiStreaming] = useState(false);
+  const [aiDone, setAiDone] = useState(false);
+  const aiRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     apiFetch(`/api/wbr`)
@@ -55,10 +62,62 @@ export default function WbrPage() {
   }, []);
 
   const handleCopy = async () => {
-    if (!data) return;
-    await navigator.clipboard.writeText(data.narrative);
+    const textToCopy = aiDone ? aiNarrative : data?.narrative;
+    if (!textToCopy) return;
+    await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleGenerateAI = () => {
+    setAiStreaming(true);
+    setAiNarrative('');
+    setAiDone(false);
+
+    const token = getAuthToken();
+    const url = `${API}/api/wbr/ai`;
+
+    fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async (response) => {
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.text) {
+                setAiNarrative((prev) => prev + payload.text);
+              }
+              if (payload.done) {
+                setAiDone(true);
+                setAiStreaming(false);
+              }
+              if (payload.error) {
+                setAiStreaming(false);
+              }
+            } catch {
+              // ignore malformed JSON
+            }
+          }
+        }
+      }
+      setAiStreaming(false);
+      setAiDone(true);
+    }).catch(() => {
+      setAiStreaming(false);
+    });
   };
 
   if (loading) {
@@ -78,8 +137,11 @@ export default function WbrPage() {
 
   const s = data.summary;
 
+  // Decide which narrative to display
+  const activeNarrative = (aiDone || aiStreaming) ? aiNarrative : data.narrative;
+
   /* Parse narrative into heading + body sections */
-  const sections = data.narrative.split(/^(#{1,3}\s.+)$/gm).filter(Boolean);
+  const sections = activeNarrative.split(/^(#{1,3}\s.+)$/gm).filter(Boolean);
   const rendered: { heading: string; level: number; body: string }[] = [];
   for (let i = 0; i < sections.length; i++) {
     const raw = sections[i].trim();
@@ -96,7 +158,6 @@ export default function WbrPage() {
 
   /* Render a single markdown line with inline bold support */
   function renderLine(line: string, key: number) {
-    // Numbered list: "1. Item text"
     const numMatch = line.match(/^(\d+)\.\s+(.+)/);
     if (numMatch) {
       return (
@@ -106,7 +167,6 @@ export default function WbrPage() {
         </div>
       );
     }
-    // Bullet list
     if (line.startsWith('- ')) {
       return (
         <div key={key} className="flex gap-2 ml-2 my-1">
@@ -115,13 +175,10 @@ export default function WbrPage() {
         </div>
       );
     }
-    // Empty line
     if (!line) return <div key={key} className="h-2" />;
-    // Regular paragraph
     return <p key={key} className="my-1">{renderInlineBold(line)}</p>;
   }
 
-  /* Render inline **bold** fragments within a line */
   function renderInlineBold(text: string) {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     if (parts.length === 1) return text;
@@ -160,14 +217,44 @@ export default function WbrPage() {
             <p className="text-xs text-slate-500 mt-0.5">{data.weekLabel}</p>
           </div>
         </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors"
-        >
-          {copied ? <Check className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
-          {copied ? 'Copied!' : 'Copy Markdown'}
-        </button>
+        <div className="flex items-center gap-2">
+          {data.aiEnabled && (
+            <button
+              onClick={handleGenerateAI}
+              disabled={aiStreaming}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+            >
+              {aiStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {aiStreaming ? 'Generating...' : aiDone ? 'Regenerate AI' : 'AI Analysis'}
+            </button>
+          )}
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors print:hidden"
+          >
+            <Download className="h-4 w-4" />
+            Export PDF
+          </button>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors print:hidden"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
+            {copied ? 'Copied!' : 'Copy Markdown'}
+          </button>
+        </div>
       </div>
+
+      {/* AI Badge */}
+      {(aiStreaming || aiDone) && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg w-fit">
+          <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+          <span className="text-xs text-purple-300">
+            {aiStreaming ? 'AI is analyzing your data...' : 'AI-generated analysis'}
+          </span>
+          {aiStreaming && <Loader2 className="h-3 w-3 text-purple-400 animate-spin" />}
+        </div>
+      )}
 
       {/* KPI Summary Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -218,30 +305,41 @@ export default function WbrPage() {
       )}
 
       {/* Narrative Sections */}
-      {rendered.length > 0 ? (
-        <div className="space-y-4">
-          {rendered.map((section, i) => {
-            // Skip the top-level title (already shown in header)
-            if (section.level === 1) return null;
-            return (
-              <div key={i} className="card">
-                <h2 className="text-lg font-semibold text-white mb-3">{section.heading}</h2>
-                <div className="text-slate-300 text-sm leading-relaxed">
-                  {section.body.split('\n').map((line, j) => renderLine(line, j))}
+      <div ref={aiRef}>
+        {rendered.length > 0 ? (
+          <div className="space-y-4">
+            {rendered.map((section, i) => {
+              if (section.level === 1) return null;
+              return (
+                <div key={i} className="card">
+                  <h2 className="text-lg font-semibold text-white mb-3">{section.heading}</h2>
+                  <div className="text-slate-300 text-sm leading-relaxed">
+                    {section.body.split('\n').map((line, j) => renderLine(line, j))}
+                  </div>
                 </div>
+              );
+            })}
+            {aiStreaming && (
+              <div className="flex items-center gap-2 text-purple-400 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Analyzing...</span>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="card">
-          <div className="text-slate-300 whitespace-pre-wrap text-sm leading-relaxed">{data.narrative}</div>
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          <div className="card">
+            <div className="text-slate-300 whitespace-pre-wrap text-sm leading-relaxed">
+              {activeNarrative}
+              {aiStreaming && <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5" />}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Footer */}
       <p className="text-xs text-slate-600 text-right">
         Generated {new Date(data.generatedAt).toLocaleString()}
+        {aiDone && ' | AI-enhanced'}
       </p>
     </div>
   );

@@ -2,7 +2,26 @@ import type { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode } from '@growth-os/database';
 
 export async function healthRoutes(app: FastifyInstance) {
-  app.get('/health', async () => {
+  app.get('/health', {
+    schema: {
+      tags: ['health'],
+      summary: 'Health check',
+      description: 'Returns API health status, database connectivity, and sync freshness',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['healthy', 'degraded'] },
+            timestamp: { type: 'string', format: 'date-time' },
+            db: { type: 'string', enum: ['connected', 'disconnected'] },
+            demoMode: { type: 'boolean' },
+            lastSyncAt: { type: 'string', format: 'date-time', nullable: true },
+            version: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async () => {
     let dbOk = false;
     try {
       await prisma.$queryRaw`SELECT 1`;

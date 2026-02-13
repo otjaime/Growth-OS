@@ -9,6 +9,8 @@ import { subDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import { evaluateAlerts } from '@growth-os/etl';
 import type { AlertInput } from '@growth-os/etl';
+import { isAIConfigured, generateWBRNarrative } from '../lib/ai.js';
+import type { WbrAIContext } from '../lib/ai.js';
 
 export async function wbrRoutes(app: FastifyInstance) {
   app.get('/wbr', async () => {
@@ -240,7 +242,204 @@ export async function wbrRoutes(app: FastifyInstance) {
         paybackDays,
       },
       alerts,
+      aiEnabled: isAIConfigured(),
       generatedAt: new Date().toISOString(),
     };
+  });
+
+  // ── AI-powered WBR (Server-Sent Events stream) ──
+  app.get('/wbr/ai', async (request, reply) => {
+    if (!isAIConfigured()) {
+      return reply.status(400).send({ error: 'OPENAI_API_KEY not configured' });
+    }
+
+    const now = new Date();
+    const weekStart = subDays(now, 7);
+    const prevWeekStart = subDays(weekStart, 7);
+
+    const currentOrders = await prisma.factOrder.findMany({
+      where: { orderDate: { gte: weekStart, lte: now } },
+    });
+    const previousOrders = await prisma.factOrder.findMany({
+      where: { orderDate: { gte: prevWeekStart, lt: weekStart } },
+    });
+
+    const curSpendAgg = await prisma.factSpend.aggregate({
+      _sum: { spend: true },
+      where: { date: { gte: weekStart, lte: now } },
+    });
+    const prevSpendAgg = await prisma.factSpend.aggregate({
+      _sum: { spend: true },
+      where: { date: { gte: prevWeekStart, lt: weekStart } },
+    });
+    const curTrafficAgg = await prisma.factTraffic.aggregate({
+      _sum: { sessions: true },
+      where: { date: { gte: weekStart, lte: now } },
+    });
+
+    const curRevenue = currentOrders.reduce((s, o) => s + Number(o.revenueGross), 0);
+    const prevRevenue = previousOrders.reduce((s, o) => s + Number(o.revenueGross), 0);
+    const curRevenueNet = currentOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
+    const prevRevenueNet = previousOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
+    const curCM = currentOrders.reduce((s, o) => s + Number(o.contributionMargin), 0);
+    const prevCM = previousOrders.reduce((s, o) => s + Number(o.contributionMargin), 0);
+    const curSpend = Number(curSpendAgg._sum.spend ?? 0);
+    const prevSpend = Number(prevSpendAgg._sum.spend ?? 0);
+    const curNewCust = currentOrders.filter((o) => o.isNewCustomer).length;
+    const prevNewCust = previousOrders.filter((o) => o.isNewCustomer).length;
+
+    const curCAC = kpiCalcs.kpis.blendedCac(curSpend, curNewCust);
+    const prevCAC = kpiCalcs.kpis.blendedCac(prevSpend, prevNewCust);
+    const curMER = kpiCalcs.kpis.mer(curRevenue, curSpend);
+    const curCMPct = kpiCalcs.kpis.contributionMarginPct(curCM, curRevenueNet);
+    const prevCMPct = kpiCalcs.kpis.contributionMarginPct(prevCM, prevRevenueNet);
+    const curAOV = kpiCalcs.kpis.aov(curRevenueNet, currentOrders.length);
+    const curSessions = curTrafficAgg._sum.sessions ?? 0;
+
+    // Per-channel
+    const channelSpendCur = await prisma.factSpend.groupBy({
+      by: ['channelId'], _sum: { spend: true },
+      where: { date: { gte: weekStart, lte: now } },
+    });
+    const channelSpendPrev = await prisma.factSpend.groupBy({
+      by: ['channelId'], _sum: { spend: true },
+      where: { date: { gte: prevWeekStart, lt: weekStart } },
+    });
+    const channels = await prisma.dimChannel.findMany();
+    const channelMap = new Map(channels.map((c) => [c.id, c.slug]));
+
+    const channelRevCur = new Map<string, { revenue: number; newCust: number }>();
+    for (const o of currentOrders) {
+      const slug = (o.channelId && channelMap.get(o.channelId)) ?? 'other';
+      const entry = channelRevCur.get(slug) ?? { revenue: 0, newCust: 0 };
+      entry.revenue += Number(o.revenueGross);
+      if (o.isNewCustomer) entry.newCust++;
+      channelRevCur.set(slug, entry);
+    }
+
+    const spendCurMap = new Map<string, number>();
+    const spendPrevMap = new Map<string, number>();
+    for (const row of channelSpendCur) {
+      const slug = channelMap.get(row.channelId) ?? 'other';
+      spendCurMap.set(slug, (spendCurMap.get(slug) ?? 0) + Number(row._sum.spend ?? 0));
+    }
+    for (const row of channelSpendPrev) {
+      const slug = channelMap.get(row.channelId) ?? 'other';
+      spendPrevMap.set(slug, (spendPrevMap.get(slug) ?? 0) + Number(row._sum.spend ?? 0));
+    }
+
+    const channelRevPrev = new Map<string, { revenue: number; newCust: number }>();
+    for (const o of previousOrders) {
+      const slug = (o.channelId && channelMap.get(o.channelId)) ?? 'other';
+      const entry = channelRevPrev.get(slug) ?? { revenue: 0, newCust: 0 };
+      entry.revenue += Number(o.revenueGross);
+      if (o.isNewCustomer) entry.newCust++;
+      channelRevPrev.set(slug, entry);
+    }
+
+    const allSlugs = new Set([...spendCurMap.keys(), ...spendPrevMap.keys(), ...channelRevCur.keys()]);
+    const channelBreakdowns: AlertInput['channels'] = [];
+    for (const slug of allSlugs) {
+      channelBreakdowns.push({
+        name: slug,
+        currentSpend: spendCurMap.get(slug) ?? 0,
+        currentRevenue: channelRevCur.get(slug)?.revenue ?? 0,
+        previousSpend: spendPrevMap.get(slug) ?? 0,
+        previousRevenue: channelRevPrev.get(slug)?.revenue ?? 0,
+        currentNewCustomers: channelRevCur.get(slug)?.newCust ?? 0,
+        previousNewCustomers: channelRevPrev.get(slug)?.newCust ?? 0,
+      });
+    }
+
+    // Alerts
+    const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
+    const baselineD30 = cohorts.length > 0
+      ? cohorts.reduce((s, c) => s + Number(c.d30Retention), 0) / cohorts.length
+      : 0.15;
+    const latestCohort = cohorts.length > 0 ? cohorts[0] : null;
+    const latestD30 = latestCohort ? Number(latestCohort.d30Retention) : baselineD30;
+    const ltvCacRatio = latestCohort && Number(latestCohort.avgCac) > 0
+      ? Number(latestCohort.ltv180) / Number(latestCohort.avgCac)
+      : 0;
+
+    const alertInput: AlertInput = {
+      currentRevenue: curRevenue, currentSpend: curSpend,
+      currentNewCustomers: curNewCust, currentTotalOrders: currentOrders.length,
+      currentContributionMargin: curCM,
+      currentRevenueNet: curRevenueNet, currentD30Retention: latestD30,
+      previousRevenue: prevRevenue, previousSpend: prevSpend,
+      previousNewCustomers: prevNewCust, previousTotalOrders: previousOrders.length,
+      previousContributionMargin: prevCM,
+      previousRevenueNet: prevRevenueNet, previousD30Retention: baselineD30,
+      baselineD30Retention: baselineD30,
+      channels: channelBreakdowns,
+    };
+    const alerts = evaluateAlerts(alertInput);
+
+    const weekLabel = `${format(weekStart, 'MMM d')} – ${format(now, 'MMM d, yyyy')}`;
+
+    const aiContext: WbrAIContext = {
+      weekLabel,
+      current: {
+        revenue: curRevenue,
+        revenueNet: curRevenueNet,
+        orders: currentOrders.length,
+        newCustomers: curNewCust,
+        spend: curSpend,
+        cac: curCAC,
+        mer: curMER,
+        cmPct: curCMPct,
+        aov: curAOV,
+        sessions: curSessions,
+      },
+      previous: {
+        revenue: prevRevenue,
+        orders: previousOrders.length,
+        newCustomers: prevNewCust,
+        spend: prevSpend,
+        cac: prevCAC,
+        cmPct: prevCMPct,
+      },
+      channels: channelBreakdowns.map((ch) => ({
+        name: ch.name,
+        currentSpend: ch.currentSpend,
+        currentRevenue: ch.currentRevenue,
+        previousSpend: ch.previousSpend,
+        previousRevenue: ch.previousRevenue,
+        currentNewCustomers: ch.currentNewCustomers,
+      })),
+      alerts: alerts.map((a) => ({
+        severity: a.severity,
+        title: a.title,
+        description: a.description,
+        recommendation: a.recommendation,
+      })),
+      cohort: latestCohort ? {
+        ltvCacRatio: Math.round(ltvCacRatio * 10) / 10,
+        paybackDays: latestCohort.paybackDays,
+        ltv90: Number(latestCohort.ltv90),
+        d30Retention: Number(latestCohort.d30Retention),
+      } : null,
+    };
+
+    // Stream SSE
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': process.env.FRONTEND_URL ?? '*',
+    });
+
+    try {
+      const stream = await generateWBRNarrative(aiContext);
+      for await (const chunk of stream) {
+        reply.raw.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+      }
+      reply.raw.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch (err) {
+      reply.raw.write(`data: ${JSON.stringify({ error: 'AI generation failed' })}\n\n`);
+      app.log.error({ err }, 'AI WBR generation failed');
+    }
+    reply.raw.end();
   });
 }

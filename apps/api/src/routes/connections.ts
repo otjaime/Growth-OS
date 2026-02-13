@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
+import { prisma, Prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
 import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
 import { normalizeStaging, buildMarts } from '@growth-os/etl';
@@ -819,6 +819,76 @@ export async function connectionsRoutes(app: FastifyInstance) {
     return { success: true, message: 'Rebuilding marts from staging data (background)' };
   });
 
+  // ── CSV Upload ──────────────────────────────────────────────
+  app.post('/connections/csv/upload', {
+    schema: {
+      tags: ['connections'],
+      summary: 'Upload CSV data',
+      description: 'Upload a CSV file to ingest offline data (orders, spend, traffic, customers). Triggers pipeline rebuild after ingestion.',
+    },
+  }, async (request) => {
+    const data = await request.file();
+    if (!data) {
+      return { success: false, error: 'No file uploaded' };
+    }
+
+    const dataType = (data.fields.dataType as { value: string } | undefined)?.value ?? 'orders';
+    const label = (data.fields.label as { value: string } | undefined)?.value ?? 'CSV Upload';
+    const validTypes = ['orders', 'customers', 'spend', 'traffic', 'custom'];
+    if (!validTypes.includes(dataType)) {
+      return { success: false, error: `Invalid data type: ${dataType}. Must be one of: ${validTypes.join(', ')}` };
+    }
+
+    // Read the file buffer
+    const buffer = await data.toBuffer();
+    const content = buffer.toString('utf-8');
+
+    // Parse CSV
+    const rows = parseCSV(content);
+    if (rows.length === 0) {
+      return { success: false, error: 'CSV file is empty or could not be parsed' };
+    }
+
+    // Store each row as a raw event
+    const records = rows.map((row, i) => ({
+      source: 'csv_upload',
+      entity: dataType,
+      externalId: String(row.order_id ?? row.id ?? row.external_id ?? `csv_${Date.now()}_${i}`),
+      cursor: new Date().toISOString(),
+      payloadJson: row as Prisma.InputJsonValue,
+    }));
+
+    const created = await prisma.rawEvent.createMany({
+      data: records,
+      skipDuplicates: true,
+    });
+
+    // Trigger pipeline rebuild in background
+    normalizeStaging()
+      .then(() => buildMarts())
+      .then((result) => {
+        app.log.info({ result, source: 'csv_upload', rows: created.count }, 'CSV upload pipeline rebuild complete');
+      })
+      .catch((err) => {
+        app.log.error({ error: String(err) }, 'CSV upload pipeline rebuild failed');
+      });
+
+    // Update csv_upload connector freshness
+    await prisma.connectorCredential.updateMany({
+      where: { connectorType: 'csv_upload' },
+      data: { lastSyncAt: new Date(), lastSyncStatus: 'success' },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      rowsIngested: created.count,
+      totalRows: rows.length,
+      dataType,
+      label,
+      message: `Ingested ${created.count} ${dataType} rows. Pipeline rebuild started.`,
+    };
+  });
+
   // ── Delete a connection ─────────────────────────────────────
   app.delete('/connections/:type', async (request) => {
     const { type } = request.params as { type: string };
@@ -1081,4 +1151,65 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
     return { success: true, message: 'Webhook payload received' };
   });
+}
+
+// ── CSV Parser ─────────────────────────────────────────────────
+
+function parseCSV(content: string): Record<string, unknown>[] {
+  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length < 2) return [];
+
+  const separator = lines[0]!.includes('\t') ? '\t' : ',';
+  const headers = parseCsvLine(lines[0]!, separator).map((h) =>
+    h.trim().toLowerCase().replace(/\s+/g, '_'),
+  );
+
+  const rows: Record<string, unknown>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvLine(lines[i]!, separator);
+    const row: Record<string, unknown> = {};
+    for (let j = 0; j < headers.length; j++) {
+      const key = headers[j]!;
+      const val = (values[j] ?? '').trim();
+      // Auto-detect numbers
+      if (val !== '' && !isNaN(Number(val))) {
+        row[key] = Number(val);
+      } else {
+        row[key] = val;
+      }
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCsvLine(line: string, separator: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === separator) {
+        fields.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current);
+  return fields;
 }

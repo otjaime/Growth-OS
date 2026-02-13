@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { KpiCard } from '@/components/kpi-card';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { RevenueChart } from '@/components/revenue-chart';
-import { formatCurrency, formatPercent, formatDays, formatMultiplier } from '@/lib/format';
+import { ForecastChart } from '@/components/forecast-chart';
+import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from '@/components/skeleton';
+import { formatCurrency, formatPercent, formatNumber, formatDays, formatMultiplier } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
 
 interface KpiValue {
@@ -73,6 +75,22 @@ interface ChannelsData {
   channels: ChannelRow[];
 }
 
+interface ForecastResponse {
+  metric: string;
+  horizon: number;
+  parameters: { alpha: number; beta: number; mse: number };
+  historical: Array<{ date: string; value: number }>;
+  forecast: Array<{
+    date: string;
+    value: number;
+    lower80: number;
+    upper80: number;
+    lower95: number;
+    upper95: number;
+  }> | null;
+  error?: string;
+}
+
 export default function DashboardPage() {
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<SummaryData | null>(null);
@@ -81,6 +99,9 @@ export default function DashboardPage() {
   const [channels, setChannels] = useState<ChannelsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [forecastData, setForecastData] = useState<ForecastResponse | null>(null);
+  const [forecastMetric, setForecastMetric] = useState<'revenue' | 'orders' | 'spend'>('revenue');
+  const [forecastLoading, setForecastLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -106,10 +127,33 @@ export default function DashboardPage() {
       });
   }, [days]);
 
+  // Fetch forecast independently (always uses 180 days, not tied to dashboard period)
+  useEffect(() => {
+    setForecastLoading(true);
+    apiFetch(`/api/metrics/forecast?metric=${forecastMetric}&horizon=30`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        setForecastData(data as ForecastResponse | null);
+        setForecastLoading(false);
+      })
+      .catch(() => setForecastLoading(false));
+  }, [forecastMetric]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="animate-pulse rounded bg-slate-700/50 h-8 w-56" />
+          <div className="animate-pulse rounded bg-slate-700/50 h-9 w-36" />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }, (_, i) => <KpiCardSkeleton key={i} />)}
+        </div>
+        <ChartSkeleton />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }, (_, i) => <KpiCardSkeleton key={i} />)}
+        </div>
+        <TableSkeleton rows={4} cols={5} />
       </div>
     );
   }
@@ -171,6 +215,82 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+
+      {/* SECTION 2.5: Revenue Forecast */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} Forecast (30-day)
+          </h2>
+          <div className="flex gap-1">
+            {(['revenue', 'orders', 'spend'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setForecastMetric(m)}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                  forecastMetric === m
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {m === 'revenue' ? 'Revenue' : m === 'orders' ? 'Orders' : 'Spend'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {forecastData?.forecast && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="card flex flex-col gap-2">
+              <p className="text-xs text-slate-400 uppercase tracking-wide">
+                Projected {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} (30d)
+              </p>
+              <p className="text-2xl font-bold text-white">
+                {forecastMetric === 'orders'
+                  ? formatNumber(Math.round(forecastData.forecast.reduce((s, f) => s + f.value, 0)))
+                  : formatCurrency(forecastData.forecast.reduce((s, f) => s + f.value, 0))}
+              </p>
+              <p className="text-xs text-slate-500">
+                80% range:{' '}
+                {forecastMetric === 'orders'
+                  ? formatNumber(Math.round(forecastData.forecast.reduce((s, f) => s + f.lower80, 0)))
+                  : formatCurrency(forecastData.forecast.reduce((s, f) => s + f.lower80, 0))}
+                {' – '}
+                {forecastMetric === 'orders'
+                  ? formatNumber(Math.round(forecastData.forecast.reduce((s, f) => s + f.upper80, 0)))
+                  : formatCurrency(forecastData.forecast.reduce((s, f) => s + f.upper80, 0))}
+              </p>
+            </div>
+            {forecastData.parameters && (
+              <div className="card flex flex-col gap-2">
+                <p className="text-xs text-slate-400 uppercase tracking-wide">Model Parameters</p>
+                <p className="text-sm text-slate-300">
+                  α = {forecastData.parameters.alpha} &nbsp; β = {forecastData.parameters.beta}
+                </p>
+                <p className="text-xs text-slate-500">Holt-Winters (auto-optimized)</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="card">
+          {forecastLoading ? (
+            <div className="flex items-center justify-center h-80">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+            </div>
+          ) : forecastData?.historical ? (
+            <ForecastChart
+              historical={forecastData.historical}
+              forecast={forecastData.forecast}
+              metric={forecastMetric}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-80 text-slate-500">
+              No forecast data available
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* SECTION 3: Customer Economics */}
       <section>

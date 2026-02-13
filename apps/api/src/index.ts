@@ -4,6 +4,9 @@
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { prisma } from '@growth-os/database';
 import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { authRoutes, registerAuthHook } from './lib/auth.js';
@@ -14,6 +17,8 @@ import { connectionsRoutes } from './routes/connections.js';
 import { alertsRoutes } from './routes/alerts.js';
 import { wbrRoutes } from './routes/wbr.js';
 import { settingsRoutes } from './routes/settings.js';
+import { askRoutes } from './routes/ask.js';
+import { pipelineRoutes } from './routes/pipeline.js';
 import { runFullSync } from './lib/run-connector-sync.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
@@ -38,6 +43,34 @@ async function main() {
       : [/localhost/],
   });
 
+  await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
+
+  // OpenAPI documentation
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Growth OS API',
+        description: 'DTC e-commerce analytics platform — KPI metrics, alerts, forecasting, and AI insights',
+        version: '1.0.0',
+      },
+      tags: [
+        { name: 'health', description: 'Health and status checks' },
+        { name: 'metrics', description: 'Revenue, spend, channel, cohort, and funnel KPIs' },
+        { name: 'alerts', description: 'Automated alert evaluation' },
+        { name: 'forecast', description: 'Revenue and KPI forecasting' },
+        { name: 'wbr', description: 'Weekly Business Review generation' },
+        { name: 'ask', description: 'AI-powered data Q&A' },
+        { name: 'jobs', description: 'Pipeline job run history' },
+        { name: 'connections', description: 'Data source connector management' },
+        { name: 'settings', description: 'Application configuration' },
+      ],
+    },
+  });
+  await app.register(swaggerUi, {
+    routePrefix: '/api/docs',
+    uiConfig: { docExpansion: 'list', deepLinking: true },
+  });
+
   // Auth: register login endpoint + global Bearer-token hook
   registerAuthHook(app);
   await app.register(authRoutes, { prefix: '/api' });
@@ -50,6 +83,8 @@ async function main() {
   await app.register(alertsRoutes, { prefix: '/api' });
   await app.register(wbrRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
+  await app.register(askRoutes, { prefix: '/api' });
+  await app.register(pipelineRoutes, { prefix: '/api' });
 
   // Auto-sync: periodic full sync (replaces BullMQ scheduler, no Redis needed)
   let syncRunning = false;

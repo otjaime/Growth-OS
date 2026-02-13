@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Cable, Loader2, AlertCircle, CheckCircle2, Unplug } from 'lucide-react';
+import { Plus, Cable, Loader2, AlertCircle, CheckCircle2, Unplug, Upload } from 'lucide-react';
 import {
   ConnectorCatalog,
   ConnectionCard,
   SetupWizard,
+  CSVUpload,
 } from '@/components/connections';
 import type { ConnectorDef, SavedConnection } from '@/components/connections/types';
 import { apiFetch } from '@/lib/api';
@@ -19,6 +20,7 @@ export default function ConnectionsPage() {
   const [wizardConnector, setWizardConnector] = useState<ConnectorDef | null>(null);
   const [wizardEditMode, setWizardEditMode] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
 
   const fetchData = useCallback(async () => {
     setError(null);
@@ -123,16 +125,24 @@ export default function ConnectionsPage() {
             Connect your data sources to unify all your analytics in one place.
           </p>
         </div>
-        <button
-          onClick={() => setActiveTab(activeTab === 'catalog' ? 'active' : 'catalog')}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors self-start"
-        >
+        <div className="flex items-center gap-2 self-start">
+          <button
+            onClick={() => setShowUpload(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-medium transition-colors"
+          >
+            <Upload className="h-4 w-4" /> Upload CSV
+          </button>
+          <button
+            onClick={() => setActiveTab(activeTab === 'catalog' ? 'active' : 'catalog')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
+          >
           {activeTab === 'catalog' ? (
             <><Cable className="h-4 w-4" /> My Connections</>
           ) : (
             <><Plus className="h-4 w-4" /> Add Source</>
           )}
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Stats Bar */}
@@ -263,6 +273,27 @@ export default function ConnectionsPage() {
           onSaved={handleWizardSaved}
           initialStep={wizardEditMode ? 'credentials' : undefined}
         />
+      )}
+
+      {/* CSV Upload Modal */}
+      {showUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowUpload(false)} />
+          <div className="relative w-full max-w-2xl bg-[var(--card)] border border-[var(--card-border)] rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Upload CSV Data</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Import offline data — orders, spend, traffic, or custom events</p>
+              </div>
+              <button onClick={() => setShowUpload(false)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
+                <Plus className="h-5 w-5 text-slate-400 rotate-45" />
+              </button>
+            </div>
+            <div className="p-5">
+              <CSVUpload onComplete={() => { setShowUpload(false); fetchData(); setToastMsg('CSV data uploaded successfully!'); setTimeout(() => setToastMsg(null), 4000); }} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer info */}

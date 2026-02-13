@@ -4,9 +4,38 @@ import { subDays } from 'date-fns';
 import { evaluateAlerts } from '@growth-os/etl';
 import type { AlertInput } from '@growth-os/etl';
 import * as kpiCalcs from '@growth-os/etl';
+import { sendAlertToSlack, isSlackConfigured } from '../lib/slack.js';
+import { isAIConfigured, generateAlertExplanation } from '../lib/ai.js';
 
 export async function alertsRoutes(app: FastifyInstance) {
-  app.get('/alerts', async () => {
+  app.get('/alerts', {
+    schema: {
+      tags: ['alerts'],
+      summary: 'Evaluate alerts',
+      description: 'Compares current week vs previous week KPIs and returns triggered alerts. Sends Slack notification for critical/warning alerts if configured.',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            alerts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  severity: { type: 'string', enum: ['critical', 'warning', 'info'] },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  recommendation: { type: 'string' },
+                },
+              },
+            },
+            evaluatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
+  }, async () => {
     const now = new Date();
     const currentStart = subDays(now, 7);
     const previousStart = subDays(currentStart, 7);
@@ -114,6 +143,55 @@ export async function alertsRoutes(app: FastifyInstance) {
     };
 
     const alerts = evaluateAlerts(input);
+
+    // Fire-and-forget Slack notification for critical/warning alerts
+    if (isSlackConfigured()) {
+      const notifiable = alerts.filter((a) => a.severity === 'critical' || a.severity === 'warning');
+      if (notifiable.length > 0) {
+        const dashboardUrl = process.env.FRONTEND_URL ?? '';
+        sendAlertToSlack(notifiable, dashboardUrl).catch(() => {});
+      }
+    }
+
     return { alerts, evaluatedAt: new Date().toISOString() };
+  });
+
+  // ── AI Alert Explanation ──────────────────────────────────
+  app.post('/alerts/explain', {
+    schema: {
+      tags: ['alerts'],
+      summary: 'AI-powered alert explanation',
+      description: 'Uses LLM to generate root cause analysis and recommendations for an alert',
+    },
+  }, async (request) => {
+    if (!isAIConfigured()) {
+      return { enabled: false, explanation: null, message: 'AI not configured. Set OPENAI_API_KEY.' };
+    }
+
+    const body = request.body as {
+      alert: { title: string; description: string; severity: string; recommendation: string };
+    };
+
+    if (!body?.alert?.title) {
+      return { enabled: true, explanation: null, message: 'Missing alert data.' };
+    }
+
+    // Build a brief metrics context for the LLM
+    const now = new Date();
+    const start = subDays(now, 7);
+
+    const [orderCount, spendAgg] = await Promise.all([
+      prisma.factOrder.count({ where: { orderDate: { gte: start, lte: now } } }),
+      prisma.factSpend.aggregate({ _sum: { spend: true }, where: { date: { gte: start, lte: now } } }),
+    ]);
+
+    const metricsContext = `7-day snapshot: ${orderCount} orders, $${Number(spendAgg._sum.spend ?? 0).toFixed(0)} ad spend. The alert rule-based recommendation was: "${body.alert.recommendation}"`;
+
+    try {
+      const explanation = await generateAlertExplanation(body.alert, metricsContext);
+      return { enabled: true, explanation };
+    } catch {
+      return { enabled: true, explanation: null, message: 'AI generation failed.' };
+    }
   });
 }

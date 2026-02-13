@@ -5,3 +5,5 @@ export { evaluateAlerts } from './alerts.js';
 export type { Alert, AlertInput } from './alerts.js';
 export type { ValidationResult } from './pipeline/validate.js';
 export type { ShopifyConfig, MetaConfig, GoogleAdsConfig, GA4Config, RawRecord } from './types.js';
+export { forecast } from './forecast.js';
+export type { ForecastResult, ForecastConfig } from './forecast.js';

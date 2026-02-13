@@ -4,6 +4,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
+import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
 
 async function clearAllData() {
   return prisma.$transaction([
@@ -167,4 +168,27 @@ export async function settingsRoutes(app: FastifyInstance) {
       };
     },
   );
+
+  // ── GET /settings/slack — check Slack integration status ──
+  app.get('/settings/slack', async () => {
+    return { configured: isSlackConfigured() };
+  });
+
+  // ── POST /settings/slack/test — send a test Slack message ──
+  app.post('/settings/slack/test', async () => {
+    if (!isSlackConfigured()) {
+      return {
+        success: false,
+        message: 'Slack is not configured. Set SLACK_WEBHOOK_URL environment variable.',
+      };
+    }
+
+    const sent = await sendTestSlackMessage();
+    return {
+      success: sent,
+      message: sent
+        ? 'Test message sent to Slack successfully.'
+        : 'Failed to send test message. Check your webhook URL.',
+    };
+  });
 }

@@ -8,36 +8,59 @@ import {
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
 
-interface CohortData {
-  cohortMonth: string;
-  cohortSize: number;
-  d7Retention: number;
-  d30Retention: number;
-  d60Retention: number;
-  d90Retention: number;
-  ltv30: number;
-  ltv90: number;
-  ltv180: number;
-  paybackDays: number | null;
-  avgCac: number;
+interface ProjectedValue {
+  value: number;
+  projected: boolean;
 }
 
-// Calculate how many days since the end of a cohort month
-function cohortAgeDays(cohortMonth: string): number {
-  const [y, m] = cohortMonth.split('-').map(Number);
-  const monthEnd = new Date(Date.UTC(y!, m!, 1)); // first day of NEXT month
-  return Math.floor((Date.now() - monthEnd.getTime()) / (1000 * 60 * 60 * 24));
+interface CohortProjection {
+  cohortMonth: string;
+  cohortSize: number;
+  ageDays: number;
+  retention: {
+    d7: ProjectedValue;
+    d30: ProjectedValue;
+    d60: ProjectedValue;
+    d90: ProjectedValue;
+  };
+  ltv: {
+    ltv30: ProjectedValue;
+    ltv90: ProjectedValue;
+    ltv180: ProjectedValue;
+  };
+  avgCac: number;
+  paybackDays: number | null;
+}
+
+interface ProjectionData {
+  projections: CohortProjection[];
+  decayRatios: {
+    d30toD7: number;
+    d60toD30: number;
+    d90toD60: number;
+    matureCohortCount: number;
+  };
+}
+
+function ProjectedCell({ value, projected, formatter }: { value: number; projected: boolean; formatter: (v: number) => string }) {
+  if (value === 0 && projected) return <span className="text-slate-600">--</span>;
+  return (
+    <span className={projected ? 'text-blue-400/60 italic' : ''}>
+      {formatter(value)}
+      {projected && <span className="text-[10px] ml-0.5">*</span>}
+    </span>
+  );
 }
 
 export default function CohortsPage() {
-  const [cohorts, setCohorts] = useState<CohortData[]>([]);
+  const [data, setData] = useState<ProjectionData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch(`/api/metrics/cohorts`)
-      .then((r) => r.ok ? r.json() : { cohorts: [] })
-      .then((data: { cohorts: CohortData[] }) => {
-        setCohorts(data.cohorts);
+    apiFetch(`/api/metrics/cohort-projections`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: ProjectionData | null) => {
+        setData(d);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -47,7 +70,7 @@ export default function CohortsPage() {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
   }
 
-  if (cohorts.length === 0) {
+  if (!data || data.projections.length === 0) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
@@ -59,39 +82,34 @@ export default function CohortsPage() {
     );
   }
 
-  // Prepare chart data — only include retention values for mature cohorts
-  const retentionChartData = cohorts.map((c) => {
-    const age = cohortAgeDays(c.cohortMonth);
-    return {
-      cohort: c.cohortMonth,
-      D7: age >= 7 ? Number(c.d7Retention) * 100 : undefined,
-      D30: age >= 30 ? Number(c.d30Retention) * 100 : undefined,
-      D60: age >= 60 ? Number(c.d60Retention) * 100 : undefined,
-      D90: age >= 90 ? Number(c.d90Retention) * 100 : undefined,
-    };
-  }).reverse();
+  const cohorts = data.projections;
 
-  const ltvChartData = cohorts.map((c) => {
-    const age = cohortAgeDays(c.cohortMonth);
-    return {
-      cohort: c.cohortMonth,
-      LTV30: age >= 30 ? Number(c.ltv30) : undefined,
-      LTV90: age >= 90 ? Number(c.ltv90) : undefined,
-      LTV180: age >= 180 ? Number(c.ltv180) : undefined,
-    };
-  }).reverse();
+  // Prepare chart data — show both actual and projected retention
+  const retentionChartData = [...cohorts].reverse().map((c) => ({
+    cohort: c.cohortMonth,
+    D7: c.retention.d7.value * 100,
+    D30: c.retention.d30.value * 100 || undefined,
+    D60: c.retention.d60.value * 100 || undefined,
+    D90: c.retention.d90.value * 100 || undefined,
+  }));
 
-  // Format retention cell: show "—" for immature windows
-  const retCell = (value: number, minAgeDays: number, age: number) =>
-    age >= minAgeDays ? formatPercent(Number(value)) : '—';
-
-  // Format LTV cell: show "—" for immature windows
-  const ltvCell = (value: number, minAgeDays: number, age: number) =>
-    age >= minAgeDays ? formatCurrency(Number(value)) : '—';
+  const ltvChartData = [...cohorts].reverse().map((c) => ({
+    cohort: c.cohortMonth,
+    LTV30: c.ltv.ltv30.value || undefined,
+    LTV90: c.ltv.ltv90.value || undefined,
+    LTV180: c.ltv.ltv180.value || undefined,
+  }));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
+        {data.decayRatios.matureCohortCount > 0 && (
+          <p className="text-xs text-slate-500 mt-1">
+            * Projected values based on decay curves from {data.decayRatios.matureCohortCount} mature cohort{data.decayRatios.matureCohortCount !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
 
       {/* Retention Curves */}
       <div className="card">
@@ -154,25 +172,44 @@ export default function CohortsPage() {
           </thead>
           <tbody>
             {cohorts.map((c) => {
-              const age = cohortAgeDays(c.cohortMonth);
-              const cac = Number(c.avgCac);
-              const ltv180 = Number(c.ltv180);
+              const cac = c.avgCac;
+              const ltv180 = c.ltv.ltv180.value;
               const ratio = cac > 0 ? ltv180 / cac : 0;
+              const ratioProjected = c.ltv.ltv180.projected;
               return (
                 <tr key={c.cohortMonth} className="border-b border-slate-800 hover:bg-slate-800/50">
                   <td className="px-3 py-2 font-medium text-white">{c.cohortMonth}</td>
                   <td className="px-3 py-2 text-right">{formatNumber(c.cohortSize)}</td>
-                  <td className="px-3 py-2 text-right">{retCell(c.d7Retention, 7, age)}</td>
-                  <td className="px-3 py-2 text-right">{retCell(c.d30Retention, 30, age)}</td>
-                  <td className="px-3 py-2 text-right">{retCell(c.d60Retention, 60, age)}</td>
-                  <td className="px-3 py-2 text-right">{retCell(c.d90Retention, 90, age)}</td>
-                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv30, 30, age)}</td>
-                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv90, 90, age)}</td>
-                  <td className="px-3 py-2 text-right">{ltvCell(c.ltv180, 180, age)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.retention.d7.value} projected={c.retention.d7.projected} formatter={formatPercent} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.retention.d30.value} projected={c.retention.d30.projected} formatter={formatPercent} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.retention.d60.value} projected={c.retention.d60.projected} formatter={formatPercent} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.retention.d90.value} projected={c.retention.d90.projected} formatter={formatPercent} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.ltv.ltv30.value} projected={c.ltv.ltv30.projected} formatter={formatCurrency} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.ltv.ltv90.value} projected={c.ltv.ltv90.projected} formatter={formatCurrency} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <ProjectedCell value={c.ltv.ltv180.value} projected={c.ltv.ltv180.projected} formatter={formatCurrency} />
+                  </td>
                   <td className="px-3 py-2 text-right">{formatCurrency(cac)}</td>
-                  <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '—'}</td>
-                  <td className={`px-3 py-2 text-right font-medium ${cac > 0 && ratio >= 3 ? 'text-green-400' : cac > 0 && ratio >= 2 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {cac > 0 && age >= 180 ? formatMultiplier(ratio) : '—'}
+                  <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '--'}</td>
+                  <td className={`px-3 py-2 text-right font-medium ${cac > 0 && ratio >= 3 ? 'text-green-400' : cac > 0 && ratio >= 2 ? 'text-yellow-400' : 'text-red-400'} ${ratioProjected ? 'opacity-60 italic' : ''}`}>
+                    {cac > 0 ? (
+                      <>
+                        {formatMultiplier(ratio)}
+                        {ratioProjected && <span className="text-[10px] ml-0.5">*</span>}
+                      </>
+                    ) : '--'}
                   </td>
                 </tr>
               );
