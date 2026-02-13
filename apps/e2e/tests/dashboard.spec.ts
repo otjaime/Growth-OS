@@ -17,7 +17,7 @@ async function waitForApiData(page: import('@playwright/test').Page, urlPattern 
 test.describe('Dashboard Navigation', () => {
   test('loads the executive summary page', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1')).toContainText('Executive Summary');
+    await expect(page.getByRole('heading', { name: 'Executive Summary' })).toBeVisible();
   });
 
   test('displays KPI cards on executive summary', async ({ page }) => {
@@ -30,43 +30,43 @@ test.describe('Dashboard Navigation', () => {
   test('navigates to channels page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/channels"]');
-    await expect(page.locator('h1')).toContainText('Channel Performance');
+    await expect(page.getByRole('heading', { name: 'Channel Performance' })).toBeVisible();
   });
 
   test('navigates to cohorts page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/cohorts"]');
-    await expect(page.locator('h1')).toContainText('Cohort');
+    await expect(page.getByRole('heading', { name: /Cohort/ })).toBeVisible();
   });
 
   test('navigates to unit economics page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/unit-economics"]');
-    await expect(page.locator('h1')).toContainText('Unit Economics');
+    await expect(page.getByRole('heading', { name: /Unit Economics/ })).toBeVisible();
   });
 
   test('navigates to alerts page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/alerts"]');
-    await expect(page.locator('h1')).toContainText('Alerts');
+    await expect(page.getByRole('heading', { name: /Alerts/ })).toBeVisible();
   });
 
   test('navigates to WBR page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/wbr"]');
-    await expect(page.locator('h1')).toContainText('Weekly Business Review');
+    await expect(page.getByRole('heading', { name: 'Weekly Business Review' })).toBeVisible();
   });
 
   test('navigates to connections page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/connections"]');
-    await expect(page.locator('h1')).toContainText('Connections');
+    await expect(page.getByRole('heading', { name: /Connections/ })).toBeVisible();
   });
 
   test('navigates to jobs page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/jobs"]');
-    await expect(page.locator('h1')).toContainText('Job Runs');
+    await expect(page.getByRole('heading', { name: 'Job Runs' })).toBeVisible();
   });
 });
 
@@ -87,7 +87,7 @@ test.describe('Executive Summary', () => {
       page.click('button:has-text("30D")'),
     ]);
     expect(response.status()).toBe(200);
-    await expect(page.locator('h1')).toContainText('Executive Summary');
+    await expect(page.getByRole('heading', { name: 'Executive Summary' })).toBeVisible();
   });
 
   test('KPI cards show change indicators', async ({ page }) => {
@@ -136,7 +136,7 @@ test.describe('WBR Page', () => {
   test('has copy to clipboard button', async ({ page }) => {
     await page.goto('/wbr');
     await waitForApiData(page, '/api/wbr');
-    const copyButton = page.locator('button:has-text("Copy")');
+    const copyButton = page.locator('button:has-text("Copy Markdown")');
     await expect(copyButton).toBeVisible();
   });
 
@@ -151,34 +151,33 @@ test.describe('WBR Page', () => {
   test('copy button interaction works', async ({ page }) => {
     await page.goto('/wbr');
     await waitForApiData(page, '/api/wbr');
-    const copyButton = page.locator('button:has-text("Copy")');
+    const copyButton = page.locator('button:has-text("Copy Markdown")');
     await copyButton.click();
     // Button text should change to indicate success
-    const feedback = page.locator('button:has-text("Copied"), button:has-text("Copy")');
+    const feedback = page.locator('button:has-text("Copied"), button:has-text("Copy Markdown")');
     await expect(feedback.first()).toBeVisible();
   });
 });
 
 test.describe('Connections Page', () => {
-  test('has Add Connection button', async ({ page }) => {
+  test('has Add Source button or tab', async ({ page }) => {
     await page.goto('/connections');
-    const addButton = page.locator('button:has-text("Add Connection")');
-    await expect(addButton).toBeVisible();
+    const addButton = page.locator('button:has-text("Add Source")');
+    await expect(addButton.first()).toBeVisible();
   });
 
-  test('opens add form when clicked', async ({ page }) => {
+  test('shows connector catalog when Add Source is clicked', async ({ page }) => {
     await page.goto('/connections');
-    await page.click('button:has-text("Add Connection")');
-    const sourceSelect = page.locator('select');
-    await expect(sourceSelect).toBeVisible();
+    // Click the "Add Source" tab or button
+    await page.locator('button:has-text("Add Source")').first().click();
+    // Should show connector cards in the catalog
+    await expect(page.getByText('Shopify')).toBeVisible({ timeout: 10000 });
   });
 
-  test('Google source shows OAuth button', async ({ page }) => {
+  test('has Upload CSV button', async ({ page }) => {
     await page.goto('/connections');
-    await page.click('button:has-text("Add Connection")');
-    await page.selectOption('select', 'google_ads');
-    const oauthButton = page.locator('button:has-text("Connect with Google")');
-    await expect(oauthButton).toBeVisible();
+    const uploadButton = page.locator('button:has-text("Upload CSV")');
+    await expect(uploadButton).toBeVisible();
   });
 });
 
@@ -209,7 +208,7 @@ test.describe('Jobs Page', () => {
 test.describe('Sidebar', () => {
   test('shows demo mode badge', async ({ page }) => {
     await page.goto('/');
-    const badge = page.locator('text=DEMO');
+    const badge = page.locator('text=Demo Mode');
     await expect(badge).toBeVisible();
   });
 
