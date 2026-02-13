@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { apiFetch } from '@/lib/api';
 
 interface Message {
@@ -180,8 +181,10 @@ export default function AskPage() {
                 : 'bg-slate-800 text-slate-200'
             }`}>
               {msg.role === 'assistant' ? (
-                <div className="prose prose-sm prose-invert max-w-none whitespace-pre-wrap">
-                  {msg.content || (streaming && i === messages.length - 1 ? (
+                <div className="prose prose-sm prose-invert max-w-none">
+                  {msg.content ? (
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  ) : (streaming && i === messages.length - 1 ? (
                     <span className="inline-flex items-center gap-1 text-slate-400">
                       Analyzing your data
                       <span className="inline-block w-1.5 h-4 bg-purple-400 animate-pulse" />

@@ -9,6 +9,11 @@ import { subDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import { isAIConfigured, answerDataQuestion } from '../lib/ai.js';
 
+/** Format a number with thousand separators: 150363 → "150,363" */
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
 async function buildDataContext(): Promise<string> {
   const now = new Date();
   const start7 = subDays(now, 7);
@@ -64,7 +69,7 @@ async function buildDataContext(): Promise<string> {
     const chRev = chOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
     const chNewCust = chOrders.filter((o) => o.isNewCustomer).length;
     const chSpendVal = Number(chSpend._sum.spend ?? 0);
-    channelLines.push(`  ${ch.name}: Revenue $${chRev.toFixed(0)}, Spend $${chSpendVal.toFixed(0)}, Orders ${chOrders.length}, New Customers ${chNewCust}, ROAS ${chSpendVal > 0 ? (chRev / chSpendVal).toFixed(2) : 'N/A'}x`);
+    channelLines.push(`  ${ch.name}: Revenue $${fmt(chRev)}, Spend $${fmt(chSpendVal)}, Orders ${chOrders.length}, New Customers ${chNewCust}, ROAS ${chSpendVal > 0 ? (chRev / chSpendVal).toFixed(2) : 'N/A'}x`);
   }
 
   // Cohorts
@@ -91,40 +96,40 @@ async function buildDataContext(): Promise<string> {
   return `Business Data as of ${format(now, 'MMM d, yyyy')}:
 
 LAST 7 DAYS:
-- Revenue (Gross): $${curRev7.toFixed(0)} (prev week: $${prevRev7.toFixed(0)}, change: ${kpiCalcs.kpis.percentChange(curRev7, prevRev7) > 0 ? '+' : ''}${(kpiCalcs.kpis.percentChange(curRev7, prevRev7) * 100).toFixed(1)}%)
-- Revenue (Net): $${curRevNet7.toFixed(0)}
-- Orders: ${cur7Orders.length} (prev week: ${prev7Orders.length})
-- New Customers: ${curNewCust7} (prev week: ${prevNewCust7})
-- Ad Spend: $${curSpend7.toFixed(0)} (prev week: $${prevSpend7val.toFixed(0)})
-- Blended CAC: $${kpiCalcs.kpis.blendedCac(curSpend7, curNewCust7).toFixed(0)}
+- Revenue (Gross): $${fmt(curRev7)} (prev week: $${fmt(prevRev7)}, change: ${kpiCalcs.kpis.percentChange(curRev7, prevRev7) > 0 ? '+' : ''}${(kpiCalcs.kpis.percentChange(curRev7, prevRev7) * 100).toFixed(1)}%)
+- Revenue (Net): $${fmt(curRevNet7)}
+- Orders: ${fmt(cur7Orders.length)} (prev week: ${fmt(prev7Orders.length)})
+- New Customers: ${fmt(curNewCust7)} (prev week: ${fmt(prevNewCust7)})
+- Ad Spend: $${fmt(curSpend7)} (prev week: $${fmt(prevSpend7val)})
+- Blended CAC: $${fmt(kpiCalcs.kpis.blendedCac(curSpend7, curNewCust7))}
 - MER: ${kpiCalcs.kpis.mer(curRev7, curSpend7).toFixed(2)}x
 - CM%: ${(kpiCalcs.kpis.contributionMarginPct(curCM7, curRevNet7) * 100).toFixed(1)}%
-- AOV: $${kpiCalcs.kpis.aov(curRevNet7, cur7Orders.length).toFixed(0)}
-- Sessions: ${curSessions7.toLocaleString()}
-- Funnel: ${curSessions7} sessions → ${traffic7._sum.pdpViews ?? 0} PDP views → ${traffic7._sum.addToCart ?? 0} ATC → ${traffic7._sum.checkouts ?? 0} checkouts → ${traffic7._sum.purchases ?? 0} purchases
+- AOV: $${fmt(kpiCalcs.kpis.aov(curRevNet7, cur7Orders.length))}
+- Sessions: ${fmt(curSessions7)}
+- Funnel: ${fmt(curSessions7)} sessions → ${fmt(traffic7._sum.pdpViews ?? 0)} PDP views → ${fmt(traffic7._sum.addToCart ?? 0)} ATC → ${fmt(traffic7._sum.checkouts ?? 0)} checkouts → ${fmt(traffic7._sum.purchases ?? 0)} purchases
 
 LAST 30 DAYS:
-- Revenue (Gross): $${curRev30.toFixed(0)}
-- Revenue (Net): $${curRevNet30.toFixed(0)}
-- Orders: ${cur30Orders.length}
-- New Customers: ${curNewCust30}
-- Ad Spend: $${curSpend30.toFixed(0)}
-- Blended CAC: $${kpiCalcs.kpis.blendedCac(curSpend30, curNewCust30).toFixed(0)}
+- Revenue (Gross): $${fmt(curRev30)}
+- Revenue (Net): $${fmt(curRevNet30)}
+- Orders: ${fmt(cur30Orders.length)}
+- New Customers: ${fmt(curNewCust30)}
+- Ad Spend: $${fmt(curSpend30)}
+- Blended CAC: $${fmt(kpiCalcs.kpis.blendedCac(curSpend30, curNewCust30))}
 - MER: ${kpiCalcs.kpis.mer(curRev30, curSpend30).toFixed(2)}x
 - CM%: ${(kpiCalcs.kpis.contributionMarginPct(curCM30, curRevNet30) * 100).toFixed(1)}%
-- Sessions: ${curSessions30.toLocaleString()}
+- Sessions: ${fmt(curSessions30)}
 
 CHANNEL BREAKDOWN (Last 7 days):
 ${channelLines.join('\n')}
 
 COHORT DATA:
 ${latestCohort ? `- Latest Cohort: ${latestCohort.cohortMonth}
-- Cohort Size: ${latestCohort.cohortSize}
+- Cohort Size: ${fmt(latestCohort.cohortSize)}
 - D30 Retention: ${(Number(latestCohort.d30Retention) * 100).toFixed(1)}%
 - D90 Retention: ${(Number(latestCohort.d90Retention) * 100).toFixed(1)}%
-- LTV (90-day): $${Number(latestCohort.ltv90).toFixed(0)}
-- LTV (180-day): $${Number(latestCohort.ltv180).toFixed(0)}
-- Avg CAC: $${Number(latestCohort.avgCac).toFixed(0)}
+- LTV (90-day): $${fmt(Number(latestCohort.ltv90))}
+- LTV (180-day): $${fmt(Number(latestCohort.ltv180))}
+- Avg CAC: $${fmt(Number(latestCohort.avgCac))}
 - LTV:CAC Ratio: ${Number(latestCohort.avgCac) > 0 ? (Number(latestCohort.ltv180) / Number(latestCohort.avgCac)).toFixed(1) : 'N/A'}x
 - Payback Period: ${latestCohort.paybackDays ?? 'N/A'} days` : 'No cohort data available.'}`;
 }

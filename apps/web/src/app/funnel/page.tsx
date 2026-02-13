@@ -2,17 +2,30 @@
 
 import { useState, useEffect } from 'react';
 import { DateRangePicker } from '@/components/date-range-picker';
-import { formatNumber, formatPercent } from '@/lib/format';
+import { formatNumber, formatPercent, formatCurrency } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
 
-interface FunnelData {
-  funnel: {
-    sessions: number;
-    pdpViews: number;
-    addToCart: number;
-    checkouts: number;
-    purchases: number;
-  };
+interface OrderData {
+  totalOrders: number;
+  newCustomerOrders: number;
+  returningOrders: number;
+  revenueGross: number;
+  discounts: number;
+  refunds: number;
+  revenueNet: number;
+  cogs: number;
+  shippingCost: number;
+  contributionMargin: number;
+  aov: number;
+  newCustomerRate: number;
+}
+
+interface TrafficData {
+  sessions: number;
+  pdpViews: number;
+  addToCart: number;
+  checkouts: number;
+  purchases: number;
   cvr: {
     sessionToPdp: number;
     pdpToAtc: number;
@@ -22,12 +35,29 @@ interface FunnelData {
   };
 }
 
-const STEPS = [
-  { key: 'sessions', label: 'Sessions', color: '#3b82f6', icon: '👁' },
-  { key: 'pdpViews', label: 'PDP Views', color: '#6366f1', icon: '📄' },
-  { key: 'addToCart', label: 'Add to Cart', color: '#8b5cf6', icon: '🛒' },
-  { key: 'checkouts', label: 'Checkouts', color: '#a855f7', icon: '💳' },
-  { key: 'purchases', label: 'Purchases', color: '#22c55e', icon: '✅' },
+interface FunnelData {
+  orders: OrderData;
+  traffic: TrafficData | null;
+}
+
+type FunnelView = 'orders' | 'traffic';
+
+const REVENUE_STEPS = [
+  { key: 'revenueGross', label: 'Gross Revenue', color: '#3b82f6' },
+  { key: 'discounts', label: 'Discounts', color: '#f59e0b', subtract: true },
+  { key: 'refunds', label: 'Refunds', color: '#ef4444', subtract: true },
+  { key: 'revenueNet', label: 'Net Revenue', color: '#6366f1' },
+  { key: 'cogs', label: 'COGS', color: '#f59e0b', subtract: true },
+  { key: 'shippingCost', label: 'Shipping', color: '#f97316', subtract: true },
+  { key: 'contributionMargin', label: 'Contribution Margin', color: '#22c55e' },
+] as const;
+
+const TRAFFIC_STEPS = [
+  { key: 'sessions', label: 'Sessions', color: '#3b82f6' },
+  { key: 'pdpViews', label: 'PDP Views', color: '#6366f1' },
+  { key: 'addToCart', label: 'Add to Cart', color: '#8b5cf6' },
+  { key: 'checkouts', label: 'Checkouts', color: '#a855f7' },
+  { key: 'purchases', label: 'Purchases', color: '#22c55e' },
 ] as const;
 
 const CVR_LABELS: Record<string, string> = {
@@ -43,6 +73,7 @@ export default function FunnelPage() {
   const [data, setData] = useState<FunnelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [view, setView] = useState<FunnelView>('orders');
 
   useEffect(() => {
     setLoading(true);
@@ -76,45 +107,170 @@ export default function FunnelPage() {
     );
   }
 
-  const maxVal = data.funnel.sessions || 1;
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-white">Conversion Funnel</h1>
-        <DateRangePicker onChange={setDays} defaultDays={days} />
+        <div className="flex items-center gap-3">
+          {/* View toggle — only show if GA4 data exists */}
+          {data.traffic && (
+            <div className="flex bg-slate-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setView('orders')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  view === 'orders'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Revenue
+              </button>
+              <button
+                onClick={() => setView('traffic')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  view === 'traffic'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Web Funnel (GA4)
+              </button>
+            </div>
+          )}
+          <DateRangePicker onChange={setDays} defaultDays={days} />
+        </div>
       </div>
 
+      {view === 'orders' ? (
+        <OrdersFunnel orders={data.orders} />
+      ) : data.traffic ? (
+        <TrafficFunnel traffic={data.traffic} />
+      ) : null}
+    </div>
+  );
+}
+
+// ── Orders / Revenue Waterfall ─────────────────────────────
+function OrdersFunnel({ orders }: { orders: OrderData }) {
+  const maxVal = orders.revenueGross || 1;
+
+  return (
+    <>
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card">
+          <p className="text-xs text-slate-400 mb-1">Total Orders</p>
+          <p className="text-2xl font-bold text-white">{formatNumber(orders.totalOrders)}</p>
+        </div>
+        <div className="card">
+          <p className="text-xs text-slate-400 mb-1">AOV</p>
+          <p className="text-2xl font-bold text-white">{formatCurrency(orders.aov)}</p>
+        </div>
+        <div className="card">
+          <p className="text-xs text-slate-400 mb-1">New Customer Rate</p>
+          <p className="text-2xl font-bold text-green-400">{formatPercent(orders.newCustomerRate)}</p>
+          <p className="text-[10px] text-slate-500 mt-1">
+            {formatNumber(orders.newCustomerOrders)} new / {formatNumber(orders.returningOrders)} returning
+          </p>
+        </div>
+        <div className="card">
+          <p className="text-xs text-slate-400 mb-1">Contribution Margin</p>
+          <p className="text-2xl font-bold text-green-400">
+            {formatCurrency(orders.contributionMargin)}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-1">
+            {orders.revenueNet > 0 ? formatPercent(orders.contributionMargin / orders.revenueNet) : '0%'} of net revenue
+          </p>
+        </div>
+      </div>
+
+      {/* Revenue waterfall */}
+      <div className="card space-y-1">
+        <h2 className="text-lg font-semibold text-white mb-6">Revenue Waterfall</h2>
+        {REVENUE_STEPS.map((step, i) => {
+          const value = orders[step.key as keyof OrderData] as number;
+          const pct = (value / maxVal) * 100;
+
+          return (
+            <div key={step.key}>
+              {/* Drop-off indicator for subtracted items */}
+              {'subtract' in step && step.subtract && value > 0 && (
+                <div className="flex items-center gap-3 py-1.5 pl-4">
+                  <div className="text-xs text-slate-500">
+                    - {formatCurrency(value)} ({(value / maxVal * 100).toFixed(1)}% of gross)
+                  </div>
+                </div>
+              )}
+
+              {!('subtract' in step && step.subtract) && (
+                <div className="flex items-center gap-4 py-1">
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-sm font-medium text-slate-200">{step.label}</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="w-full bg-slate-800 rounded-full h-8 overflow-hidden">
+                        <div
+                          className="h-full rounded-full flex items-center transition-all duration-700 ease-out"
+                          style={{
+                            width: `${Math.max(pct, 2)}%`,
+                            backgroundColor: step.color,
+                          }}
+                        >
+                          {pct > 15 && (
+                            <span className="text-xs text-white font-medium pl-3">
+                              {formatCurrency(value)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="w-24 text-right">
+                    <span className="text-sm font-bold text-white">{formatCurrency(value)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ── GA4 Web Traffic Funnel ─────────────────────────────────
+function TrafficFunnel({ traffic }: { traffic: TrafficData }) {
+  const maxVal = traffic.sessions || 1;
+
+  return (
+    <>
       {/* Overall CVR Banner */}
       <div className="card flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-400">Overall Conversion Rate</p>
           <p className="text-3xl font-bold text-white mt-1">
-            {formatPercent(data.cvr.overall)}
+            {formatPercent(traffic.cvr.overall)}
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            {formatNumber(data.funnel.sessions)} sessions → {formatNumber(data.funnel.purchases)} purchases
+            {formatNumber(traffic.sessions)} sessions → {formatNumber(traffic.purchases)} purchases
           </p>
         </div>
-        <div className="text-6xl opacity-30">🎯</div>
       </div>
 
       {/* Funnel Visualization */}
       <div className="card space-y-1">
-        <h2 className="text-lg font-semibold text-white mb-6">Funnel Steps</h2>
-        {STEPS.map((step, i) => {
-          const value = data.funnel[step.key];
+        <h2 className="text-lg font-semibold text-white mb-6">Web Funnel Steps</h2>
+        {TRAFFIC_STEPS.map((step, i) => {
+          const value = traffic[step.key as keyof typeof traffic] as number;
           const pct = (value / maxVal) * 100;
-          const dropoff = i > 0
-            ? data.funnel[STEPS[i - 1]!.key] - value
-            : 0;
-          const dropoffPct = i > 0 && data.funnel[STEPS[i - 1]!.key] > 0
-            ? (dropoff / data.funnel[STEPS[i - 1]!.key]) * 100
-            : 0;
+          const prevKey = i > 0 ? TRAFFIC_STEPS[i - 1]!.key : null;
+          const prevVal = prevKey ? traffic[prevKey as keyof typeof traffic] as number : 0;
+          const dropoff = i > 0 ? prevVal - value : 0;
+          const dropoffPct = i > 0 && prevVal > 0 ? (dropoff / prevVal) * 100 : 0;
 
           return (
             <div key={step.key}>
-              {/* Drop-off indicator between steps */}
               {i > 0 && (
                 <div className="flex items-center gap-3 py-2 pl-14">
                   <div className="text-xs text-slate-500">
@@ -124,10 +280,7 @@ export default function FunnelPage() {
               )}
 
               <div className="flex items-center gap-4">
-                {/* Icon */}
-                <div className="w-10 text-center text-xl">{step.icon}</div>
-
-                {/* Bar + Labels */}
+                <div className="w-10 text-center text-sm text-slate-400">{i + 1}</div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-slate-200">{step.label}</span>
@@ -155,9 +308,9 @@ export default function FunnelPage() {
         })}
       </div>
 
-      {/* Step-by-Step Conversion Rates */}
+      {/* Step-by-Step CVRs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {Object.entries(data.cvr).map(([key, val]) => (
+        {Object.entries(traffic.cvr).map(([key, val]) => (
           <div key={key} className="card text-center">
             <p className="text-xs text-slate-400 mb-1">{CVR_LABELS[key] ?? key}</p>
             <p className={`text-xl font-bold ${key === 'overall' ? 'text-green-400' : 'text-white'}`}>
@@ -166,6 +319,6 @@ export default function FunnelPage() {
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }

@@ -248,7 +248,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     schema: {
       tags: ['metrics'],
       summary: 'Conversion funnel',
-      description: 'Returns sessions → PDP views → add-to-cart → checkout → purchase funnel with conversion rates',
+      description: 'Returns Shopify order-based revenue funnel (always), plus GA4 web traffic funnel if data exists',
       querystring: {
         type: 'object',
         properties: { days: { type: 'string', description: 'Period in days (default 7)' } },
@@ -260,29 +260,66 @@ export async function metricsRoutes(app: FastifyInstance) {
     const now = new Date();
     const start = subDays(now, days);
 
-    const agg = await prisma.factTraffic.aggregate({
-      _sum: {
-        sessions: true,
-        pdpViews: true,
-        addToCart: true,
-        checkouts: true,
-        purchases: true,
-      },
+    // Always available: Shopify order-based funnel
+    const orders = await prisma.factOrder.findMany({
+      where: { orderDate: { gte: start, lte: now } },
+    });
+
+    const totalOrders = orders.length;
+    const newCustomerOrders = orders.filter((o) => o.isNewCustomer).length;
+    const returningOrders = totalOrders - newCustomerOrders;
+    const revenueGross = orders.reduce((s, o) => s + Number(o.revenueGross), 0);
+    const discounts = orders.reduce((s, o) => s + Number(o.discounts), 0);
+    const refunds = orders.reduce((s, o) => s + Number(o.refunds), 0);
+    const revenueNet = orders.reduce((s, o) => s + Number(o.revenueNet), 0);
+    const cogs = orders.reduce((s, o) => s + Number(o.cogs), 0);
+    const shippingCost = orders.reduce((s, o) => s + Number(o.shippingCost), 0);
+    const contributionMargin = orders.reduce((s, o) => s + Number(o.contributionMargin), 0);
+
+    const orderData = {
+      totalOrders,
+      newCustomerOrders,
+      returningOrders,
+      revenueGross,
+      discounts,
+      refunds,
+      revenueNet,
+      cogs,
+      shippingCost,
+      contributionMargin,
+      aov: totalOrders > 0 ? revenueNet / totalOrders : 0,
+      newCustomerRate: totalOrders > 0 ? newCustomerOrders / totalOrders : 0,
+    };
+
+    // Optional: GA4 web traffic funnel (only if data exists)
+    const trafficCount = await prisma.factTraffic.count({
       where: { date: { gte: start, lte: now } },
     });
 
-    const traffic = {
-      sessions: agg._sum.sessions ?? 0,
-      pdpViews: agg._sum.pdpViews ?? 0,
-      addToCart: agg._sum.addToCart ?? 0,
-      checkouts: agg._sum.checkouts ?? 0,
-      purchases: agg._sum.purchases ?? 0,
-    };
+    let traffic = null;
+    if (trafficCount > 0) {
+      const agg = await prisma.factTraffic.aggregate({
+        _sum: {
+          sessions: true,
+          pdpViews: true,
+          addToCart: true,
+          checkouts: true,
+          purchases: true,
+        },
+        where: { date: { gte: start, lte: now } },
+      });
 
-    return {
-      funnel: traffic,
-      cvr: kpiCalcs.kpis.funnelCvr(traffic),
-    };
+      const t = {
+        sessions: agg._sum.sessions ?? 0,
+        pdpViews: agg._sum.pdpViews ?? 0,
+        addToCart: agg._sum.addToCart ?? 0,
+        checkouts: agg._sum.checkouts ?? 0,
+        purchases: agg._sum.purchases ?? 0,
+      };
+      traffic = { ...t, cvr: kpiCalcs.kpis.funnelCvr(t) };
+    }
+
+    return { orders: orderData, traffic };
   });
 
   // ── Cohorts ───────────────────────────────────────────────

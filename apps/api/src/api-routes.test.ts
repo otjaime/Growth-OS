@@ -246,16 +246,33 @@ describe('Metrics Routes', () => {
 
   // ── /metrics/funnel ──────────────────────────────────────
   describe('GET /api/metrics/funnel', () => {
-    it('returns funnel CVR structure', async () => {
+    it('returns order-based funnel data', async () => {
+      mockPrisma.factOrder.findMany.mockResolvedValueOnce([
+        mockOrder({ revenueGross: 200, revenueNet: 180, discounts: 10, refunds: 10, cogs: 40, shippingCost: 15, contributionMargin: 60, isNewCustomer: true }),
+        mockOrder({ id: 'ord-2', revenueGross: 100, revenueNet: 90, discounts: 5, refunds: 5, cogs: 20, shippingCost: 10, contributionMargin: 30, isNewCustomer: false }),
+      ]);
+      mockPrisma.factTraffic.count.mockResolvedValueOnce(0);
+      const res = await app.inject({ method: 'GET', url: '/api/metrics/funnel?days=7' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body).toHaveProperty('orders');
+      expect(body.orders.totalOrders).toBe(2);
+      expect(body.orders.newCustomerOrders).toBe(1);
+      expect(body.orders.revenueGross).toBe(300);
+      expect(body.traffic).toBeNull();
+    });
+
+    it('includes GA4 traffic when data exists', async () => {
+      mockPrisma.factOrder.findMany.mockResolvedValueOnce([]);
+      mockPrisma.factTraffic.count.mockResolvedValueOnce(5);
       mockPrisma.factTraffic.aggregate.mockResolvedValueOnce({
         _sum: { sessions: 1000, pdpViews: 400, addToCart: 100, checkouts: 50, purchases: 20 },
       });
       const res = await app.inject({ method: 'GET', url: '/api/metrics/funnel?days=7' });
-      expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.payload);
-      expect(body).toHaveProperty('funnel');
-      expect(body).toHaveProperty('cvr');
-      expect(body.cvr.overall).toBeCloseTo(0.02);
+      expect(body.traffic).not.toBeNull();
+      expect(body.traffic.sessions).toBe(1000);
+      expect(body.traffic.cvr.overall).toBeCloseTo(0.02);
     });
   });
 
@@ -483,17 +500,20 @@ describe('API Edge Cases', () => {
     await app.close();
   });
 
-  it('funnel returns zero CVRs for zero traffic', async () => {
-    mockPrisma.factTraffic.aggregate.mockResolvedValue({
-      _sum: { sessions: 0, pdpViews: 0, addToCart: 0, checkouts: 0, purchases: 0 },
-    });
+  it('funnel returns order data and null traffic when no GA4 data', async () => {
+    mockPrisma.factOrder.findMany.mockResolvedValue([]);
+    mockPrisma.factTraffic.count.mockResolvedValue(0);
+    mockPrisma.factSpend.aggregate.mockResolvedValue({ _sum: { spend: 0 } });
+    mockPrisma.factTraffic.aggregate.mockResolvedValue({ _sum: { sessions: 0, purchases: 0 } });
+    mockPrisma.cohort.findFirst.mockResolvedValue(null);
 
     const app = Fastify();
     await app.register(metricsRoutes, { prefix: '/api' });
     const res = await app.inject({ method: 'GET', url: '/api/metrics/funnel' });
     const body = JSON.parse(res.payload);
-    expect(body.cvr.overall).toBe(0);
-    expect(body.cvr.sessionToPdp).toBe(0);
+    expect(body.orders.totalOrders).toBe(0);
+    expect(body.orders.revenueGross).toBe(0);
+    expect(body.traffic).toBeNull();
     await app.close();
   });
 });

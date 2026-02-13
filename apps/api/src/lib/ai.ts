@@ -173,7 +173,7 @@ export async function answerDataQuestion(
     messages: [
       {
         role: 'system',
-        content: `You are an AI analytics assistant for Growth OS, a DTC e-commerce dashboard. Answer questions about the business data concisely and accurately. Always reference specific numbers. If you can't answer from the data provided, say so. Use markdown formatting.`,
+        content: `You are an AI analytics assistant for Growth OS, a DTC e-commerce dashboard. Answer questions about the business data concisely and accurately. Always reference specific numbers. If you can't answer from the data provided, say so. Use markdown formatting. Format all dollar amounts and large numbers with thousand separators (e.g. $150,363 not $150363).`,
       },
       {
         role: 'user',
