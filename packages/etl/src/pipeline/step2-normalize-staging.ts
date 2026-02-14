@@ -28,17 +28,24 @@ export async function normalizeStaging(): Promise<{
 
 // ── Orders ──────────────────────────────────────────────────
 async function normalizeOrders(): Promise<number> {
-  const rawOrders = await prisma.rawEvent.findMany({
-    where: { source: 'shopify', entity: 'orders' },
-    orderBy: { fetchedAt: 'desc' },
-  });
-
   let count = 0;
   const BATCH = 200;
+  let skip = 0;
 
-  for (let i = 0; i < rawOrders.length; i += BATCH) {
-    const batch = rawOrders.slice(i, i + BATCH);
+  // Process in batches to avoid loading all events into memory at once
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const rawOrders = await prisma.rawEvent.findMany({
+      where: { source: 'shopify', entity: 'orders' },
+      orderBy: { fetchedAt: 'desc' },
+      take: BATCH,
+      skip,
+    });
+    if (rawOrders.length === 0) break;
+    skip += rawOrders.length;
+
     await prisma.$transaction(async (tx) => {
+      const batch = rawOrders;
       for (const raw of batch) {
         const p = raw.payloadJson as Record<string, unknown>;
 
@@ -164,11 +171,19 @@ async function normalizeOrders(): Promise<number> {
 
 // ── Customers ───────────────────────────────────────────────
 async function normalizeCustomers(): Promise<number> {
-  const rawCustomers = await prisma.rawEvent.findMany({
-    where: { source: 'shopify', entity: 'customers' },
-  });
-
   let count = 0;
+  const BATCH = 500;
+  let skip = 0;
+
+  while (true) {
+    const rawCustomers = await prisma.rawEvent.findMany({
+      where: { source: 'shopify', entity: 'customers' },
+      take: BATCH,
+      skip,
+    });
+    if (rawCustomers.length === 0) break;
+    skip += rawCustomers.length;
+
   for (const raw of rawCustomers) {
     const p = raw.payloadJson as Record<string, unknown>;
     const customerId = String(p.id).replace('gid://shopify/Customer/', '') ?? raw.externalId!;
@@ -195,6 +210,7 @@ async function normalizeCustomers(): Promise<number> {
     });
     count++;
   }
+  } // end while
 
   log.info({ count }, 'Customers normalized');
   return count;
@@ -202,12 +218,20 @@ async function normalizeCustomers(): Promise<number> {
 
 // ── Spend (Meta + Google Ads) ───────────────────────────────
 async function normalizeSpend(): Promise<number> {
-  // Meta
-  const metaRaw = await prisma.rawEvent.findMany({
-    where: { source: 'meta', entity: 'insights' },
-  });
-
   let count = 0;
+  const BATCH = 500;
+
+  // Meta
+  let skip = 0;
+  while (true) {
+    const metaRaw = await prisma.rawEvent.findMany({
+      where: { source: 'meta', entity: 'insights' },
+      take: BATCH,
+      skip,
+    });
+    if (metaRaw.length === 0) break;
+    skip += metaRaw.length;
+
   for (const raw of metaRaw) {
     const p = raw.payloadJson as Record<string, unknown>;
     const date = new Date((p.date_start as string) + 'T00:00:00Z');
@@ -239,11 +263,18 @@ async function normalizeSpend(): Promise<number> {
     });
     count++;
   }
+  } // end meta while
 
   // Google Ads
-  const gadsRaw = await prisma.rawEvent.findMany({
-    where: { source: 'google_ads', entity: 'campaign_performance' },
-  });
+  skip = 0;
+  while (true) {
+    const gadsRaw = await prisma.rawEvent.findMany({
+      where: { source: 'google_ads', entity: 'campaign_performance' },
+      take: BATCH,
+      skip,
+    });
+    if (gadsRaw.length === 0) break;
+    skip += gadsRaw.length;
 
   for (const raw of gadsRaw) {
     const p = raw.payloadJson as Record<string, unknown>;
@@ -277,6 +308,7 @@ async function normalizeSpend(): Promise<number> {
     });
     count++;
   }
+  } // end google_ads while
 
   log.info({ count }, 'Spend normalized');
   return count;
@@ -284,11 +316,19 @@ async function normalizeSpend(): Promise<number> {
 
 // ── Traffic (GA4) ───────────────────────────────────────────
 async function normalizeTraffic(): Promise<number> {
-  const ga4Raw = await prisma.rawEvent.findMany({
-    where: { source: 'ga4', entity: 'traffic' },
-  });
-
   let count = 0;
+  const BATCH = 500;
+  let skip = 0;
+
+  while (true) {
+    const ga4Raw = await prisma.rawEvent.findMany({
+      where: { source: 'ga4', entity: 'traffic' },
+      take: BATCH,
+      skip,
+    });
+    if (ga4Raw.length === 0) break;
+    skip += ga4Raw.length;
+
   for (const raw of ga4Raw) {
     const p = raw.payloadJson as Record<string, unknown>;
     const date = new Date((p.date as string) + 'T00:00:00Z');
@@ -301,14 +341,14 @@ async function normalizeTraffic(): Promise<number> {
         source: 'ga4',
         channelRaw,
         sessions: parseInt((p.sessions as string) ?? '0', 10),
-        pdpViews: parseInt((p.screenPageViews as string) ?? '0', 10),
+        pdpViews: parseInt((p.itemViews as string) ?? '0', 10),
         addToCart: parseInt((p.addToCarts as string) ?? '0', 10),
         checkouts: parseInt((p.checkouts as string) ?? '0', 10),
         purchases: parseInt((p.ecommercePurchases as string) ?? '0', 10),
       },
       update: {
         sessions: parseInt((p.sessions as string) ?? '0', 10),
-        pdpViews: parseInt((p.screenPageViews as string) ?? '0', 10),
+        pdpViews: parseInt((p.itemViews as string) ?? '0', 10),
         addToCart: parseInt((p.addToCarts as string) ?? '0', 10),
         checkouts: parseInt((p.checkouts as string) ?? '0', 10),
         purchases: parseInt((p.ecommercePurchases as string) ?? '0', 10),
@@ -316,6 +356,7 @@ async function normalizeTraffic(): Promise<number> {
     });
     count++;
   }
+  } // end while
 
   log.info({ count }, 'Traffic normalized');
   return count;

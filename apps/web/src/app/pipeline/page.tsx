@@ -100,7 +100,10 @@ export default function PipelinePage() {
   const fetchData = () => {
     setLoading(true);
     apiFetch('/api/pipeline/overview')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Pipeline API error: ${r.status}`);
+        return r.json();
+      })
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
@@ -109,7 +112,10 @@ export default function PipelinePage() {
   const fetchQuality = () => {
     setQualityLoading(true);
     apiFetch('/api/pipeline/quality')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Quality API error: ${r.status}`);
+        return r.json();
+      })
       .then((d: QualityData) => setQuality(d))
       .catch(() => setQuality(null))
       .finally(() => setQualityLoading(false));

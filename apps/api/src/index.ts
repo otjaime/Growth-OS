@@ -149,12 +149,16 @@ async function main() {
     app.log.info(`Growth OS API running at http://${HOST}:${PORT}`);
 
     // Reset any stale 'syncing' statuses left from previous server shutdown
-    const stale = await prisma.connectorCredential.updateMany({
-      where: { lastSyncStatus: 'syncing' },
-      data: { lastSyncStatus: 'error' },
-    });
-    if (stale.count > 0) {
-      app.log.warn({ count: stale.count }, 'Reset stale syncing statuses from previous run');
+    try {
+      const stale = await prisma.connectorCredential.updateMany({
+        where: { lastSyncStatus: 'syncing' },
+        data: { lastSyncStatus: 'error' },
+      });
+      if (stale.count > 0) {
+        app.log.warn({ count: stale.count }, 'Reset stale syncing statuses from previous run');
+      }
+    } catch (dbErr) {
+      app.log.warn({ error: String(dbErr) }, 'Could not reset stale sync statuses (DB may still be starting)');
     }
 
     // Rebuild marts on startup so every deploy picks up the latest pipeline code

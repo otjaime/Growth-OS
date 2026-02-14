@@ -44,7 +44,7 @@ export async function fetchGA4Traffic(
           dimensions: [{ name: 'date' }, { name: 'sessionDefaultChannelGroup' }],
           metrics: [
             { name: 'sessions' },
-            { name: 'screenPageViews' },
+            { name: 'itemViews' },
             { name: 'addToCarts' },
             { name: 'checkouts' },
             { name: 'ecommercePurchases' },
@@ -88,7 +88,7 @@ export async function fetchGA4Traffic(
               date: formattedDate,
               sessionDefaultChannelGroup: channel,
               sessions: row.metricValues[0]?.value ?? '0',
-              screenPageViews: row.metricValues[1]?.value ?? '0',
+              itemViews: row.metricValues[1]?.value ?? '0',
               addToCarts: row.metricValues[2]?.value ?? '0',
               checkouts: row.metricValues[3]?.value ?? '0',
               ecommercePurchases: row.metricValues[4]?.value ?? '0',

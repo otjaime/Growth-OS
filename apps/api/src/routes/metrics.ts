@@ -234,6 +234,43 @@ export async function metricsRoutes(app: FastifyInstance) {
       });
     }
 
+    // Include unattributed orders (null channelId) so channel totals match executive summary
+    const curUnattributed = await prisma.factOrder.findMany({
+      where: { channelId: null, orderDate: { gte: currentStart, lte: now } },
+    });
+    const prevUnattributed = await prisma.factOrder.findMany({
+      where: { channelId: null, orderDate: { gte: previousStart, lt: currentStart } },
+    });
+
+    if (curUnattributed.length > 0 || prevUnattributed.length > 0) {
+      const curRevenue = curUnattributed.reduce((s, o) => s + Number(o.revenueNet), 0);
+      const curNewCust = curUnattributed.filter((o) => o.isNewCustomer).length;
+      const curCM = curUnattributed.reduce((s, o) => s + Number(o.contributionMargin), 0);
+      const prevRevenue = prevUnattributed.reduce((s, o) => s + Number(o.revenueNet), 0);
+
+      result.push({
+        id: 'unattributed',
+        name: 'Direct / Unattributed',
+        slug: 'unattributed',
+        spend: 0,
+        revenue: curRevenue,
+        orders: curUnattributed.length,
+        newCustomers: curNewCust,
+        returningCustomers: curUnattributed.length - curNewCust,
+        cac: 0,
+        roas: 0,
+        mer: 0,
+        contributionMargin: curCM,
+        cmPct: kpiCalcs.kpis.contributionMarginPct(curCM, curRevenue),
+        impressions: 0,
+        clicks: 0,
+        revenueChange: kpiCalcs.kpis.percentChange(curRevenue, prevRevenue),
+        spendChange: 0,
+        channelProfit: curCM,
+        channelShare: 0,
+      });
+    }
+
     // Compute channel share as % of total revenue
     const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
     for (const r of result) {
@@ -334,7 +371,32 @@ export async function metricsRoutes(app: FastifyInstance) {
       orderBy: { cohortMonth: 'desc' },
     });
 
-    return { cohorts };
+    const now = new Date();
+
+    // Null out retention values for immature cohort windows
+    // (DB stores 0 for not-yet-measured, but API should return null)
+    return {
+      cohorts: cohorts.map((c) => {
+        const parts = c.cohortMonth?.split('-');
+        if (!parts || parts.length < 2) return { ...c, ageDays: 0 };
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        if (isNaN(y) || isNaN(m)) return { ...c, ageDays: 0 };
+        const monthEnd = new Date(Date.UTC(y, m, 1));
+        const ageDays = Math.floor(
+          (now.getTime() - monthEnd.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        return {
+          ...c,
+          ageDays,
+          d7Retention: ageDays >= 7 ? Number(c.d7Retention) : null,
+          d30Retention: ageDays >= 30 ? Number(c.d30Retention) : null,
+          d60Retention: ageDays >= 60 ? Number(c.d60Retention) : null,
+          d90Retention: ageDays >= 90 ? Number(c.d90Retention) : null,
+        };
+      }),
+    };
   });
 
   // ── Cohort Snapshot (latest + trends) ─────────────────────
@@ -561,10 +623,11 @@ export async function metricsRoutes(app: FastifyInstance) {
     // Mature cohorts: those with >= 90 days of age (have real D90 data)
     const mature = withAge.filter((c) => c.ageDays >= 90);
 
-    // Compute average retention decay ratios from mature cohorts
-    let avgD30toD7 = 0.5;
-    let avgD60toD30 = 0.7;
-    let avgD90toD60 = 0.8;
+    // Compute average retention growth ratios from mature cohorts
+    // Retention is cumulative (<=), so d30 >= d7 — ratios should be >= 1
+    let avgD30toD7 = 2.5;
+    let avgD60toD30 = 1.3;
+    let avgD90toD60 = 1.15;
     let avgLtv90toLtv30 = 2.0;
     let avgLtv180toLtv90 = 1.5;
 

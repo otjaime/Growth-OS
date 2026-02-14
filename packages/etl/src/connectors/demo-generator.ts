@@ -415,7 +415,7 @@ export function generateGA4Traffic(ctx?: DemoContext): RawRecord[] {
           date: format(date, 'yyyy-MM-dd'),
           sessionDefaultChannelGroup: channelGroups[ch],
           sessions: String(sessions),
-          screenPageViews: String(pdpViews),
+          itemViews: String(pdpViews),
           addToCarts: String(addToCart),
           checkouts: String(checkouts),
           ecommercePurchases: String(purchases),
