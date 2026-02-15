@@ -164,9 +164,8 @@ function PromoteModal({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  const riceScore = suggestion.impactScore && suggestion.confidenceScore && suggestion.effortScore
-    ? Math.round(((suggestion.impactScore * suggestion.impactScore * suggestion.confidenceScore) / suggestion.effortScore) * 100) / 100
-    : null;
+  // No reach score on suggestions — RICE will be computed after user sets reach
+  const riceScore = null;
 
   const handlePromote = async () => {
     setSubmitting(true);
@@ -239,10 +238,10 @@ function PromoteModal({
             </div>
             {/* RICE preview */}
             <div className="flex gap-4 text-xs text-slate-400">
+              <span>Reach: <strong className="text-slate-500">set after promote</strong></span>
               {suggestion.impactScore != null && <span>Impact: <strong className="text-white">{suggestion.impactScore}</strong></span>}
               {suggestion.confidenceScore != null && <span>Confidence: <strong className="text-white">{suggestion.confidenceScore}</strong></span>}
               {suggestion.effortScore != null && <span>Effort: <strong className="text-white">{suggestion.effortScore}</strong></span>}
-              {riceScore != null && <span>RICE: <strong className="text-blue-400">{riceScore}</strong></span>}
             </div>
           </div>
 
@@ -491,6 +490,11 @@ export default function SuggestionsPage() {
           return;
         }
         setOpportunities(data.opportunities);
+        // Detect demo mode: if any suggestion is RULE_BASED, we're in demo mode
+        const hasRuleBased = data.opportunities.some((o: Opportunity) =>
+          o.suggestions.some((s: Suggestion) => s.type === 'RULE_BASED'),
+        );
+        if (hasRuleBased) setDemoMode(true);
         setLoading(false);
         setError(false);
       })

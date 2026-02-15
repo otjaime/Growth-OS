@@ -3,11 +3,8 @@
 // LLM-powered experiment suggestions + demo fallback
 // ──────────────────────────────────────────────────────────────
 
-import OpenAI from 'openai';
 import type { Signal } from '@growth-os/etl';
-
-const apiKey = process.env.OPENAI_API_KEY ?? '';
-const model = process.env.AI_MODEL ?? 'gpt-4o-mini';
+import { getClient, AI_MODEL } from './ai.js';
 
 export interface SuggestionData {
   title: string;
@@ -126,11 +123,11 @@ export async function generateSuggestionsForOpportunity(
   playbook: PlaybookEntry[],
   count = 4,
 ): Promise<SuggestionData[]> {
-  const client = new OpenAI({ apiKey });
+  const client = getClient();
   const userPrompt = buildUserPrompt(opportunity, kpiContext, playbook, count);
 
   const response = await client.chat.completions.create({
-    model,
+    model: AI_MODEL,
     temperature: 0.4,
     max_tokens: 2000,
     messages: [

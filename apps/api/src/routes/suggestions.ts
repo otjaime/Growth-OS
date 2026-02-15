@@ -319,7 +319,8 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     }
 
     // Create experiment from suggestion
-    const reach = suggestion.impactScore;
+    // Suggestion has no reachScore — user fills it in after promotion
+    const reach = null;
     const impact = suggestion.impactScore;
     const confidence = suggestion.confidenceScore;
     const effort = suggestion.effortScore;

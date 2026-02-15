@@ -13,8 +13,10 @@ export function isAIConfigured(): boolean {
   return apiKey.length > 0;
 }
 
+export const AI_MODEL = model;
+
 let client: OpenAI | null = null;
-function getClient(): OpenAI {
+export function getClient(): OpenAI {
   if (!client) {
     client = new OpenAI({ apiKey });
   }
