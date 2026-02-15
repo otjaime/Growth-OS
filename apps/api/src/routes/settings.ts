@@ -8,6 +8,8 @@ import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
 
 async function clearAllData() {
   return prisma.$transaction([
+    prisma.experimentMetric.deleteMany(),
+    prisma.experiment.deleteMany(),
     prisma.rawEvent.deleteMany(),
     prisma.factOrder.deleteMany(),
     prisma.factSpend.deleteMany(),

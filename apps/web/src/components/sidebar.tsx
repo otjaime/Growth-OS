@@ -17,6 +17,7 @@ import {
   Settings,
   Sparkles,
   Gauge,
+  FlaskConical,
   Menu,
   X,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
   { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
+  { href: '/experiments', label: 'Experiments', icon: FlaskConical },
   { href: '/connections', label: 'Data Connections', icon: Cable },
   { href: '/pipeline', label: 'Pipeline Health', icon: Gauge },
   { href: '/jobs', label: 'Job Runs', icon: Activity },

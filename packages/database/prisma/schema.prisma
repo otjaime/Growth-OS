@@ -308,6 +308,65 @@ model Cohort {
 }
 
 // ══════════════════════════════════════════════════════════════
+// EXPERIMENTATION
+// ══════════════════════════════════════════════════════════════
+
+enum ExperimentStatus {
+  IDEA
+  BACKLOG
+  RUNNING
+  COMPLETED
+  ARCHIVED
+}
+
+model Experiment {
+  id            String           @id @default(uuid())
+  name          String
+  hypothesis    String           @db.Text
+  status        ExperimentStatus @default(IDEA)
+  channel       String?
+  primaryMetric String           @map("primary_metric")
+  targetLift    Float?           @map("target_lift")
+
+  // RICE scoring
+  reach      Int?
+  impact     Int?
+  confidence Int?
+  effort     Int?
+  riceScore  Float?  @map("rice_score")
+
+  startDate  DateTime? @map("start_date")
+  endDate    DateTime? @map("end_date")
+  result     String?   @db.Text
+  learnings  String?   @db.Text
+  nextSteps  String?   @db.Text @map("next_steps")
+
+  metrics    ExperimentMetric[]
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt     @map("updated_at")
+
+  @@index([status])
+  @@index([channel])
+  @@map("experiments")
+}
+
+model ExperimentMetric {
+  id           String     @id @default(uuid())
+  experimentId String     @map("experiment_id")
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  date         DateTime
+  metricName   String     @map("metric_name")
+  value        Float
+  notes        String?
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([experimentId, date, metricName], map: "experiment_date_metric")
+  @@map("experiment_metrics")
+}
+
+// ══════════════════════════════════════════════════════════════
 // APP SETTINGS (persistent key-value store)
 // ══════════════════════════════════════════════════════════════
 

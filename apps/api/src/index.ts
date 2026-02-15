@@ -19,6 +19,7 @@ import { wbrRoutes } from './routes/wbr.js';
 import { settingsRoutes } from './routes/settings.js';
 import { askRoutes } from './routes/ask.js';
 import { pipelineRoutes } from './routes/pipeline.js';
+import { experimentsRoutes } from './routes/experiments.js';
 import { runFullSync } from './lib/run-connector-sync.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
@@ -63,6 +64,7 @@ async function main() {
         { name: 'jobs', description: 'Pipeline job run history' },
         { name: 'connections', description: 'Data source connector management' },
         { name: 'settings', description: 'Application configuration' },
+        { name: 'experiments', description: 'Growth experiment management and RICE scoring' },
       ],
     },
   });
@@ -85,6 +87,7 @@ async function main() {
   await app.register(settingsRoutes, { prefix: '/api' });
   await app.register(askRoutes, { prefix: '/api' });
   await app.register(pipelineRoutes, { prefix: '/api' });
+  await app.register(experimentsRoutes, { prefix: '/api' });
 
   // Auto-sync: periodic full sync (replaces BullMQ scheduler, no Redis needed)
   let syncRunning = false;
