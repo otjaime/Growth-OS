@@ -15,7 +15,8 @@ export async function pipelineRoutes(app: FastifyInstance) {
       summary: 'Pipeline health overview',
       description: 'Returns recent pipeline runs, data freshness per connector, and row counts across all layers',
     },
-  }, async () => {
+  }, async (_req, reply) => {
+    try {
     // Recent pipeline runs (last 20)
     const runs = await prisma.jobRun.findMany({
       orderBy: { startedAt: 'desc' },
@@ -41,19 +42,17 @@ export async function pipelineRoutes(app: FastifyInstance) {
       },
     });
 
-    // Row counts across all layers
-    const [rawEvents, stgOrders, stgSpend, stgTraffic, factOrders, factSpend, factTraffic, cohorts, dimCustomers, dimCampaigns] = await Promise.all([
-      prisma.rawEvent.count(),
-      prisma.stgOrder.count(),
-      prisma.stgSpend.count(),
-      prisma.stgTraffic.count(),
-      prisma.factOrder.count(),
-      prisma.factSpend.count(),
-      prisma.factTraffic.count(),
-      prisma.cohort.count(),
-      prisma.dimCustomer.count(),
-      prisma.dimCampaign.count(),
-    ]);
+    // Row counts across all layers (sequential to avoid OOM on small containers)
+    const rawEvents = await prisma.rawEvent.count();
+    const stgOrders = await prisma.stgOrder.count();
+    const stgSpend = await prisma.stgSpend.count();
+    const stgTraffic = await prisma.stgTraffic.count();
+    const factOrders = await prisma.factOrder.count();
+    const factSpend = await prisma.factSpend.count();
+    const factTraffic = await prisma.factTraffic.count();
+    const cohorts = await prisma.cohort.count();
+    const dimCustomers = await prisma.dimCustomer.count();
+    const dimCampaigns = await prisma.dimCampaign.count();
 
     // Compute avg duration of successful runs
     const successfulRuns = runs.filter((r) => r.status === 'SUCCESS' && r.durationMs);
@@ -87,6 +86,10 @@ export async function pipelineRoutes(app: FastifyInstance) {
         totalRuns: runs.length,
       },
     };
+    } catch (err) {
+      reply.status(500);
+      return { error: 'Pipeline overview query failed', message: String(err) };
+    }
   });
 
   // ── Data quality checks ───────────────────────────────────
