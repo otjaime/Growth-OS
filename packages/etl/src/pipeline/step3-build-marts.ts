@@ -340,17 +340,43 @@ async function buildFactTraffic(): Promise<number> {
   const channels = await prisma.dimChannel.findMany();
   const channelMap = new Map(channels.map((c) => [c.slug, c.id]));
 
-  let count = 0;
+  // Pre-aggregate: multiple GA4 channels may map to the same normalized channel
+  // (e.g., "Organic Search" + "Organic Social" → "organic")
+  const agg = new Map<string, { date: Date; channelId: string; sessions: number; pdpViews: number; addToCart: number; checkouts: number; purchases: number }>();
+
   for (const row of stgTraffic) {
     const channelSlug = mapGA4ChannelToSlug(row.channelRaw ?? 'Other');
     const channelId = channelMap.get(channelSlug) ?? channelMap.get('other');
     if (!channelId) continue;
 
-    await prisma.factTraffic.upsert({
-      where: { date_channelId: { date: row.date, channelId } },
-      create: {
+    const key = `${row.date.toISOString()}|${channelId}`;
+    const existing = agg.get(key);
+    if (existing) {
+      existing.sessions += row.sessions;
+      existing.pdpViews += row.pdpViews;
+      existing.addToCart += row.addToCart;
+      existing.checkouts += row.checkouts;
+      existing.purchases += row.purchases;
+    } else {
+      agg.set(key, {
         date: row.date,
         channelId,
+        sessions: row.sessions,
+        pdpViews: row.pdpViews,
+        addToCart: row.addToCart,
+        checkouts: row.checkouts,
+        purchases: row.purchases,
+      });
+    }
+  }
+
+  let count = 0;
+  for (const row of agg.values()) {
+    await prisma.factTraffic.upsert({
+      where: { date_channelId: { date: row.date, channelId: row.channelId } },
+      create: {
+        date: row.date,
+        channelId: row.channelId,
         sessions: row.sessions,
         pdpViews: row.pdpViews,
         addToCart: row.addToCart,
