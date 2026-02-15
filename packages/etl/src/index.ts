@@ -7,3 +7,7 @@ export type { ValidationResult } from './pipeline/validate.js';
 export type { ShopifyConfig, MetaConfig, GoogleAdsConfig, GA4Config, RawRecord } from './types.js';
 export { forecast } from './forecast.js';
 export type { ForecastResult, ForecastConfig } from './forecast.js';
+export { detectSignals } from './signals.js';
+export type { Signal, SignalInput, FunnelCvr } from './signals.js';
+export { classifyOpportunities } from './opportunities.js';
+export type { OpportunityCandidate, OpportunityType } from './opportunities.js';

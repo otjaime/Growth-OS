@@ -20,6 +20,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { askRoutes } from './routes/ask.js';
 import { pipelineRoutes } from './routes/pipeline.js';
 import { experimentsRoutes } from './routes/experiments.js';
+import { suggestionsRoutes } from './routes/suggestions.js';
 import { runFullSync } from './lib/run-connector-sync.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
@@ -65,6 +66,7 @@ async function main() {
         { name: 'connections', description: 'Data source connector management' },
         { name: 'settings', description: 'Application configuration' },
         { name: 'experiments', description: 'Growth experiment management and RICE scoring' },
+        { name: 'suggestions', description: 'AI-powered experiment suggestions' },
       ],
     },
   });
@@ -88,6 +90,7 @@ async function main() {
   await app.register(askRoutes, { prefix: '/api' });
   await app.register(pipelineRoutes, { prefix: '/api' });
   await app.register(experimentsRoutes, { prefix: '/api' });
+  await app.register(suggestionsRoutes, { prefix: '/api' });
 
   // Auto-sync: periodic full sync (replaces BullMQ scheduler, no Redis needed)
   let syncRunning = false;

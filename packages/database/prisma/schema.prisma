@@ -367,6 +367,103 @@ model ExperimentMetric {
 }
 
 // ══════════════════════════════════════════════════════════════
+// AI SUGGESTION ENGINE
+// ══════════════════════════════════════════════════════════════
+
+enum OpportunityType {
+  EFFICIENCY_DROP
+  CAC_SPIKE
+  RETENTION_DECLINE
+  FUNNEL_LEAK
+  GROWTH_PLATEAU
+  CHANNEL_IMBALANCE
+  QUICK_WIN
+}
+
+enum OpportunityStatus {
+  NEW
+  REVIEWED
+  ACTED
+  DISMISSED
+}
+
+enum SuggestionType {
+  AI_GENERATED
+  PLAYBOOK_MATCH
+  RULE_BASED
+}
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROMOTED
+}
+
+enum FeedbackAction {
+  APPROVE
+  REJECT
+  MODIFY
+  PROMOTE
+}
+
+model Opportunity {
+  id          String            @id @default(uuid())
+  type        OpportunityType
+  title       String
+  description String            @db.Text
+  priority    Int               @default(50)
+  status      OpportunityStatus @default(NEW)
+  signalsJson Json              @map("signals_json")
+  suggestions Suggestion[]
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt      @map("updated_at")
+
+  @@index([status])
+  @@index([type])
+  @@map("opportunities")
+}
+
+model Suggestion {
+  id                  String             @id @default(uuid())
+  opportunityId       String             @map("opportunity_id")
+  opportunity         Opportunity        @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  type                SuggestionType     @default(AI_GENERATED)
+  title               String
+  hypothesis          String             @db.Text
+  suggestedChannel    String?            @map("suggested_channel")
+  suggestedMetric     String?            @map("suggested_metric")
+  suggestedTargetLift Float?             @map("suggested_target_lift")
+  impactScore         Int?               @map("impact_score")
+  confidenceScore     Int?               @map("confidence_score")
+  effortScore         Int?               @map("effort_score")
+  riskScore           Int?               @map("risk_score")
+  reasoning           String?            @db.Text
+  playbookRef         String?            @map("playbook_ref")
+  status              SuggestionStatus   @default(PENDING)
+  feedback            SuggestionFeedback[]
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt      @map("updated_at")
+
+  @@index([opportunityId])
+  @@index([status])
+  @@map("suggestions")
+}
+
+model SuggestionFeedback {
+  id                   String         @id @default(uuid())
+  suggestionId         String         @map("suggestion_id")
+  suggestion           Suggestion     @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  action               FeedbackAction
+  notes                String?        @db.Text
+  promotedExperimentId String?        @map("promoted_experiment_id")
+  createdAt            DateTime       @default(now()) @map("created_at")
+
+  @@index([suggestionId])
+  @@map("suggestion_feedback")
+}
+
+// ══════════════════════════════════════════════════════════════
 // APP SETTINGS (persistent key-value store)
 // ══════════════════════════════════════════════════════════════
 
