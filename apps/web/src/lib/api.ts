@@ -19,6 +19,7 @@ export function apiFetch(path: string, opts?: RequestInit): Promise<Response> {
   const url = path.startsWith('http') ? path : `${API}${path}`;
   return fetch(url, {
     ...opts,
+    cache: 'no-store',
     headers: {
       ...opts?.headers,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
