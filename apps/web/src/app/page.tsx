@@ -198,7 +198,7 @@ export default function DashboardPage() {
           <KpiCard title="Revenue (Gross)" value={k.revenueGross.value} change={k.revenueGross.change} sparkData={revenueSparkData} />
           <KpiCard title="Orders" value={k.orders.value} change={k.orders.change} format="number" />
           <KpiCard title="Gross Margin" value={k.grossMarginPct.value} format="percent" />
-          <KpiCard title="CM%" value={k.cmPct.value} change={k.cmPct.change} format="percent" />
+          <KpiCard title="Contrib. Margin %" value={k.cmPct.value} change={k.cmPct.change} format="percent" />
         </div>
       </section>
 
@@ -263,11 +263,13 @@ export default function DashboardPage() {
             </div>
             {forecastData.parameters && (
               <div className="card flex flex-col gap-2">
-                <p className="text-xs text-slate-400 uppercase tracking-wide">Model Parameters</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wide">Forecast Model</p>
                 <p className="text-sm text-slate-300">
-                  α = {forecastData.parameters.alpha} &nbsp; β = {forecastData.parameters.beta}
+                  Holt-Winters double exponential smoothing
                 </p>
-                <p className="text-xs text-slate-500">Holt-Winters (auto-optimized)</p>
+                <p className="text-xs text-slate-500">
+                  Level sensitivity {forecastData.parameters.alpha} · Trend sensitivity {forecastData.parameters.beta}
+                </p>
               </div>
             )}
           </div>
@@ -326,7 +328,7 @@ export default function DashboardPage() {
           <div className="card flex flex-col gap-2">
             <p className="text-xs text-slate-400 uppercase tracking-wide">D30 Retention</p>
             <p className="text-2xl font-bold text-white">{formatPercent(k.retentionD30.value)}</p>
-            <p className="text-xs text-slate-500">Latest cohort</p>
+            <p className="text-xs text-slate-500">Most recent mature cohort</p>
           </div>
           <KpiCard title="New Customers" value={k.newCustomers.value} change={k.newCustomers.change} format="number" />
           <KpiCard title="MER" value={k.mer.value} change={k.mer.change} format="multiplier" />
@@ -349,7 +351,7 @@ export default function DashboardPage() {
                   <th className="pb-2 font-medium">Channel</th>
                   <th className="pb-2 font-medium text-right">Spend</th>
                   <th className="pb-2 font-medium text-right">Revenue</th>
-                  <th className="pb-2 font-medium text-right">CM%</th>
+                  <th className="pb-2 font-medium text-right">CM</th>
                   <th className="pb-2 font-medium text-right">Profit</th>
                   <th className="pb-2 font-medium text-right">Share</th>
                 </tr>

@@ -75,7 +75,15 @@ export async function metricsRoutes(app: FastifyInstance) {
     };
 
     // GM-level metrics from latest cohort
+    // Use the most recent MATURE cohort (age >= 30d) for retention/LTV metrics,
+    // since the newest cohort may be too young and show 0% retention.
     const latestCohort = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+    const thirtyDaysAgo = format(subDays(now, 30), 'yyyy-MM');
+    const matureCohort = await prisma.cohort.findFirst({
+      where: { cohortMonth: { lte: thirtyDaysAgo } },
+      orderBy: { cohortMonth: 'desc' },
+    });
+    const cohortForRetention = matureCohort ?? latestCohort;
     const currentCogs = currentOrders.reduce((s, o) => s + Number(o.cogs), 0);
     const grossMarginPct = cur.revenueNet > 0 ? (cur.revenueNet - currentCogs) / cur.revenueNet : 0;
 
@@ -94,10 +102,10 @@ export async function metricsRoutes(app: FastifyInstance) {
         sessions: { value: cur.sessions, change: kpiCalcs.kpis.percentChange(cur.sessions, prev.sessions) },
         spend: { value: cur.spend, change: kpiCalcs.kpis.percentChange(cur.spend, prev.spend) },
         grossMarginPct: { value: grossMarginPct },
-        ltvCacRatio: { value: latestCohort && Number(latestCohort.avgCac) > 0 ? Number(latestCohort.ltv180) / Number(latestCohort.avgCac) : 0 },
-        paybackDays: { value: latestCohort?.paybackDays ?? null },
-        retentionD30: { value: latestCohort ? Number(latestCohort.d30Retention) : 0 },
-        ltv90: { value: latestCohort ? Number(latestCohort.ltv90) : 0 },
+        ltvCacRatio: { value: cohortForRetention && Number(cohortForRetention.avgCac) > 0 ? Number(cohortForRetention.ltv180) / Number(cohortForRetention.avgCac) : 0 },
+        paybackDays: { value: cohortForRetention?.paybackDays ?? null },
+        retentionD30: { value: cohortForRetention ? Number(cohortForRetention.d30Retention) : 0 },
+        ltv90: { value: cohortForRetention ? Number(cohortForRetention.ltv90) : 0 },
       },
     };
   });
@@ -407,7 +415,15 @@ export async function metricsRoutes(app: FastifyInstance) {
       description: 'Returns the latest cohort with LTV/CAC ratio and recent cohort trends',
     },
   }, async () => {
-    const latest = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+    // Use the most recent mature cohort (age >= 30d) so D30 retention
+    // isn't 0% for a cohort that hasn't had time to accumulate repeats.
+    const now = new Date();
+    const thirtyDaysAgo = format(subDays(now, 30), 'yyyy-MM');
+    const matureCohort = await prisma.cohort.findFirst({
+      where: { cohortMonth: { lte: thirtyDaysAgo } },
+      orderBy: { cohortMonth: 'desc' },
+    });
+    const latest = matureCohort ?? await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
 
     if (!latest) {
       return { latest: null, recentCohorts: [] };
@@ -532,8 +548,11 @@ export async function metricsRoutes(app: FastifyInstance) {
       return { error: 'Invalid metric. Must be revenue, orders, or spend.' };
     }
 
-    const now = new Date();
-    const start = subDays(now, 180);
+    // Use yesterday as end date: today is incomplete (partial data)
+    // and Holt-Winters with high alpha would interpret trailing zeros
+    // as a real signal, collapsing the forecast to 0.
+    const yesterday = subDays(new Date(), 1);
+    const start = subDays(yesterday, 180);
 
     let dailyData: Array<{ date: Date; value: number }>;
 
@@ -541,27 +560,27 @@ export async function metricsRoutes(app: FastifyInstance) {
       dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
         SELECT order_date as date, SUM(revenue_net)::float as value
         FROM fact_orders
-        WHERE order_date >= ${start} AND order_date <= ${now}
+        WHERE order_date >= ${start} AND order_date <= ${yesterday}
         GROUP BY order_date ORDER BY order_date
       `;
     } else if (metric === 'orders') {
       dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
         SELECT order_date as date, COUNT(*)::float as value
         FROM fact_orders
-        WHERE order_date >= ${start} AND order_date <= ${now}
+        WHERE order_date >= ${start} AND order_date <= ${yesterday}
         GROUP BY order_date ORDER BY order_date
       `;
     } else {
       dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
         SELECT date, SUM(spend)::float as value
         FROM fact_spend
-        WHERE date >= ${start} AND date <= ${now}
+        WHERE date >= ${start} AND date <= ${yesterday}
         GROUP BY date ORDER BY date
       `;
     }
 
     // Fill date gaps with 0 (missing days = zero activity, not missing data)
-    const filled = fillDateGaps(dailyData, start, now);
+    const filled = fillDateGaps(dailyData, start, yesterday);
     const values = filled.map((d) => d.value);
 
     const result = forecast(values, { horizon });
