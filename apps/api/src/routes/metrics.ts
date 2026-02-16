@@ -77,10 +77,13 @@ export async function metricsRoutes(app: FastifyInstance) {
     // GM-level metrics from latest cohort
     // Use the most recent MATURE cohort (age >= 30d) for retention/LTV metrics,
     // since the newest cohort may be too young and show 0% retention.
+    // A cohort month like "2026-01" includes customers acquired up to Jan 31,
+    // who need until Mar 2 for 30 days of history. So we subtract 2 months
+    // to ensure the entire cohort has had at least 30 days to accumulate repeats.
     const latestCohort = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
-    const thirtyDaysAgo = format(subDays(now, 30), 'yyyy-MM');
+    const matureMonth = format(subDays(now, 60), 'yyyy-MM');
     const matureCohort = await prisma.cohort.findFirst({
-      where: { cohortMonth: { lte: thirtyDaysAgo } },
+      where: { cohortMonth: { lte: matureMonth } },
       orderBy: { cohortMonth: 'desc' },
     });
     const cohortForRetention = matureCohort ?? latestCohort;
@@ -417,10 +420,12 @@ export async function metricsRoutes(app: FastifyInstance) {
   }, async () => {
     // Use the most recent mature cohort (age >= 30d) so D30 retention
     // isn't 0% for a cohort that hasn't had time to accumulate repeats.
+    // Subtract 60 days (not 30) because a cohort month's last customers
+    // are acquired at month-end and need 30 more days for D30 data.
     const now = new Date();
-    const thirtyDaysAgo = format(subDays(now, 30), 'yyyy-MM');
+    const matureMonth = format(subDays(now, 60), 'yyyy-MM');
     const matureCohort = await prisma.cohort.findFirst({
-      where: { cohortMonth: { lte: thirtyDaysAgo } },
+      where: { cohortMonth: { lte: matureMonth } },
       orderBy: { cohortMonth: 'desc' },
     });
     const latest = matureCohort ?? await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
