@@ -653,11 +653,11 @@ export async function metricsRoutes(app: FastifyInstance) {
       const d60Actual = c.ageDays >= 60 ? Number(c.d60Retention) : null;
       const d90Actual = c.ageDays >= 90 ? Number(c.d90Retention) : null;
 
-      const d30Projected = d30Actual === null ? d7 * avgD30toD7 : null;
+      const d30Projected = d30Actual === null ? Math.min(1, d7 * avgD30toD7) : null;
       const d30 = d30Actual ?? d30Projected ?? 0;
-      const d60Projected = d60Actual === null ? d30 * avgD60toD30 : null;
+      const d60Projected = d60Actual === null ? Math.min(1, d30 * avgD60toD30) : null;
       const d60 = d60Actual ?? d60Projected ?? 0;
-      const d90Projected = d90Actual === null ? d60 * avgD90toD60 : null;
+      const d90Projected = d90Actual === null ? Math.min(1, d60 * avgD90toD60) : null;
 
       const ltv30Actual = c.ageDays >= 30 ? Number(c.ltv30) : null;
       const ltv90Actual = c.ageDays >= 90 ? Number(c.ltv90) : null;

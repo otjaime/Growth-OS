@@ -117,9 +117,13 @@ export function generateShopifyOrders(ctx?: DemoContext): RawRecord[] {
     const baseOrders = Math.round(30 * growthFactor * weekendBoost * anomaly + randFloat(-5, 5, c.rng));
     const numOrders = Math.max(5, baseOrders);
 
+    // Only pick from customers whose intended firstOrderDate has arrived
+    const eligibleCustomers = c.customers.filter((cu) => cu.firstOrderDate <= date);
+    if (eligibleCustomers.length === 0) continue;
+
     for (let o = 0; o < numOrders; o++) {
       orderId++;
-      const customer = pick(c.customers, c.rng);
+      const customer = pick(eligibleCustomers, c.rng);
       const isRepeat = customer.firstOrderDate < date;
       const isNewCustomer = !isRepeat || differenceInDays(date, customer.firstOrderDate) < 1;
       const category = pick(CATEGORIES, c.rng);
