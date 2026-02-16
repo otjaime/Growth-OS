@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import seedrandom from 'seedrandom';
-import { addDays, format, subDays, differenceInDays } from 'date-fns';
+import { addDays, format, subDays } from 'date-fns';
 import type { RawRecord } from '../types.js';
 import { CATEGORY_MARGINS } from '../types.js';
 
@@ -102,30 +102,57 @@ export function generateShopifyOrders(ctx?: DemoContext): RawRecord[] {
   const records: RawRecord[] = [];
   let orderId = 1000;
 
+  // ── Pre-compute repeat purchase schedule ──
+  // This directly controls retention rates independent of pool size.
+  // Target: D7≈5%, D30≈15%, D60≈20%, D90≈23%
+  const repeatSchedule = new Map<string, Date[]>();
+  for (const customer of c.customers) {
+    const dates: Date[] = [];
+    // ~5% make a quick repeat (within 1-7 days)
+    if (c.rng() < 0.05) {
+      const d = addDays(customer.firstOrderDate, randInt(1, 7, c.rng));
+      if (d <= c.endDate) dates.push(d);
+    }
+    // ~10% repeat within 8-30 days
+    if (c.rng() < 0.10) {
+      const d = addDays(customer.firstOrderDate, randInt(8, 30, c.rng));
+      if (d <= c.endDate) dates.push(d);
+    }
+    // ~6% repeat within 31-60 days
+    if (c.rng() < 0.06) {
+      const d = addDays(customer.firstOrderDate, randInt(31, 60, c.rng));
+      if (d <= c.endDate) dates.push(d);
+    }
+    // ~4% repeat within 61-90 days
+    if (c.rng() < 0.04) {
+      const d = addDays(customer.firstOrderDate, randInt(61, 90, c.rng));
+      if (d <= c.endDate) dates.push(d);
+    }
+    if (dates.length > 0) repeatSchedule.set(customer.id, dates);
+  }
+
   for (let day = 0; day <= DEMO_DAYS; day++) {
     const date = addDays(c.startDate, day);
-    // Base orders per day: ~25-45, with growth trend + seasonality
-    const growthFactor = 1 + (day / DEMO_DAYS) * 0.4;
-    const dayOfWeek = date.getDay();
-    const weekendBoost = dayOfWeek === 0 || dayOfWeek === 6 ? 1.15 : 1.0;
-    // Anomaly: spike in week ~20 (Black Friday sim), dip in week ~8
-    const weekNum = Math.floor(day / 7);
-    let anomaly = 1.0;
-    if (weekNum >= 19 && weekNum <= 21) anomaly = 1.6; // Sales spike
-    if (weekNum === 8) anomaly = 0.6; // Dip week
 
-    const baseOrders = Math.round(30 * growthFactor * weekendBoost * anomaly + randFloat(-5, 5, c.rng));
-    const numOrders = Math.max(5, baseOrders);
+    // Customers acquired today — each gets exactly ONE first-day order
+    const newToday = c.customers.filter((cu) => cu.firstOrderDate.getTime() === date.getTime());
+    // Customers with a pre-scheduled repeat purchase today
+    const repeatsToday = c.customers.filter((cu) => {
+      const dates = repeatSchedule.get(cu.id);
+      return dates?.some((d) => d.getTime() === date.getTime()) ?? false;
+    });
+    if (newToday.length === 0 && repeatsToday.length === 0) continue;
 
-    // Only pick from customers whose intended firstOrderDate has arrived
-    const eligibleCustomers = c.customers.filter((cu) => cu.firstOrderDate <= date);
-    if (eligibleCustomers.length === 0) continue;
+    // Each customer gets exactly one order per day. This prevents same-day
+    // duplicates which buildCohorts would count as repeat purchases (inflating
+    // retention to near-100%). Daily volume = repeats + new arrivals.
+    const ordersToday: DemoCustomer[] = [...repeatsToday, ...newToday];
 
-    for (let o = 0; o < numOrders; o++) {
+    for (let o = 0; o < ordersToday.length; o++) {
       orderId++;
-      const customer = pick(eligibleCustomers, c.rng);
+      const customer = ordersToday[o]!;
       const isRepeat = customer.firstOrderDate < date;
-      const isNewCustomer = !isRepeat || differenceInDays(date, customer.firstOrderDate) < 1;
+      const isNewCustomer = !isRepeat;
       const category = pick(CATEGORIES, c.rng);
       const numItems = randInt(1, 4, c.rng);
       const itemPrice = randFloat(15, 180, c.rng);

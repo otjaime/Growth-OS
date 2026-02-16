@@ -157,8 +157,8 @@ describe('Demo Data Generator', () => {
 
     it('generates realistic volume', () => {
       const data = generateAllDemoData();
-      // ~30 orders/day * 180 days ≈ 5400
-      expect(data.orders.length).toBeGreaterThan(3000);
+      // 2400 customers + ~500 pre-scheduled repeats ≈ 2900
+      expect(data.orders.length).toBeGreaterThan(2500);
       expect(data.customers.length).toBeGreaterThan(1000);
       // 4 Meta campaigns * 180 days = 720
       expect(data.metaInsights.length).toBeGreaterThanOrEqual(700);
