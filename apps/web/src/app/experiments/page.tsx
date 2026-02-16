@@ -13,11 +13,10 @@ interface Experiment {
   channel: string | null;
   primaryMetric: string;
   targetLift: number | null;
-  reach: number | null;
   impact: number | null;
   confidence: number | null;
-  effort: number | null;
-  riceScore: number | null;
+  ease: number | null;
+  iceScore: number | null;
   startDate: string | null;
   endDate: string | null;
   result: string | null;
@@ -61,14 +60,14 @@ function SummaryCards({ allExperiments }: { allExperiments: Experiment[] }) {
   const withResult = allExperiments.filter((e) => e.status === 'COMPLETED' && e.result);
   const wins = withResult.filter((e) => e.result && !e.result.toLowerCase().includes('no impact') && !e.result.toLowerCase().includes('failed') && !e.result.toLowerCase().includes('negative'));
   const winRate = withResult.length > 0 ? Math.round((wins.length / withResult.length) * 100) : null;
-  const avgRice = allExperiments.filter((e) => e.riceScore != null);
-  const avgRiceVal = avgRice.length > 0 ? Math.round(avgRice.reduce((sum, e) => sum + (e.riceScore ?? 0), 0) / avgRice.length) : null;
+  const avgIce = allExperiments.filter((e) => e.iceScore != null);
+  const avgIceVal = avgIce.length > 0 ? Math.round(avgIce.reduce((sum, e) => sum + (e.iceScore ?? 0), 0) / avgIce.length) : null;
 
   const cards = [
     { label: 'Total Experiments', value: total, icon: FlaskConical, color: 'text-blue-400' },
     { label: 'Running Now', value: running, icon: Clock, color: 'text-green-400' },
     { label: 'Completed', value: completed, icon: CheckCircle, color: 'text-purple-400' },
-    { label: 'Avg RICE', value: avgRiceVal ?? '—', icon: Trophy, color: 'text-yellow-400' },
+    { label: 'Avg ICE', value: avgIceVal ?? '—', icon: Trophy, color: 'text-yellow-400' },
   ];
 
   return (
@@ -94,14 +93,13 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [primaryMetric, setPrimaryMetric] = useState('conversion_rate');
   const [channel, setChannel] = useState('');
   const [targetLift, setTargetLift] = useState('');
-  const [reach, setReach] = useState(5);
   const [impact, setImpact] = useState(5);
   const [confidence, setConfidence] = useState(5);
-  const [effort, setEffort] = useState(5);
+  const [ease, setEase] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const riceScore = effort > 0 ? Math.round(((reach * impact * confidence) / effort) * 100) / 100 : 0;
+  const iceScore = Math.round((impact * confidence * ease / 10) * 100) / 100;
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -124,7 +122,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           primaryMetric,
           channel: channel || null,
           targetLift: targetLift ? parseFloat(targetLift) : null,
-          reach, impact, confidence, effort,
+          impact, confidence, ease,
         }),
       });
       if (!res.ok) {
@@ -209,19 +207,18 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             />
           </div>
 
-          {/* RICE Scoring */}
+          {/* ICE Scoring */}
           <div className="border-t border-slate-700 pt-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-slate-400 uppercase tracking-wide">RICE Score</span>
-              <span className="text-lg font-bold text-blue-400">{riceScore}</span>
+              <span className="text-xs text-slate-400 uppercase tracking-wide">ICE Score</span>
+              <span className="text-lg font-bold text-blue-400">{iceScore}</span>
             </div>
-            <p className="text-[11px] text-slate-500 mb-3">Score = (Reach x Impact x Confidence) / Effort</p>
-            <div className="grid grid-cols-2 gap-4">
+            <p className="text-[11px] text-slate-500 mb-3">Score = (Impact x Confidence x Ease) / 10</p>
+            <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Reach', value: reach, set: setReach, hint: '1 = few users, 10 = all users' },
                 { label: 'Impact', value: impact, set: setImpact, hint: '1 = minimal, 10 = transformative' },
                 { label: 'Confidence', value: confidence, set: setConfidence, hint: '1 = guessing, 10 = data-proven' },
-                { label: 'Effort', value: effort, set: setEffort, hint: '1 = hours, 10 = months' },
+                { label: 'Ease', value: ease, set: setEase, hint: '1 = very hard, 10 = trivial' },
               ].map(({ label, value, set, hint }) => (
                 <div key={label}>
                   <div className="flex items-center justify-between mb-0.5">
@@ -423,8 +420,8 @@ function ExperimentRow({ exp, onRefresh, onEdit }: { exp: Experiment; onRefresh:
           <span className="text-xs text-slate-300">{exp.primaryMetric.replace(/_/g, ' ')}</span>
         </td>
         <td className="px-4 py-3 text-center">
-          {exp.riceScore != null
-            ? <span className="text-sm font-semibold text-blue-400">{exp.riceScore}</span>
+          {exp.iceScore != null
+            ? <span className="text-sm font-semibold text-blue-400">{exp.iceScore}</span>
             : <span className="text-xs text-slate-600">&mdash;</span>}
         </td>
         <td className="px-4 py-3">
@@ -462,12 +459,11 @@ function ExperimentRow({ exp, onRefresh, onEdit }: { exp: Experiment; onRefresh:
                   <span className="text-sm text-white">{exp.targetLift}%</span>
                 </div>
               )}
-              {exp.reach != null && (
+              {exp.impact != null && (
                 <div className="flex gap-4 text-xs text-slate-400">
-                  <span>R: <strong className="text-white">{exp.reach}</strong></span>
                   <span>I: <strong className="text-white">{exp.impact}</strong></span>
                   <span>C: <strong className="text-white">{exp.confidence}</strong></span>
-                  <span>E: <strong className="text-white">{exp.effort}</strong></span>
+                  <span>E: <strong className="text-white">{exp.ease}</strong></span>
                 </div>
               )}
               {exp.result && (
@@ -647,7 +643,7 @@ export default function ExperimentsPage() {
                 <th className="px-4 py-3 font-medium">Metric</th>
                 <th className="px-4 py-3 font-medium text-center">
                   <span className="inline-flex items-center gap-1">
-                    RICE <ArrowUpDown className="h-3 w-3" />
+                    ICE <ArrowUpDown className="h-3 w-3" />
                   </span>
                 </th>
                 <th className="px-4 py-3 font-medium">Status</th>

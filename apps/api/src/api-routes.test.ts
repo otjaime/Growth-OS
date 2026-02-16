@@ -55,6 +55,23 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
   },
+  growthScenario: {
+    findMany: vi.fn().mockResolvedValue([]),
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: 'gs-1' }),
+    update: vi.fn().mockResolvedValue({ id: 'gs-1' }),
+    delete: vi.fn().mockResolvedValue({ id: 'gs-1' }),
+  },
+  dimCustomer: {
+    count: vi.fn().mockResolvedValue(0),
+  },
+  factEmail: {
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+  },
+  stgEmail: {
+    count: vi.fn().mockResolvedValue(0),
+  },
 }));
 
 vi.mock('@growth-os/database', () => ({
@@ -529,6 +546,116 @@ describe('API Edge Cases', () => {
     expect(body.orders.totalOrders).toBe(0);
     expect(body.orders.revenueGross).toBe(0);
     expect(body.traffic).toBeNull();
+    await app.close();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════
+// SEGMENTS ENDPOINT
+// ═════════════════════════════════════════════════════════════
+describe('Segments Route', () => {
+  it('GET /api/metrics/segments returns 200 with segments array', async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([
+      { segment: 'Champions', count: 50, total_revenue: 25000, total_orders: 200 },
+      { segment: 'Loyal', count: 120, total_revenue: 36000, total_orders: 480 },
+      { segment: 'At Risk', count: 30, total_revenue: 9000, total_orders: 90 },
+    ]);
+
+    const app = Fastify();
+    await app.register(metricsRoutes, { prefix: '/api' });
+    const res = await app.inject({ method: 'GET', url: '/api/metrics/segments' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body).toHaveProperty('segments');
+    expect(Array.isArray(body.segments)).toBe(true);
+    expect(body.segments.length).toBe(3);
+    expect(body.segments[0]).toHaveProperty('segment');
+    expect(body.segments[0]).toHaveProperty('count');
+    expect(body.segments[0]).toHaveProperty('totalRevenue');
+    expect(body.segments[0]).toHaveProperty('avgOrderValue');
+    expect(body.segments[0]).toHaveProperty('avgOrdersPerCustomer');
+    await app.close();
+  });
+
+  it('GET /api/metrics/segments returns empty array for no data', async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+    const app = Fastify();
+    await app.register(metricsRoutes, { prefix: '/api' });
+    const res = await app.inject({ method: 'GET', url: '/api/metrics/segments' });
+    const body = JSON.parse(res.payload);
+    expect(body.segments).toEqual([]);
+    await app.close();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════
+// EMAIL ENDPOINT
+// ═════════════════════════════════════════════════════════════
+describe('Email Route', () => {
+  it('GET /api/metrics/email returns 200 with campaigns, flows, summary', async () => {
+    mockPrisma.factEmail.findMany
+      .mockResolvedValueOnce([
+        {
+          campaignId: 'camp1',
+          campaign: { campaignName: 'Test Campaign' },
+          sends: 5000, opens: 1500, clicks: 100, bounces: 50,
+          unsubscribes: 10, conversions: 5, revenue: 500,
+          date: new Date('2026-02-01'),
+        },
+      ])
+      .mockResolvedValueOnce([]); // flows
+
+    const app = Fastify();
+    await app.register(metricsRoutes, { prefix: '/api' });
+    const res = await app.inject({ method: 'GET', url: '/api/metrics/email?days=30' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body).toHaveProperty('campaigns');
+    expect(body).toHaveProperty('flows');
+    expect(body).toHaveProperty('summary');
+    expect(body.summary).toHaveProperty('totalSends');
+    expect(body.summary).toHaveProperty('avgOpenRate');
+    expect(body.summary).toHaveProperty('avgClickRate');
+    expect(body.summary).toHaveProperty('totalEmailRevenue');
+    expect(body.summary).toHaveProperty('unsubscribeRate');
+    await app.close();
+  });
+
+  it('GET /api/metrics/email returns empty data when no email records', async () => {
+    mockPrisma.factEmail.findMany
+      .mockResolvedValueOnce([])  // campaigns
+      .mockResolvedValueOnce([]); // flows
+
+    const app = Fastify();
+    await app.register(metricsRoutes, { prefix: '/api' });
+    const res = await app.inject({ method: 'GET', url: '/api/metrics/email' });
+    const body = JSON.parse(res.payload);
+    expect(body.campaigns).toEqual([]);
+    expect(body.summary.totalSends).toBe(0);
+    expect(body.summary.totalEmailRevenue).toBe(0);
+    await app.close();
+  });
+
+  it('GET /api/metrics/email computes open rate correctly', async () => {
+    mockPrisma.factEmail.findMany
+      .mockResolvedValueOnce([
+        {
+          campaignId: 'camp1',
+          campaign: { campaignName: 'Test' },
+          sends: 1000, opens: 300, clicks: 30, bounces: 10,
+          unsubscribes: 5, conversions: 3, revenue: 300,
+          date: new Date('2026-02-01'),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const app = Fastify();
+    await app.register(metricsRoutes, { prefix: '/api' });
+    const res = await app.inject({ method: 'GET', url: '/api/metrics/email?days=30' });
+    const body = JSON.parse(res.payload);
+    expect(body.campaigns[0].openRate).toBeCloseTo(0.3, 2);
+    expect(body.summary.avgOpenRate).toBeCloseTo(0.3, 2);
     await app.close();
   });
 });

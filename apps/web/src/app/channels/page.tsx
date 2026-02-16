@@ -5,10 +5,13 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { formatCurrency, formatPercent, formatNumber, changeColor, formatPercentChange } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
+import { exportToCSV } from '@/lib/export';
+import { useFilters } from '@/contexts/filters';
 
 const CHANNEL_COLORS: Record<string, string> = {
   meta: '#3b82f6',
   google: '#22c55e',
+  tiktok: '#00f2ea',
   email: '#f59e0b',
   organic: '#8b5cf6',
   affiliate: '#ec4899',
@@ -44,6 +47,7 @@ export default function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<keyof ChannelData>('revenue');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const { channelFilter } = useFilters();
 
   useEffect(() => {
     setLoading(true);
@@ -56,7 +60,11 @@ export default function ChannelsPage() {
       .catch(() => setLoading(false));
   }, [days]);
 
-  const sorted = [...channels].sort((a, b) => {
+  const filtered = channelFilter
+    ? channels.filter((c) => c.slug === channelFilter)
+    : channels;
+
+  const sorted = [...filtered].sort((a, b) => {
     const av = a[sortKey] as number;
     const bv = b[sortKey] as number;
     return sortDir === 'desc' ? bv - av : av - bv;
@@ -82,15 +90,17 @@ export default function ChannelsPage() {
 
   // Totals
   const totals = {
-    spend: channels.reduce((s, c) => s + c.spend, 0),
-    revenue: channels.reduce((s, c) => s + c.revenue, 0),
-    orders: channels.reduce((s, c) => s + c.orders, 0),
-    contributionMargin: channels.reduce((s, c) => s + c.contributionMargin, 0),
-    channelProfit: channels.reduce((s, c) => s + c.channelProfit, 0),
+    spend: filtered.reduce((s, c) => s + c.spend, 0),
+    revenue: filtered.reduce((s, c) => s + c.revenue, 0),
+    orders: filtered.reduce((s, c) => s + c.orders, 0),
+    contributionMargin: filtered.reduce((s, c) => s + c.contributionMargin, 0),
+    channelProfit: filtered.reduce((s, c) => s + c.channelProfit, 0),
+    newCustomers: filtered.reduce((s, c) => s + c.newCustomers, 0),
+    returningCustomers: filtered.reduce((s, c) => s + c.returningCustomers, 0),
   };
 
   // Pie chart data
-  const pieData = channels
+  const pieData = filtered
     .filter((c) => c.revenue > 0)
     .map((c) => ({
       name: c.name,
@@ -155,6 +165,25 @@ export default function ChannelsPage() {
       )}
 
       <div className="card overflow-x-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Channel Breakdown</h2>
+          <button
+            onClick={() => exportToCSV(channels, `channels-${days}d`, [
+              { key: 'name', label: 'Channel' },
+              { key: 'spend', label: 'Spend' },
+              { key: 'revenue', label: 'Revenue' },
+              { key: 'orders', label: 'Orders' },
+              { key: 'cac', label: 'CAC' },
+              { key: 'roas', label: 'ROAS' },
+              { key: 'cmPct', label: 'CM%', format: (v) => `${(Number(v) * 100).toFixed(1)}%` },
+              { key: 'newCustomers', label: 'New Customers' },
+              { key: 'returningCustomers', label: 'Returning' },
+            ])}
+            className="text-xs text-slate-400 hover:text-white px-2 py-1 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+          >
+            Export CSV
+          </button>
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-700">
@@ -168,6 +197,7 @@ export default function ChannelsPage() {
               <SortHeader label="Ch. Profit" field="channelProfit" />
               <SortHeader label="Share" field="channelShare" />
               <SortHeader label="New" field="newCustomers" />
+              <SortHeader label="Existing" field="returningCustomers" />
               <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Rev Δ</th>
             </tr>
           </thead>
@@ -186,6 +216,7 @@ export default function ChannelsPage() {
                 </td>
                 <td className="px-4 py-3">{formatPercent(ch.channelShare)}</td>
                 <td className="px-4 py-3">{formatNumber(ch.newCustomers)}</td>
+                <td className="px-4 py-3">{formatNumber(ch.returningCustomers)}</td>
                 <td className={`px-4 py-3 ${changeColor(ch.revenueChange)}`}>
                   {formatPercentChange(ch.revenueChange)}
                 </td>
@@ -205,8 +236,9 @@ export default function ChannelsPage() {
                 {totals.channelProfit >= 0 ? '+' : ''}{formatCurrency(totals.channelProfit)}
               </td>
               <td className="px-4 py-3">100.0%</td>
-              <td className="px-4 py-3">—</td>
-              <td className="px-4 py-3">—</td>
+              <td className="px-4 py-3">{formatNumber(totals.newCustomers)}</td>
+              <td className="px-4 py-3">{formatNumber(totals.returningCustomers)}</td>
+              <td className="px-4 py-3"></td>
             </tr>
           </tfoot>
         </table>

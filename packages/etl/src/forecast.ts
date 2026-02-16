@@ -194,3 +194,178 @@ export function forecast(
     mse,
   };
 }
+
+// ── Holt-Winters Triple Exponential (Seasonal) ─────────────────
+
+export interface SeasonalForecastConfig extends ForecastConfig {
+  seasonalPeriod: number;
+  seasonalType: 'additive' | 'multiplicative';
+}
+
+export interface SeasonalForecastResult extends ForecastResult {
+  gamma: number;
+  seasonalFactors: number[];
+}
+
+const SEASONAL_DEFAULTS: SeasonalForecastConfig = {
+  horizon: 30,
+  holdoutPct: 0.2,
+  gridSteps: 5,
+  seasonalPeriod: 7,
+  seasonalType: 'additive',
+};
+
+/**
+ * Holt-Winters Triple Exponential Smoothing (additive seasonality).
+ * Falls back to double exponential if data is too short for a full seasonal cycle.
+ */
+export function forecastSeasonal(
+  data: number[],
+  config?: Partial<SeasonalForecastConfig>,
+): SeasonalForecastResult | null {
+  const cfg: SeasonalForecastConfig = { ...SEASONAL_DEFAULTS, ...config };
+  const m = cfg.seasonalPeriod;
+
+  // Need at least 2 full seasonal periods
+  if (data.length < m * 2) {
+    const result = forecast(data, cfg);
+    if (!result) return null;
+    return { ...result, gamma: 0, seasonalFactors: [] };
+  }
+
+  const { alpha, beta, gamma, mse, seasonal } = optimizeSeasonalParameters(data, cfg);
+
+  // Smooth with best parameters
+  const { level, trend, seasonalFactors } = hwTripleSmooth(data, alpha, beta, gamma, m);
+  const n = data.length;
+  const lastLevel = level[n - 1]!;
+  const lastTrend = trend[n - 1]!;
+
+  // Generate seasonal forecast
+  const forecastValues: number[] = [];
+  for (let h = 0; h < cfg.horizon; h++) {
+    const seasonIdx = (n + h) % m;
+    const val = lastLevel + (h + 1) * lastTrend + seasonalFactors[seasonIdx]!;
+    forecastValues.push(Math.max(0, val));
+  }
+
+  const ci = computeConfidenceIntervals(forecastValues, mse, cfg.horizon);
+
+  return {
+    forecast: forecastValues,
+    ...ci,
+    alpha,
+    beta,
+    gamma,
+    mse,
+    seasonalFactors: seasonal,
+  };
+}
+
+function hwTripleSmooth(
+  data: number[],
+  alpha: number,
+  beta: number,
+  gamma: number,
+  m: number,
+): { level: number[]; trend: number[]; seasonalFactors: number[] } {
+  const n = data.length;
+  const level = new Array<number>(n);
+  const trend = new Array<number>(n);
+  const seasonal = new Array<number>(n + m);
+
+  // Initialize: average of first period
+  let firstPeriodAvg = 0;
+  for (let i = 0; i < m; i++) firstPeriodAvg += data[i]!;
+  firstPeriodAvg /= m;
+
+  level[0] = firstPeriodAvg;
+  trend[0] = 0;
+  if (m >= 2) {
+    let secondPeriodAvg = 0;
+    for (let i = m; i < Math.min(m * 2, n); i++) secondPeriodAvg += data[i]!;
+    secondPeriodAvg /= Math.min(m, n - m);
+    trend[0] = (secondPeriodAvg - firstPeriodAvg) / m;
+  }
+
+  // Initialize seasonal factors from first period
+  for (let i = 0; i < m; i++) {
+    seasonal[i] = data[i]! - firstPeriodAvg;
+  }
+
+  for (let t = 1; t < n; t++) {
+    const prevSeasonal = seasonal[t % m]!;
+    level[t] = alpha * (data[t]! - prevSeasonal) + (1 - alpha) * (level[t - 1]! + trend[t - 1]!);
+    trend[t] = beta * (level[t]! - level[t - 1]!) + (1 - beta) * trend[t - 1]!;
+    seasonal[t % m + m] = gamma * (data[t]! - level[t]!) + (1 - gamma) * prevSeasonal;
+  }
+
+  // Extract the last m seasonal factors
+  const finalSeasonal = new Array<number>(m);
+  for (let i = 0; i < m; i++) {
+    const idx = (n - 1) % m;
+    // Find the most recent seasonal factor for position i
+    const offset = ((i - idx % m) + m) % m;
+    finalSeasonal[i] = seasonal[((n - 1 - offset) % m) + m] ?? seasonal[i]!;
+  }
+
+  // Normalize: final factors from the last full pass
+  for (let i = 0; i < m; i++) {
+    finalSeasonal[i] = seasonal[i + m] ?? seasonal[i]!;
+  }
+
+  return { level, trend, seasonalFactors: finalSeasonal };
+}
+
+function optimizeSeasonalParameters(
+  data: number[],
+  config: SeasonalForecastConfig,
+): { alpha: number; beta: number; gamma: number; mse: number; seasonal: number[] } {
+  const splitIdx = Math.floor(data.length * (1 - config.holdoutPct));
+  const train = data.slice(0, splitIdx);
+  const holdout = data.slice(splitIdx);
+  const m = config.seasonalPeriod;
+
+  if (train.length < m * 2 || holdout.length < 1) {
+    return { alpha: 0.3, beta: 0.1, gamma: 0.1, mse: Infinity, seasonal: [] };
+  }
+
+  let bestAlpha = 0.3;
+  let bestBeta = 0.1;
+  let bestGamma = 0.1;
+  let bestMSE = Infinity;
+  let bestSeasonal: number[] = [];
+
+  const steps = config.gridSteps;
+  // Coarser grid for 3 parameters to keep runtime reasonable
+  for (let ai = 1; ai < steps; ai++) {
+    const alpha = ai / steps;
+    for (let bi = 0; bi <= Math.min(steps, 3); bi++) {
+      const beta = bi / steps;
+      for (let gi = 1; gi <= Math.min(steps, 3); gi++) {
+        const gamma = gi / steps;
+
+        const { level, trend, seasonalFactors } = hwTripleSmooth(train, alpha, beta, gamma, m);
+        const lastLevel = level[train.length - 1]!;
+        const lastTrend = trend[train.length - 1]!;
+
+        const predicted: number[] = [];
+        for (let h = 0; h < holdout.length; h++) {
+          const seasonIdx = (train.length + h) % m;
+          predicted.push(Math.max(0, lastLevel + (h + 1) * lastTrend + seasonalFactors[seasonIdx]!));
+        }
+
+        const mse = computeMSE(holdout, predicted);
+        if (mse < bestMSE) {
+          bestMSE = mse;
+          bestAlpha = alpha;
+          bestBeta = beta;
+          bestGamma = gamma;
+          bestSeasonal = [...seasonalFactors];
+        }
+      }
+    }
+  }
+
+  return { alpha: bestAlpha, beta: bestBeta, gamma: bestGamma, mse: bestMSE, seasonal: bestSeasonal };
+}

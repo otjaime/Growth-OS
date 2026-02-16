@@ -13,10 +13,9 @@ import { isAIConfigured } from '../lib/ai.js';
 import { generateSuggestionsForOpportunity, getDemoSuggestions } from '../lib/suggestions.js';
 import { gatherWeekOverWeekData } from '../lib/gather-metrics.js';
 
-function computeRice(reach?: number | null, impact?: number | null, confidence?: number | null, effort?: number | null): number | null {
-  if (reach == null || impact == null || confidence == null || effort == null) return null;
-  if (effort === 0) return null;
-  return Math.round(((reach * impact * confidence) / effort) * 100) / 100;
+function computeIce(impact?: number | null, confidence?: number | null, ease?: number | null): number | null {
+  if (impact == null || confidence == null || ease == null) return null;
+  return Math.round((impact * confidence * ease / 10) * 100) / 100;
 }
 
 export async function suggestionsRoutes(app: FastifyInstance) {
@@ -409,12 +408,12 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     }
 
     // Create experiment from suggestion
-    // Suggestion has no reachScore — user fills it in after promotion
-    const reach = null;
+    // Invert effortScore to ease: suggestion stores effort (1=easy, 10=hard),
+    // ICE uses ease (1=hard, 10=easy)
     const impact = suggestion.impactScore;
     const confidence = suggestion.confidenceScore;
-    const effort = suggestion.effortScore;
-    const riceScore = computeRice(reach, impact, confidence, effort);
+    const ease = suggestion.effortScore != null ? (11 - suggestion.effortScore) : null;
+    const iceScore = computeIce(impact, confidence, ease);
 
     const experiment = await prisma.experiment.create({
       data: {
@@ -424,11 +423,10 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         channel: suggestion.suggestedChannel,
         primaryMetric: suggestion.suggestedMetric ?? 'conversion_rate',
         targetLift: suggestion.suggestedTargetLift,
-        reach,
         impact,
         confidence,
-        effort,
-        riceScore,
+        ease,
+        iceScore,
       },
     });
 

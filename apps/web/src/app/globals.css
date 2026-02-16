@@ -31,17 +31,22 @@ body {
 @media print {
   /* Hide sidebar and nav */
   aside { display: none !important; }
+  button[aria-label="Open menu"] { display: none !important; }
   /* Expand main content to full width */
   main { margin-left: 0 !important; padding: 0 !important; }
   /* White background for print */
   body { background: white !important; color: black !important; }
-  .card { background: white !important; border: 1px solid #e2e8f0 !important; color: black !important; }
+  .card { background: white !important; border: 1px solid #e2e8f0 !important; color: black !important; break-inside: avoid; }
   /* Ensure text is dark for readability */
   h1, h2, h3, p, span, div { color: black !important; }
   .text-white { color: black !important; }
   .text-slate-300, .text-slate-400, .text-slate-500 { color: #374151 !important; }
   /* Hide interactive buttons */
-  .print\\:hidden { display: none !important; }
+  .print\:hidden { display: none !important; }
   /* Header branded bar */
-  .print\\:block { display: block !important; }
+  .print\:block { display: block !important; }
+  /* Page breaks between major sections */
+  .print\:break-before { break-before: page !important; }
+  /* Optimize for A4 */
+  @page { size: A4; margin: 1cm; }
 }

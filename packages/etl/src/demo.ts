@@ -31,6 +31,11 @@ async function runDemo() {
       metaInsights: demoData.metaInsights.length,
       googleAdsInsights: demoData.googleAdsInsights.length,
       ga4Traffic: demoData.ga4Traffic.length,
+      tiktokInsights: demoData.tiktokInsights.length,
+      klaviyoCampaigns: demoData.klaviyoCampaigns.length,
+      klaviyoFlows: demoData.klaviyoFlows.length,
+      stripeCharges: demoData.stripeCharges.length,
+      stripeRefunds: demoData.stripeRefunds.length,
     }, 'Demo data generated');
 
     // Step 2: Ingest raw
@@ -41,6 +46,11 @@ async function runDemo() {
       ...demoData.metaInsights,
       ...demoData.googleAdsInsights,
       ...demoData.ga4Traffic,
+      ...demoData.tiktokInsights,
+      ...demoData.klaviyoCampaigns,
+      ...demoData.klaviyoFlows,
+      ...demoData.stripeCharges,
+      ...demoData.stripeRefunds,
     ];
 
     // Record job run
@@ -104,6 +114,7 @@ async function seedDimensions() {
   const channels = [
     { slug: 'meta', name: 'Meta Ads' },
     { slug: 'google', name: 'Google Ads' },
+    { slug: 'tiktok', name: 'TikTok Ads' },
     { slug: 'email', name: 'Email' },
     { slug: 'organic', name: 'Organic' },
     { slug: 'affiliate', name: 'Affiliate' },

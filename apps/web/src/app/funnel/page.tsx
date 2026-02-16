@@ -116,6 +116,16 @@ export default function FunnelPage() {
 function TrafficFunnel({ traffic, orders }: { traffic: TrafficData; orders: OrderData }) {
   const maxVal = traffic.sessions || 1;
 
+  // Find the bottleneck: step with the largest drop-off percentage
+  const dropoffs = FUNNEL_STEPS.slice(1).map((step, i) => {
+    const prevStep = FUNNEL_STEPS[i]!;
+    const prevVal = traffic[prevStep.key as keyof typeof traffic] as number;
+    const curVal = traffic[step.key as keyof typeof traffic] as number;
+    const dropoffPct = prevVal > 0 ? ((prevVal - curVal) / prevVal) * 100 : 0;
+    return { index: i + 1, dropoffPct };
+  });
+  const bottleneckIdx = dropoffs.reduce((max, d) => d.dropoffPct > max.dropoffPct ? d : max, dropoffs[0]!).index;
+
   return (
     <>
       {/* Overall CVR + Order stats */}
@@ -159,8 +169,13 @@ function TrafficFunnel({ traffic, orders }: { traffic: TrafficData; orders: Orde
             <div key={step.key}>
               {i > 0 && (
                 <div className="flex items-center gap-3 py-2 pl-14">
-                  <div className="text-xs text-slate-500">
+                  <div className={`text-xs ${i === bottleneckIdx ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>
                     ↓ {formatNumber(dropoff)} lost ({dropoffPct.toFixed(1)}% drop-off)
+                    {i === bottleneckIdx && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                        BOTTLENECK
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

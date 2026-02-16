@@ -10,6 +10,7 @@ export type {
   StgCustomer,
   StgSpend,
   StgTraffic,
+  StgEmail,
   DimDate,
   DimChannel,
   DimCampaign,
@@ -17,6 +18,8 @@ export type {
   FactOrder,
   FactSpend,
   FactTraffic,
+  FactEmail,
   Cohort,
+  GrowthScenario,
 } from '@prisma/client';
 export { Prisma } from '@prisma/client';

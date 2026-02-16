@@ -19,12 +19,25 @@ import {
   Gauge,
   FlaskConical,
   Lightbulb,
+  TrendingUp,
   Menu,
   X,
+  Mail,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
 import { LogoutButton } from '@/components/auth-gate';
+import { useFilters } from '@/contexts/filters';
+
+const CHANNELS = [
+  { slug: 'meta', label: 'Meta Ads' },
+  { slug: 'google', label: 'Google Ads' },
+  { slug: 'tiktok', label: 'TikTok Ads' },
+  { slug: 'email', label: 'Email' },
+  { slug: 'organic', label: 'Organic' },
+  { slug: 'affiliate', label: 'Affiliate' },
+  { slug: 'direct', label: 'Direct' },
+];
 
 function formatRelativeTime(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime();
@@ -42,12 +55,14 @@ const NAV_ITEMS = [
   { href: '/channels', label: 'Channel Performance', icon: Megaphone },
   { href: '/funnel', label: 'Conversion Funnel', icon: Filter },
   { href: '/cohorts', label: 'Cohorts & Retention', icon: Users },
+  { href: '/email', label: 'Email Performance', icon: Mail },
   { href: '/unit-economics', label: 'Unit Economics', icon: DollarSign },
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
   { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
   { href: '/experiments', label: 'Experiments', icon: FlaskConical },
   { href: '/suggestions', label: 'AI Suggestions', icon: Lightbulb },
+  { href: '/growth-model', label: 'Growth Model', icon: TrendingUp },
   { href: '/connections', label: 'Data Connections', icon: Cable },
   { href: '/pipeline', label: 'Pipeline Health', icon: Gauge },
   { href: '/jobs', label: 'Job Runs', icon: Activity },
@@ -56,6 +71,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { channelFilter, setChannelFilter } = useFilters();
   const [demoMode, setDemoMode] = useState<boolean | null>(null);
   const [apiOk, setApiOk] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
@@ -132,6 +148,21 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Channel Filter */}
+      <div className="px-4 py-3 border-t border-[var(--card-border)]">
+        <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Channel Filter</label>
+        <select
+          value={channelFilter ?? ''}
+          onChange={(e) => setChannelFilter(e.target.value || null)}
+          className="w-full px-2 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded-lg text-slate-300 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">All Channels</option>
+          {CHANNELS.map((ch) => (
+            <option key={ch.slug} value={ch.slug}>{ch.label}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Footer */}
       <div className="px-6 py-4 border-t border-[var(--card-border)] space-y-2">

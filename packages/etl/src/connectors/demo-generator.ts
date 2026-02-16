@@ -8,6 +8,9 @@ import seedrandom from 'seedrandom';
 import { addDays, format, subDays } from 'date-fns';
 import type { RawRecord } from '../types.js';
 import { CATEGORY_MARGINS } from '../types.js';
+import { generateTikTokInsights } from './demo-tiktok.js';
+import { generateKlaviyoCampaigns, generateKlaviyoFlows } from './demo-klaviyo.js';
+import { generateStripeCharges, generateStripeRefunds } from './demo-stripe.js';
 
 const SEED = process.env.DEMO_SEED ?? '42';
 const DEMO_DAYS = parseInt(process.env.DEMO_DAYS ?? '180', 10);
@@ -25,14 +28,14 @@ const LAST_NAMES = [
   'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson', 'White',
 ];
 
-interface DemoContext {
+export interface DemoContext {
   rng: seedrandom.PRNG;
   endDate: Date;
   startDate: Date;
   customers: DemoCustomer[];
 }
 
-interface DemoCustomer {
+export interface DemoCustomer {
   id: string;
   email: string;
   firstName: string;
@@ -42,7 +45,7 @@ interface DemoCustomer {
   firstOrderDate: Date;
 }
 
-function createContext(): DemoContext {
+export function createContext(): DemoContext {
   const rng = seedrandom(SEED);
   const now = new Date();
   // Truncate to start of day so consecutive calls within the same day
@@ -52,19 +55,19 @@ function createContext(): DemoContext {
   return { rng, endDate, startDate, customers: [] };
 }
 
-function pick<T>(arr: T[], rng: seedrandom.PRNG): T {
+export function pick<T>(arr: T[], rng: seedrandom.PRNG): T {
   return arr[Math.floor(rng() * arr.length)]!;
 }
 
-function randInt(min: number, max: number, rng: seedrandom.PRNG): number {
+export function randInt(min: number, max: number, rng: seedrandom.PRNG): number {
   return Math.floor(rng() * (max - min + 1)) + min;
 }
 
-function randFloat(min: number, max: number, rng: seedrandom.PRNG): number {
+export function randFloat(min: number, max: number, rng: seedrandom.PRNG): number {
   return rng() * (max - min) + min;
 }
 
-function generateCustomers(ctx: DemoContext, count: number): DemoCustomer[] {
+export function generateCustomers(ctx: DemoContext, count: number): DemoCustomer[] {
   const channels = ['meta', 'google', 'organic', 'email', 'direct', 'affiliate'];
   const channelWeights = [0.30, 0.25, 0.20, 0.10, 0.10, 0.05];
 
@@ -487,15 +490,27 @@ export function generateAllDemoData(): {
   metaInsights: RawRecord[];
   googleAdsInsights: RawRecord[];
   ga4Traffic: RawRecord[];
+  tiktokInsights: RawRecord[];
+  klaviyoCampaigns: RawRecord[];
+  klaviyoFlows: RawRecord[];
+  stripeCharges: RawRecord[];
+  stripeRefunds: RawRecord[];
 } {
   const ctx = createContext();
   generateCustomers(ctx, 2400);
 
+  const orders = generateShopifyOrders(ctx);
+
   return {
-    orders: generateShopifyOrders(ctx),
+    orders,
     customers: generateShopifyCustomers(ctx),
     metaInsights: generateMetaInsights(ctx),
     googleAdsInsights: generateGoogleAdsInsights(ctx),
     ga4Traffic: generateGA4Traffic(ctx),
+    tiktokInsights: generateTikTokInsights(ctx),
+    klaviyoCampaigns: generateKlaviyoCampaigns(ctx),
+    klaviyoFlows: generateKlaviyoFlows(ctx),
+    stripeCharges: generateStripeCharges(ctx, orders),
+    stripeRefunds: generateStripeRefunds(ctx),
   };
 }

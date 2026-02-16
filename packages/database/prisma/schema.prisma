@@ -101,6 +101,8 @@ model StgOrder {
   region          String?
   lineItemsJson   Json?     @map("line_items_json")
   isNewCustomer   Boolean   @default(false) @map("is_new_customer")
+  paymentMethod   String?   @map("payment_method")
+  paymentStatus   String?   @map("payment_status")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -161,6 +163,27 @@ model StgTraffic {
   @@map("stg_traffic")
 }
 
+model StgEmail {
+  id             String   @id @default(uuid())
+  date           DateTime @db.Date
+  source         String   // klaviyo
+  campaignId     String   @map("campaign_id")
+  campaignName   String   @map("campaign_name")
+  campaignType   String   @map("campaign_type") // campaign | flow
+  sends          Int      @default(0)
+  opens          Int      @default(0)
+  clicks         Int      @default(0)
+  bounces        Int      @default(0)
+  unsubscribes   Int      @default(0)
+  conversions    Int      @default(0)
+  revenue        Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([date, source, campaignId], map: "stg_email_date_source_campaign")
+  @@index([date])
+  @@map("stg_email")
+}
+
 // ══════════════════════════════════════════════════════════════
 // MART / SEMANTIC LAYER — DIMENSIONS
 // ══════════════════════════════════════════════════════════════
@@ -187,6 +210,7 @@ model DimChannel {
   factOrders FactOrder[]
   factSpend  FactSpend[]
   factTraffic FactTraffic[]
+  factEmail   FactEmail[]
   dimCampaigns DimCampaign[]
 
   @@map("dim_channel")
@@ -202,6 +226,7 @@ model DimCampaign {
 
   factOrders FactOrder[]
   factSpend  FactSpend[]
+  factEmail  FactEmail[]
 
   @@unique([source, campaignId])
   @@map("dim_campaign")
@@ -220,6 +245,11 @@ model DimCustomer {
   ltv30               Decimal   @default(0) @db.Decimal(12, 2)
   ltv90               Decimal   @default(0) @db.Decimal(12, 2)
   ltv180              Decimal   @default(0) @db.Decimal(12, 2)
+  lastOrderDate       DateTime? @map("last_order_date") @db.Date
+  rfmRecency          Int?      @map("rfm_recency")
+  rfmFrequency        Int?      @map("rfm_frequency")
+  rfmMonetary         Int?      @map("rfm_monetary")
+  segment             String?
 
   factOrders FactOrder[]
 
@@ -251,6 +281,8 @@ model FactOrder {
   category            String?
   region              String?
   isNewCustomer       Boolean  @default(false) @map("is_new_customer")
+  paymentMethod       String?  @map("payment_method")
+  paymentStatus       String?  @map("payment_status")
 
   @@index([orderDate])
   @@index([channelId])
@@ -288,6 +320,30 @@ model FactTraffic {
   @@unique([date, channelId])
   @@index([date])
   @@map("fact_traffic")
+}
+
+model FactEmail {
+  id             String       @id @default(uuid())
+  date           DateTime     @db.Date
+  channelId      String       @map("channel_id")
+  channel        DimChannel   @relation(fields: [channelId], references: [id])
+  campaignId     String?      @map("campaign_id")
+  campaign       DimCampaign? @relation(fields: [campaignId], references: [id])
+  sends          Int          @default(0)
+  opens          Int          @default(0)
+  clicks         Int          @default(0)
+  bounces        Int          @default(0)
+  unsubscribes   Int          @default(0)
+  conversions    Int          @default(0)
+  revenue        Decimal      @default(0) @db.Decimal(12, 2)
+  openRate       Decimal?     @map("open_rate") @db.Decimal(5, 4)
+  clickRate      Decimal?     @map("click_rate") @db.Decimal(5, 4)
+  conversionRate Decimal?     @map("conversion_rate") @db.Decimal(5, 4)
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([date, channelId, campaignId], map: "fact_email_date_channel_campaign")
+  @@index([date])
+  @@map("fact_email")
 }
 
 model Cohort {
@@ -328,12 +384,11 @@ model Experiment {
   primaryMetric String           @map("primary_metric")
   targetLift    Float?           @map("target_lift")
 
-  // RICE scoring
-  reach      Int?
+  // ICE scoring
   impact     Int?
   confidence Int?
-  effort     Int?
-  riceScore  Float?  @map("rice_score")
+  ease       Int?
+  iceScore   Float?  @map("ice_score")
 
   startDate  DateTime? @map("start_date")
   endDate    DateTime? @map("end_date")
@@ -461,6 +516,43 @@ model SuggestionFeedback {
 
   @@index([suggestionId])
   @@map("suggestion_feedback")
+}
+
+// ══════════════════════════════════════════════════════════════
+// GROWTH MODEL / SCENARIO PLANNING
+// ══════════════════════════════════════════════════════════════
+
+model GrowthScenario {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  isBaseline  Boolean  @default(false) @map("is_baseline")
+
+  // Input assumptions
+  monthlyBudget        Float  @map("monthly_budget")
+  targetCac            Float  @map("target_cac")
+  expectedCvr          Float  @map("expected_cvr")
+  avgOrderValue        Float  @map("avg_order_value")
+  cogsPercent          Float  @map("cogs_percent")
+  monthlyTraffic       Int?   @map("monthly_traffic")
+  returnRate           Float  @default(0) @map("return_rate")
+  avgOrdersPerCustomer Float  @default(1) @map("avg_orders_per_customer")
+  horizonMonths        Int    @default(6) @map("horizon_months")
+
+  // Computed outputs (stored for quick listing)
+  projectedRevenue            Float  @map("projected_revenue")
+  projectedOrders             Int    @map("projected_orders")
+  projectedCustomers          Int    @map("projected_customers")
+  projectedRoas               Float  @map("projected_roas")
+  projectedMer                Float  @map("projected_mer")
+  projectedLtv                Float  @map("projected_ltv")
+  projectedContributionMargin Float  @map("projected_contribution_margin")
+  breakEvenMonth              Int?   @map("break_even_month")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("growth_scenarios")
 }
 
 // ══════════════════════════════════════════════════════════════

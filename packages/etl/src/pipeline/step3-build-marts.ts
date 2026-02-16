@@ -7,6 +7,7 @@ import { prisma, Prisma } from '@growth-os/database';
 import { createLogger } from '../logger.js';
 import { CATEGORY_MARGINS, SHIPPING_COST_RATE, OPS_COST_RATE } from '../types.js';
 import { mapGA4ChannelToSlug } from './channel-mapping.js';
+import { computeRFMScores } from '../segmentation.js';
 
 const log = createLogger('pipeline:build-marts');
 
@@ -16,6 +17,7 @@ export async function buildMarts(): Promise<{
   orders: number;
   spend: number;
   traffic: number;
+  email: number;
   cohorts: number;
 }> {
   log.info('Building mart tables');
@@ -25,13 +27,15 @@ export async function buildMarts(): Promise<{
 
   const campaigns = await buildDimCampaign();
   const customers = await buildDimCustomer();
+  await updateRFMScores();
   const orders = await buildFactOrders();
   const spend = await buildFactSpend();
   const traffic = await buildFactTraffic();
+  const email = await buildFactEmail();
   const cohorts = await buildCohorts();
 
-  log.info({ campaigns, customers, orders, spend, traffic, cohorts }, 'Marts built');
-  return { campaigns, customers, orders, spend, traffic, cohorts };
+  log.info({ campaigns, customers, orders, spend, traffic, email, cohorts }, 'Marts built');
+  return { campaigns, customers, orders, spend, traffic, email, cohorts };
 }
 
 // ── seed dim_channel ────────────────────────────────────────
@@ -39,6 +43,7 @@ async function seedChannels(): Promise<void> {
   const channels = [
     { slug: 'meta', name: 'Meta Ads' },
     { slug: 'google', name: 'Google Ads' },
+    { slug: 'tiktok', name: 'TikTok Ads' },
     { slug: 'email', name: 'Email' },
     { slug: 'organic', name: 'Organic' },
     { slug: 'affiliate', name: 'Affiliate' },
@@ -64,7 +69,7 @@ async function buildDimCampaign(): Promise<number> {
 
   let count = 0;
   for (const row of stgSpend) {
-    const channelSlug = row.source === 'meta' ? 'meta' : 'google';
+    const channelSlug = row.source === 'meta' ? 'meta' : row.source === 'tiktok' ? 'tiktok' : 'google';
     const channel = await prisma.dimChannel.findUnique({ where: { slug: channelSlug } });
     if (!channel) continue;
 
@@ -172,6 +177,68 @@ async function buildDimCustomer(): Promise<number> {
   return count;
 }
 
+// ── RFM scoring ────────────────────────────────────────────
+async function updateRFMScores(): Promise<void> {
+  const customers = await prisma.dimCustomer.findMany({
+    select: { customerId: true, totalOrders: true, totalRevenue: true },
+  });
+
+  // Get last order date per customer from fact_orders
+  const lastOrders = await prisma.$queryRaw<
+    Array<{ customer_id: string; last_date: Date }>
+  >`
+    SELECT customer_id, MAX(order_date) as last_date
+    FROM fact_orders
+    WHERE customer_id IS NOT NULL
+    GROUP BY customer_id
+  `;
+  // If fact_orders hasn't been built yet, try stg_orders
+  const lastOrdersFallback = lastOrders.length === 0
+    ? await prisma.$queryRaw<
+        Array<{ customer_id: string; last_date: Date }>
+      >`
+        SELECT customer_id, MAX(order_date) as last_date
+        FROM stg_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      `
+    : [];
+  const lastOrderMap = new Map(
+    (lastOrders.length > 0 ? lastOrders : lastOrdersFallback).map((r) => [r.customer_id, r.last_date]),
+  );
+
+  const rfmInput = customers
+    .filter((c) => lastOrderMap.has(c.customerId))
+    .map((c) => ({
+      customerId: c.customerId,
+      lastOrderDate: lastOrderMap.get(c.customerId)!,
+      totalOrders: c.totalOrders,
+      totalRevenue: Number(c.totalRevenue),
+    }));
+
+  if (rfmInput.length === 0) {
+    log.info('No customers with orders for RFM scoring');
+    return;
+  }
+
+  const rfmResults = computeRFMScores(rfmInput);
+
+  for (const r of rfmResults) {
+    await prisma.dimCustomer.update({
+      where: { customerId: r.customerId },
+      data: {
+        lastOrderDate: lastOrderMap.get(r.customerId) ?? null,
+        rfmRecency: r.rfmScores.recency,
+        rfmFrequency: r.rfmScores.frequency,
+        rfmMonetary: r.rfmScores.monetary,
+        segment: r.segment,
+      },
+    });
+  }
+
+  log.info({ count: rfmResults.length }, 'RFM scores updated');
+}
+
 // ── fact_orders ─────────────────────────────────────────────
 async function buildFactOrders(): Promise<number> {
   const stgOrders = await prisma.stgOrder.findMany();
@@ -270,6 +337,8 @@ async function buildFactOrders(): Promise<number> {
         category: firstProductType,
         region: order.region,
         isNewCustomer,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
       },
       update: {
         revenueGross: order.revenueGross,
@@ -280,6 +349,8 @@ async function buildFactOrders(): Promise<number> {
         contributionMargin: Math.round(contributionMargin * 100) / 100,
         channelId,
         isNewCustomer,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
       },
     });
     count++;
@@ -297,7 +368,7 @@ async function buildFactSpend(): Promise<number> {
 
   let count = 0;
   for (const row of stgSpend) {
-    const channelSlug = row.source === 'meta' ? 'meta' : 'google';
+    const channelSlug = row.source === 'meta' ? 'meta' : row.source === 'tiktok' ? 'tiktok' : 'google';
     const channelId = channelMap.get(channelSlug);
     if (!channelId) continue;
 
@@ -395,6 +466,88 @@ async function buildFactTraffic(): Promise<number> {
   }
 
   log.info({ count }, 'fact_traffic built');
+  return count;
+}
+
+// ── fact_email ──────────────────────────────────────────────
+async function buildFactEmail(): Promise<number> {
+  const stgEmail = await prisma.stgEmail.findMany();
+  const channels = await prisma.dimChannel.findMany();
+  const channelMap = new Map(channels.map((c) => [c.slug, c.id]));
+  const emailChannelId = channelMap.get('email');
+  if (!emailChannelId) {
+    log.warn('Email channel not found in dim_channel, skipping fact_email');
+    return 0;
+  }
+
+  let count = 0;
+  for (const row of stgEmail) {
+    // Find or skip campaign mapping
+    let campaignId: string | null = null;
+    if (row.campaignType === 'campaign') {
+      const campaign = await prisma.dimCampaign.findFirst({
+        where: { source: 'klaviyo', campaignId: row.campaignId },
+      });
+      campaignId = campaign?.id ?? null;
+
+      // Create campaign dim entry if not found
+      if (!campaignId) {
+        const created = await prisma.dimCampaign.create({
+          data: {
+            source: 'klaviyo',
+            campaignId: row.campaignId,
+            campaignName: row.campaignName,
+            channelId: emailChannelId,
+          },
+        });
+        campaignId = created.id;
+      }
+    }
+
+    const openRate = row.sends > 0 ? row.opens / row.sends : 0;
+    const clickRate = row.opens > 0 ? row.clicks / row.opens : 0;
+    const conversionRate = row.clicks > 0 ? row.conversions / row.clicks : 0;
+
+    await prisma.factEmail.upsert({
+      where: {
+        date_channelId_campaignId: {
+          date: row.date,
+          channelId: emailChannelId,
+          campaignId: campaignId ?? 'none',
+        },
+      },
+      create: {
+        date: row.date,
+        channelId: emailChannelId,
+        campaignId,
+        sends: row.sends,
+        opens: row.opens,
+        clicks: row.clicks,
+        bounces: row.bounces,
+        unsubscribes: row.unsubscribes,
+        conversions: row.conversions,
+        revenue: row.revenue,
+        openRate: Math.round(openRate * 10000) / 10000,
+        clickRate: Math.round(clickRate * 10000) / 10000,
+        conversionRate: Math.round(conversionRate * 10000) / 10000,
+      },
+      update: {
+        sends: row.sends,
+        opens: row.opens,
+        clicks: row.clicks,
+        bounces: row.bounces,
+        unsubscribes: row.unsubscribes,
+        conversions: row.conversions,
+        revenue: row.revenue,
+        openRate: Math.round(openRate * 10000) / 10000,
+        clickRate: Math.round(clickRate * 10000) / 10000,
+        conversionRate: Math.round(conversionRate * 10000) / 10000,
+      },
+    });
+    count++;
+  }
+
+  log.info({ count }, 'fact_email built');
   return count;
 }
 

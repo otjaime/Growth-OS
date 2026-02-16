@@ -36,7 +36,7 @@ test.describe('Dashboard Navigation', () => {
   test('navigates to cohorts page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/cohorts"]');
-    await expect(page.getByRole('heading', { name: /Cohort/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cohorts & Retention' })).toBeVisible();
   });
 
   test('navigates to unit economics page', async ({ page }) => {
@@ -237,7 +237,7 @@ test.describe('Cross-page data consistency', () => {
   });
 
   test('API calls return 200 on each page', async ({ page }) => {
-    const pages = ['/', '/channels', '/cohorts', '/unit-economics', '/alerts', '/wbr', '/jobs'];
+    const pages = ['/', '/channels', '/cohorts', '/unit-economics', '/alerts', '/wbr', '/jobs', '/growth-model', '/email'];
     for (const path of pages) {
       const responses: number[] = [];
       page.on('response', (r) => {
@@ -250,5 +250,83 @@ test.describe('Cross-page data consistency', () => {
         expect(status).toBe(200);
       }
     }
+  });
+});
+
+test.describe('Email Performance', () => {
+  test('loads the email performance page', async ({ page }) => {
+    await page.goto('/email');
+    await expect(page.getByRole('heading', { name: 'Email Performance' })).toBeVisible();
+  });
+
+  test('displays KPI cards on email page', async ({ page }) => {
+    await page.goto('/email');
+    await waitForApiData(page, '/api/metrics/email');
+    const cards = page.locator('.card');
+    await expect(cards.first()).toBeVisible();
+  });
+
+  test('sidebar has Email Performance nav item', async ({ page }) => {
+    await page.goto('/');
+    const link = page.locator('a[href="/email"]');
+    await expect(link).toBeVisible();
+    await expect(link).toContainText('Email');
+  });
+});
+
+test.describe('Customer Segments', () => {
+  test('cohorts page has Customer Segments section', async ({ page }) => {
+    await page.goto('/cohorts');
+    await waitForApiData(page, '/api/metrics/segments');
+    await expect(page.getByText('Customer Segments')).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test.describe('CSV Export', () => {
+  test('channels page has export CSV button', async ({ page }) => {
+    await page.goto('/channels');
+    await waitForApiData(page, '/api/metrics/channels');
+    const exportBtn = page.locator('button:has-text("Export CSV")');
+    await expect(exportBtn).toBeVisible();
+  });
+
+  test('cohorts page has export CSV button', async ({ page }) => {
+    await page.goto('/cohorts');
+    await waitForApiData(page, '/api/metrics/cohorts');
+    const exportBtn = page.locator('button:has-text("Export CSV")');
+    await expect(exportBtn.first()).toBeVisible();
+  });
+
+  test('unit economics page has export CSV button', async ({ page }) => {
+    await page.goto('/unit-economics');
+    await waitForApiData(page, '/api/metrics/unit-economics');
+    const exportBtn = page.locator('button:has-text("Export CSV")');
+    await expect(exportBtn.first()).toBeVisible();
+  });
+});
+
+test.describe('Growth Model', () => {
+  test('loads the growth model page', async ({ page }) => {
+    await page.goto('/growth-model');
+    await expect(page.getByRole('heading', { name: 'Growth Model' })).toBeVisible();
+  });
+
+  test('has slider inputs', async ({ page }) => {
+    await page.goto('/growth-model');
+    await expect(page.getByText('Monthly Budget')).toBeVisible();
+    await expect(page.getByText('Target CAC')).toBeVisible();
+    await expect(page.getByText('Expected CVR')).toBeVisible();
+  });
+
+  test('has Load Baseline button', async ({ page }) => {
+    await page.goto('/growth-model');
+    await expect(page.locator('button:has-text("Load Baseline")')).toBeVisible();
+  });
+
+  test('sidebar has Growth Model nav item', async ({ page }) => {
+    await page.goto('/');
+    const link = page.locator('a[href="/growth-model"]');
+    await expect(link).toBeVisible();
+    await expect(link).toContainText('Growth Model');
   });
 });

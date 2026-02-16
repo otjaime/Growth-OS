@@ -14,6 +14,7 @@ export async function normalizeStaging(): Promise<{
   customers: number;
   spend: number;
   traffic: number;
+  email: number;
 }> {
   log.info('Starting staging normalization');
 
@@ -21,9 +22,11 @@ export async function normalizeStaging(): Promise<{
   const customers = await normalizeCustomers();
   const spend = await normalizeSpend();
   const traffic = await normalizeTraffic();
+  const email = await normalizeEmail();
+  await normalizeStripePayments();
 
-  log.info({ orders, customers, spend, traffic }, 'Staging normalization complete');
-  return { orders, customers, spend, traffic };
+  log.info({ orders, customers, spend, traffic, email }, 'Staging normalization complete');
+  return { orders, customers, spend, traffic, email };
 }
 
 // ── Orders ──────────────────────────────────────────────────
@@ -310,6 +313,46 @@ async function normalizeSpend(): Promise<number> {
   }
   } // end google_ads while
 
+  // TikTok
+  skip = 0;
+  while (true) {
+    const ttRaw = await prisma.rawEvent.findMany({
+      where: { source: 'tiktok', entity: 'insights' },
+      take: BATCH,
+      skip,
+    });
+    if (ttRaw.length === 0) break;
+    skip += ttRaw.length;
+
+  for (const raw of ttRaw) {
+    const p = raw.payloadJson as Record<string, unknown>;
+    const date = new Date((p.stat_time_day as string) + 'T00:00:00Z');
+    const campaignId = (p.campaign_id as string) ?? '';
+    const campaignName = (p.campaign_name as string) ?? '';
+    const spend = parseFloat((p.spend as string) ?? '0');
+    const impressions = parseInt((p.impressions as string) ?? '0', 10);
+    const clicks = parseInt((p.clicks as string) ?? '0', 10);
+    const conversions = parseInt((p.conversions as string) ?? '0', 10);
+
+    await prisma.stgSpend.upsert({
+      where: { date_source_campaignId: { date, source: 'tiktok', campaignId } },
+      create: {
+        date,
+        source: 'tiktok',
+        campaignId,
+        campaignName,
+        spend,
+        impressions,
+        clicks,
+        conversions,
+        conversionValue: 0,
+      },
+      update: { spend, impressions, clicks, conversions },
+    });
+    count++;
+  }
+  } // end tiktok while
+
   log.info({ count }, 'Spend normalized');
   return count;
 }
@@ -360,6 +403,106 @@ async function normalizeTraffic(): Promise<number> {
 
   log.info({ count }, 'Traffic normalized');
   return count;
+}
+
+// ── Email (Klaviyo) ──────────────────────────────────────────
+async function normalizeEmail(): Promise<number> {
+  let count = 0;
+  const BATCH = 500;
+  let skip = 0;
+
+  while (true) {
+    const klaviyoRaw = await prisma.rawEvent.findMany({
+      where: { source: 'klaviyo' },
+      take: BATCH,
+      skip,
+    });
+    if (klaviyoRaw.length === 0) break;
+    skip += klaviyoRaw.length;
+
+    for (const raw of klaviyoRaw) {
+      const p = raw.payloadJson as Record<string, unknown>;
+      const sendTime = (p.send_time as string) ?? '';
+      const date = new Date(sendTime.split('T')[0] + 'T00:00:00Z');
+      const campaignId = (p.id as string) ?? '';
+      const campaignName = (p.name as string) ?? '';
+      const campaignType = (p.campaign_type as string) ?? 'campaign';
+      const stats = (p.stats as Record<string, number>) ?? {};
+
+      await prisma.stgEmail.upsert({
+        where: { date_source_campaignId: { date, source: 'klaviyo', campaignId } },
+        create: {
+          date,
+          source: 'klaviyo',
+          campaignId,
+          campaignName,
+          campaignType,
+          sends: stats.sends ?? 0,
+          opens: stats.opens ?? 0,
+          clicks: stats.clicks ?? 0,
+          bounces: stats.bounces ?? 0,
+          unsubscribes: stats.unsubscribes ?? 0,
+          conversions: stats.conversions ?? 0,
+          revenue: stats.revenue ?? 0,
+        },
+        update: {
+          sends: stats.sends ?? 0,
+          opens: stats.opens ?? 0,
+          clicks: stats.clicks ?? 0,
+          bounces: stats.bounces ?? 0,
+          unsubscribes: stats.unsubscribes ?? 0,
+          conversions: stats.conversions ?? 0,
+          revenue: stats.revenue ?? 0,
+        },
+      });
+      count++;
+    }
+  }
+
+  log.info({ count }, 'Email normalized');
+  return count;
+}
+
+// ── Stripe Payments (enrich orders) ────────────────────────
+async function normalizeStripePayments(): Promise<void> {
+  const BATCH = 500;
+  let skip = 0;
+
+  while (true) {
+    const stripeRaw = await prisma.rawEvent.findMany({
+      where: { source: 'stripe', entity: 'charges' },
+      take: BATCH,
+      skip,
+    });
+    if (stripeRaw.length === 0) break;
+    skip += stripeRaw.length;
+
+    for (const raw of stripeRaw) {
+      const p = raw.payloadJson as Record<string, unknown>;
+      const metadata = (p.metadata as Record<string, string>) ?? {};
+      const orderId = metadata.order_id;
+      if (!orderId) continue;
+
+      const paymentMethodDetails = p.payment_method_details as Record<string, unknown> | undefined;
+      const card = paymentMethodDetails?.card as Record<string, unknown> | undefined;
+      const paymentMethod = card?.brand
+        ? `card_${card.brand as string}`
+        : (paymentMethodDetails?.type as string) ?? 'unknown';
+      const paymentStatus = (p.status as string) ?? 'unknown';
+
+      // Try to enrich the matching stg_order
+      try {
+        await prisma.stgOrder.update({
+          where: { orderId },
+          data: { paymentMethod, paymentStatus },
+        });
+      } catch {
+        // Order not found is OK — Stripe charges may not match 1:1
+      }
+    }
+  }
+
+  log.info('Stripe payments enriched');
 }
 
 // ── Helpers ─────────────────────────────────────────────────

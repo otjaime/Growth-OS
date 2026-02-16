@@ -1,0 +1,105 @@
+{
+  "_description": "Hand-calculated golden values for growth model computation",
+  "_methodology": "Known inputs with hand-verified expected outputs for regression testing",
+  "scenarios": {
+    "simpleNoRepeat": {
+      "input": {
+        "monthlyBudget": 10000,
+        "targetCac": 50,
+        "expectedCvr": 0.025,
+        "avgOrderValue": 100,
+        "cogsPercent": 0.40,
+        "returnRate": 0,
+        "avgOrdersPerCustomer": 1.0,
+        "horizonMonths": 3
+      },
+      "notes": "newCustomers = floor(10000/50) = 200; orders = 200*1.0 = 200; revenue = 200*100 = 20000; cogs = 20000*0.40 = 8000; cm = 20000 - 8000 - 10000 = 2000",
+      "expected": {
+        "projectedCustomers": 600,
+        "projectedOrders": 600,
+        "projectedRevenue": 60000,
+        "projectedRoas": 2.0,
+        "projectedContributionMargin": 6000,
+        "breakEvenMonth": 1,
+        "monthlyBreakdown": [
+          {
+            "month": 1,
+            "newCustomers": 200,
+            "returningCustomers": 0,
+            "orders": 200,
+            "revenue": 20000,
+            "cogs": 8000,
+            "contributionMargin": 2000,
+            "cumulativeProfit": 2000,
+            "roas": 2.0
+          },
+          {
+            "month": 2,
+            "newCustomers": 200,
+            "returningCustomers": 0,
+            "orders": 200,
+            "revenue": 20000,
+            "cogs": 8000,
+            "contributionMargin": 2000,
+            "cumulativeProfit": 4000,
+            "roas": 2.0
+          },
+          {
+            "month": 3,
+            "newCustomers": 200,
+            "returningCustomers": 0,
+            "orders": 200,
+            "revenue": 20000,
+            "cogs": 8000,
+            "contributionMargin": 2000,
+            "cumulativeProfit": 6000,
+            "roas": 2.0
+          }
+        ]
+      }
+    },
+    "withRepeat": {
+      "input": {
+        "monthlyBudget": 10000,
+        "targetCac": 100,
+        "expectedCvr": 0.025,
+        "avgOrderValue": 80,
+        "cogsPercent": 0.50,
+        "returnRate": 0.25,
+        "avgOrdersPerCustomer": 1.0,
+        "horizonMonths": 4
+      },
+      "notes": "newCustomers = floor(10000/100) = 100; M1: ret=0, orders=100, rev=8000, cogs=4000, cm=8000-4000-10000=-6000; M2: ret=floor(100*0.25)=25, orders=125, rev=10000, cogs=5000, cm=10000-5000-10000=-5000; M3: ret=floor(200*0.25)=50, orders=150, rev=12000, cogs=6000, cm=12000-6000-10000=-4000; M4: ret=floor(300*0.25)=75, orders=175, rev=14000, cogs=7000, cm=14000-7000-10000=-3000",
+      "expected": {
+        "projectedCustomers": 400,
+        "projectedRevenue": 44000,
+        "breakEvenMonth": null,
+        "monthlyBreakdown": [
+          { "month": 1, "returningCustomers": 0, "orders": 100, "revenue": 8000, "contributionMargin": -6000 },
+          { "month": 2, "returningCustomers": 25, "orders": 125, "revenue": 10000, "contributionMargin": -5000 },
+          { "month": 3, "returningCustomers": 50, "orders": 150, "revenue": 12000, "contributionMargin": -4000 },
+          { "month": 4, "returningCustomers": 75, "orders": 175, "revenue": 14000, "contributionMargin": -3000 }
+        ]
+      }
+    },
+    "zeroBudget": {
+      "input": {
+        "monthlyBudget": 0,
+        "targetCac": 50,
+        "expectedCvr": 0.025,
+        "avgOrderValue": 85,
+        "cogsPercent": 0.45,
+        "returnRate": 0.20,
+        "avgOrdersPerCustomer": 1.3,
+        "horizonMonths": 3
+      },
+      "notes": "No budget → 0 customers → 0 revenue",
+      "expected": {
+        "projectedCustomers": 0,
+        "projectedOrders": 0,
+        "projectedRevenue": 0,
+        "breakEvenMonth": null
+      }
+    }
+  }
+}

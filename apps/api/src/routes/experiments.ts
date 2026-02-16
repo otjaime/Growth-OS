@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────
 // Growth OS — Experiments CRUD Routes
-// Manage growth experiments: hypothesis, RICE scoring, lifecycle
+// Manage growth experiments: hypothesis, ICE scoring, lifecycle
 // ──────────────────────────────────────────────────────────────
 
 import type { FastifyInstance } from 'fastify';
@@ -15,10 +15,9 @@ const TRANSITIONS: Record<string, string[]> = {
   ARCHIVED: ['IDEA'],
 };
 
-function computeRice(reach?: number | null, impact?: number | null, confidence?: number | null, effort?: number | null): number | null {
-  if (reach == null || impact == null || confidence == null || effort == null) return null;
-  if (effort === 0) return null;
-  return Math.round(((reach * impact * confidence) / effort) * 100) / 100;
+function computeIce(impact?: number | null, confidence?: number | null, ease?: number | null): number | null {
+  if (impact == null || confidence == null || ease == null) return null;
+  return Math.round((impact * confidence * ease / 10) * 100) / 100;
 }
 
 export async function experimentsRoutes(app: FastifyInstance) {
@@ -27,7 +26,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
     schema: {
       tags: ['experiments'],
       summary: 'List experiments',
-      description: 'Returns all experiments, optionally filtered by status and/or channel. Sorted by RICE score descending.',
+      description: 'Returns all experiments, optionally filtered by status and/or channel. Sorted by ICE score descending.',
     },
   }, async (req) => {
     const { status, channel } = req.query as { status?: string; channel?: string };
@@ -38,7 +37,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
 
     const experiments = await prisma.experiment.findMany({
       where,
-      orderBy: [{ riceScore: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ iceScore: 'desc' }, { createdAt: 'desc' }],
       include: { _count: { select: { metrics: true } } },
     });
 
@@ -53,7 +52,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
     schema: {
       tags: ['experiments'],
       summary: 'Create experiment',
-      description: 'Create a new growth experiment with optional RICE scoring',
+      description: 'Create a new growth experiment with optional ICE scoring',
     },
   }, async (req, reply) => {
     const body = req.body as {
@@ -62,10 +61,9 @@ export async function experimentsRoutes(app: FastifyInstance) {
       primaryMetric: string;
       channel?: string;
       targetLift?: number;
-      reach?: number;
       impact?: number;
       confidence?: number;
-      effort?: number;
+      ease?: number;
       status?: string;
     };
 
@@ -74,7 +72,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
       return { error: 'name, hypothesis, and primaryMetric are required' };
     }
 
-    const riceScore = computeRice(body.reach, body.impact, body.confidence, body.effort);
+    const iceScore = computeIce(body.impact, body.confidence, body.ease);
 
     const experiment = await prisma.experiment.create({
       data: {
@@ -83,11 +81,10 @@ export async function experimentsRoutes(app: FastifyInstance) {
         primaryMetric: body.primaryMetric,
         channel: body.channel ?? null,
         targetLift: body.targetLift ?? null,
-        reach: body.reach ?? null,
         impact: body.impact ?? null,
         confidence: body.confidence ?? null,
-        effort: body.effort ?? null,
-        riceScore,
+        ease: body.ease ?? null,
+        iceScore,
         status: (body.status as 'IDEA' | 'BACKLOG') ?? 'IDEA',
       },
     });
@@ -123,7 +120,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
     schema: {
       tags: ['experiments'],
       summary: 'Update experiment',
-      description: 'Update experiment fields (name, hypothesis, RICE scores, results, learnings)',
+      description: 'Update experiment fields (name, hypothesis, ICE scores, results, learnings)',
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -135,20 +132,19 @@ export async function experimentsRoutes(app: FastifyInstance) {
       return { error: 'Experiment not found' };
     }
 
-    // Merge RICE scores to recompute
-    const reach = (body.reach as number) ?? existing.reach;
+    // Merge ICE scores to recompute
     const impact = (body.impact as number) ?? existing.impact;
     const confidence = (body.confidence as number) ?? existing.confidence;
-    const effort = (body.effort as number) ?? existing.effort;
-    const riceScore = computeRice(reach, impact, confidence, effort);
+    const ease = (body.ease as number) ?? existing.ease;
+    const iceScore = computeIce(impact, confidence, ease);
 
     // Only allow safe fields to be updated
     const allowedFields = [
       'name', 'hypothesis', 'primaryMetric', 'channel', 'targetLift',
-      'reach', 'impact', 'confidence', 'effort',
+      'impact', 'confidence', 'ease',
       'startDate', 'endDate', 'result', 'learnings', 'nextSteps',
     ];
-    const data: Record<string, unknown> = { riceScore };
+    const data: Record<string, unknown> = { iceScore };
     for (const field of allowedFields) {
       if (field in body) data[field] = body[field];
     }

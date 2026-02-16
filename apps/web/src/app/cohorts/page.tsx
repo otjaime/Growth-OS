@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { formatPercent, formatCurrency, formatNumber, formatMultiplier } from '@/lib/format';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, BarChart, Bar, Cell,
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
+import { exportToCSV } from '@/lib/export';
 
 interface ProjectedValue {
   value: number;
@@ -42,6 +43,23 @@ interface ProjectionData {
   };
 }
 
+interface SegmentData {
+  segment: string;
+  count: number;
+  totalRevenue: number;
+  avgOrderValue: number;
+  avgOrdersPerCustomer: number;
+}
+
+const SEGMENT_COLORS: Record<string, string> = {
+  Champions: '#22c55e',
+  Loyal: '#3b82f6',
+  Potential: '#a855f7',
+  'At Risk': '#f59e0b',
+  Dormant: '#6b7280',
+  Lost: '#ef4444',
+};
+
 function ProjectedCell({ value, projected, formatter }: { value: number; projected: boolean; formatter: (v: number) => string }) {
   if (value === 0 && projected) return <span className="text-slate-600">--</span>;
   return (
@@ -54,16 +72,20 @@ function ProjectedCell({ value, projected, formatter }: { value: number; project
 
 export default function CohortsPage() {
   const [data, setData] = useState<ProjectionData | null>(null);
+  const [segments, setSegments] = useState<SegmentData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch(`/api/metrics/cohort-projections`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((d: ProjectionData | null) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    Promise.all([
+      apiFetch(`/api/metrics/cohort-projections`)
+        .then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/segments`)
+        .then((r) => r.ok ? r.json() : null),
+    ]).then(([projData, segData]: [ProjectionData | null, { segments: SegmentData[] } | null]) => {
+      setData(projData);
+      setSegments(segData?.segments ?? []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   if (loading) {
@@ -113,7 +135,10 @@ export default function CohortsPage() {
 
       {/* Retention Curves */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-white mb-4">Retention Curves by Cohort</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">Retention Curves by Cohort</h2>
+        <p className="text-xs text-slate-400 mb-4">
+          Each line represents a monthly cohort of first-time customers. The Y-axis shows what percentage made a repeat purchase within D7, D30, D60, or D90. Higher and flatter curves indicate stronger retention.
+        </p>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={retentionChartData}>
@@ -133,7 +158,10 @@ export default function CohortsPage() {
 
       {/* LTV Curves */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-white mb-4">LTV by Cohort</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">LTV by Cohort</h2>
+        <p className="text-xs text-slate-400 mb-4">
+          Shows the cumulative revenue per customer at 30, 90, and 180 days after acquisition. Rising curves across cohorts mean newer customers are spending more over time. Compare against CAC to assess profitability.
+        </p>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={ltvChartData}>
@@ -152,7 +180,43 @@ export default function CohortsPage() {
 
       {/* Cohort Table */}
       <div className="card overflow-x-auto">
-        <h2 className="text-lg font-semibold text-white mb-4">Cohort Detail</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">Cohort Detail</h2>
+          <button
+            onClick={() => exportToCSV(
+              cohorts.map((c) => ({
+                cohortMonth: c.cohortMonth,
+                cohortSize: c.cohortSize,
+                d7: c.retention.d7.value,
+                d30: c.retention.d30.value,
+                d60: c.retention.d60.value,
+                d90: c.retention.d90.value,
+                ltv30: c.ltv.ltv30.value,
+                ltv90: c.ltv.ltv90.value,
+                ltv180: c.ltv.ltv180.value,
+                avgCac: c.avgCac,
+                paybackDays: c.paybackDays,
+              })),
+              'cohorts',
+              [
+                { key: 'cohortMonth', label: 'Cohort' },
+                { key: 'cohortSize', label: 'Size' },
+                { key: 'd7', label: 'D7 Retention', format: (v) => `${(Number(v) * 100).toFixed(1)}%` },
+                { key: 'd30', label: 'D30 Retention', format: (v) => `${(Number(v) * 100).toFixed(1)}%` },
+                { key: 'd60', label: 'D60 Retention', format: (v) => `${(Number(v) * 100).toFixed(1)}%` },
+                { key: 'd90', label: 'D90 Retention', format: (v) => `${(Number(v) * 100).toFixed(1)}%` },
+                { key: 'ltv30', label: 'LTV 30' },
+                { key: 'ltv90', label: 'LTV 90' },
+                { key: 'ltv180', label: 'LTV 180' },
+                { key: 'avgCac', label: 'CAC' },
+                { key: 'paybackDays', label: 'Payback Days' },
+              ],
+            )}
+            className="text-xs text-slate-400 hover:text-white px-2 py-1 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+          >
+            Export CSV
+          </button>
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-700">
@@ -217,6 +281,71 @@ export default function CohortsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Customer Segments (RFM) */}
+      {segments.length > 0 && (
+        <>
+          <div>
+            <h2 className="text-xl font-bold text-white">Customer Segments</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              RFM segmentation based on Recency, Frequency, and Monetary value. Each customer is scored 1-5 on each dimension and classified into a segment.
+            </p>
+          </div>
+
+          <div className="card">
+            <h3 className="text-lg font-semibold text-white mb-4">Segment Distribution</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={segments} layout="vertical" margin={{ left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" fontSize={11} />
+                  <YAxis type="category" dataKey="segment" stroke="#94a3b8" fontSize={12} width={80} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }}
+                    formatter={(value: number) => [formatNumber(value), 'Customers']}
+                  />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    {segments.map((s) => (
+                      <Cell key={s.segment} fill={SEGMENT_COLORS[s.segment] ?? '#6b7280'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="card overflow-x-auto">
+            <h3 className="text-lg font-semibold text-white mb-4">Segment Detail</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700">
+                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Segment</th>
+                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Customers</th>
+                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Revenue</th>
+                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Avg Orders</th>
+                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Avg Order Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {segments.map((s) => (
+                  <tr key={s.segment} className="border-b border-slate-800 hover:bg-slate-800/50">
+                    <td className="px-3 py-2">
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[s.segment] ?? '#6b7280' }} />
+                        <span className="font-medium text-white">{s.segment}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">{formatNumber(s.count)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(s.totalRevenue)}</td>
+                    <td className="px-3 py-2 text-right">{s.avgOrdersPerCustomer.toFixed(1)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(s.avgOrderValue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

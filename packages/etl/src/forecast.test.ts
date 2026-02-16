@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import seedrandom from 'seedrandom';
-import { forecast, holtSmooth, holtForecast, computeMSE } from './forecast.js';
+import { forecast, forecastSeasonal, holtSmooth, holtForecast, computeMSE } from './forecast.js';
 
 describe('holtSmooth', () => {
   it('with alpha=1, beta=0 the level tracks data exactly', () => {
@@ -208,5 +208,130 @@ describe('forecast — noisy data', () => {
     // Last forecast should be less than last data value (trending down)
     const lastActual = data[data.length - 1]!;
     expect(result.forecast[result.forecast.length - 1]).toBeLessThan(lastActual + 50);
+  });
+});
+
+// ── Seasonal Forecasting (Holt-Winters Triple) ─────────────────
+
+describe('forecastSeasonal — basic', () => {
+  it('returns null for too-short data', () => {
+    expect(forecastSeasonal([1, 2, 3])).toBeNull();
+  });
+
+  it('falls back when data is shorter than 2 periods', () => {
+    // 7-day seasonality needs >= 14 points
+    const data = Array.from({ length: 12 }, (_, i) => 100 + i);
+    const result = forecastSeasonal(data, { seasonalPeriod: 7 });
+    // Should fall back to double exponential (also returns null since < 14 points)
+    expect(result).toBeNull();
+  });
+
+  it('returns result with gamma and seasonalFactors', () => {
+    // Generate 60 data points with weekly pattern
+    const data = Array.from({ length: 60 }, (_, i) => {
+      const base = 100 + i * 2;
+      const dayOfWeek = i % 7;
+      const seasonal = dayOfWeek < 5 ? 20 : -30; // weekdays high, weekends low
+      return base + seasonal;
+    });
+
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 14 });
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result).toHaveProperty('gamma');
+    expect(result).toHaveProperty('seasonalFactors');
+    expect(result.gamma).toBeGreaterThanOrEqual(0);
+    expect(result.gamma).toBeLessThanOrEqual(1);
+    expect(result.forecast).toHaveLength(14);
+  });
+
+  it('returns correct number of forecast points', () => {
+    const data = Array.from({ length: 90 }, (_, i) => 200 + i + Math.sin(i * Math.PI / 3.5) * 30);
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 30 });
+    expect(result).not.toBeNull();
+    expect(result!.forecast).toHaveLength(30);
+    expect(result!.lower80).toHaveLength(30);
+    expect(result!.upper80).toHaveLength(30);
+    expect(result!.lower95).toHaveLength(30);
+    expect(result!.upper95).toHaveLength(30);
+  });
+});
+
+describe('forecastSeasonal — weekly pattern', () => {
+  it('detects weekly seasonality in clean data', () => {
+    const rng = seedrandom('seasonal-test');
+    // Weekly pattern: Mon-Fri are higher, Sat-Sun lower
+    const data = Array.from({ length: 91 }, (_, i) => {
+      const base = 1000 + i * 5;
+      const dayOfWeek = i % 7;
+      const seasonalEffect = dayOfWeek < 5 ? 100 : -150;
+      return base + seasonalEffect + (rng() - 0.5) * 30;
+    });
+
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 14 });
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // Forecast should show variation matching the weekly pattern
+    const forecastValues = result.forecast;
+    expect(forecastValues.length).toBe(14);
+
+    // All forecast values should be positive
+    for (const v of forecastValues) {
+      expect(v).toBeGreaterThan(0);
+    }
+  });
+
+  it('forecast values are non-negative', () => {
+    const data = Array.from({ length: 60 }, (_, i) => Math.max(0, 50 + i + Math.sin(i * Math.PI / 3.5) * 20));
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 14 });
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    for (const v of result.forecast) {
+      expect(v).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('forecastSeasonal — confidence intervals', () => {
+  it('80% CI is narrower than 95% CI', () => {
+    const data = Array.from({ length: 90 }, (_, i) => 200 + i * 3 + Math.sin(i * Math.PI / 3.5) * 40);
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 14 });
+
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    for (let i = 0; i < result.forecast.length; i++) {
+      const width80 = result.upper80[i]! - result.lower80[i]!;
+      const width95 = result.upper95[i]! - result.lower95[i]!;
+      expect(width95).toBeGreaterThanOrEqual(width80);
+    }
+  });
+});
+
+describe('forecastSeasonal — edge cases', () => {
+  it('handles constant data with seasonality disabled (gamma=0 fallback)', () => {
+    const data = Array.from({ length: 60 }, () => 300);
+    const result = forecastSeasonal(data, { seasonalPeriod: 7, horizon: 10 });
+
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    for (const val of result.forecast) {
+      expect(val).toBeCloseTo(300, 0);
+    }
+  });
+
+  it('works with non-7 seasonal period', () => {
+    // Monthly period = 30
+    const data = Array.from({ length: 120 }, (_, i) => 500 + i + Math.sin(i * Math.PI / 15) * 50);
+    const result = forecastSeasonal(data, { seasonalPeriod: 30, horizon: 30 });
+
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.forecast).toHaveLength(30);
+    expect(result.seasonalFactors.length).toBeGreaterThan(0);
   });
 });

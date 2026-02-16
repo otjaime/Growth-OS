@@ -33,11 +33,10 @@ function mockExperiment(overrides: Record<string, unknown> = {}) {
     channel: 'meta',
     primaryMetric: 'conversion_rate',
     targetLift: 20,
-    reach: 7,
     impact: 8,
     confidence: 6,
-    effort: 4,
-    riceScore: 84,
+    ease: 7,
+    iceScore: 33.6,
     startDate: null,
     endDate: null,
     result: null,
@@ -118,7 +117,7 @@ describe('Experiments Routes', () => {
     expect(body.error).toContain('required');
   });
 
-  it('POST /api/experiments auto-computes RICE score', async () => {
+  it('POST /api/experiments auto-computes ICE score', async () => {
     mockPrisma.experiment.create.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
       return Promise.resolve({ ...data, id: 'exp-new', createdAt: new Date(), updatedAt: new Date() });
     });
@@ -127,20 +126,19 @@ describe('Experiments Routes', () => {
       method: 'POST',
       url: '/api/experiments',
       payload: {
-        name: 'RICE test',
-        hypothesis: 'Testing RICE computation',
+        name: 'ICE test',
+        hypothesis: 'Testing ICE computation',
         primaryMetric: 'cac',
-        reach: 8,
         impact: 9,
         confidence: 7,
-        effort: 3,
+        ease: 8,
       },
     });
     expect(res.statusCode).toBe(201);
-    // Verify create was called with computed riceScore = (8*9*7)/3 = 168
+    // Verify create was called with computed iceScore = (9*7*8)/10 = 50.4
     expect(mockPrisma.experiment.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ riceScore: 168 }),
+        data: expect.objectContaining({ iceScore: 50.4 }),
       }),
     );
   });

@@ -39,6 +39,22 @@ export interface GA4Config extends ConnectorConfig {
   propertyId: string;
 }
 
+export interface TikTokConfig extends ConnectorConfig {
+  source: 'tiktok';
+  accessToken: string;
+  advertiserId: string;
+}
+
+export interface KlaviyoConfig extends ConnectorConfig {
+  source: 'klaviyo';
+  apiKey: string;
+}
+
+export interface StripeConfig extends ConnectorConfig {
+  source: 'stripe';
+  secretKey: string;
+}
+
 export interface RawRecord {
   source: string;
   entity: string;

@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma, Prisma } from '@growth-os/database';
 import { subDays, addDays, differenceInDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
-import { forecast } from '@growth-os/etl';
+import { forecast, forecastSeasonal } from '@growth-os/etl';
 
 export async function metricsRoutes(app: FastifyInstance) {
   // ── Executive Summary KPIs ────────────────────────────────
@@ -105,8 +105,23 @@ export async function metricsRoutes(app: FastifyInstance) {
         sessions: { value: cur.sessions, change: kpiCalcs.kpis.percentChange(cur.sessions, prev.sessions) },
         spend: { value: cur.spend, change: kpiCalcs.kpis.percentChange(cur.spend, prev.spend) },
         grossMarginPct: { value: grossMarginPct },
-        ltvCacRatio: { value: cohortForRetention && Number(cohortForRetention.avgCac) > 0 ? Number(cohortForRetention.ltv180) / Number(cohortForRetention.avgCac) : 0 },
-        paybackDays: { value: cohortForRetention?.paybackDays ?? null },
+        ltvCacRatio: { value: (() => {
+          const cohortCac = cohortForRetention ? Number(cohortForRetention.avgCac) : 0;
+          const cohortLtv = cohortForRetention ? Number(cohortForRetention.ltv180 || cohortForRetention.ltv90) : 0;
+          if (cohortCac > 0 && cohortLtv > 0) return cohortLtv / cohortCac;
+          // Fallback: use current period's blended CAC with cohort LTV
+          const blendedCac = kpiCalcs.kpis.blendedCac(cur.spend, cur.newCustomers);
+          if (blendedCac > 0 && cohortLtv > 0) return cohortLtv / blendedCac;
+          return 0;
+        })() },
+        paybackDays: { value: (() => {
+          if (cohortForRetention?.paybackDays) return cohortForRetention.paybackDays;
+          // Fallback: compute from current period's blended CAC, cohort LTV30, and CM%
+          const blendedCac = kpiCalcs.kpis.blendedCac(cur.spend, cur.newCustomers);
+          const ltv30 = cohortForRetention ? Number(cohortForRetention.ltv30) : 0;
+          const cmPct = kpiCalcs.kpis.contributionMarginPct(cur.contributionMargin, cur.revenueNet);
+          return kpiCalcs.kpis.paybackDays(blendedCac, ltv30, cmPct);
+        })() },
         retentionD30: { value: cohortForRetention ? Number(cohortForRetention.d30Retention) : 0 },
         ltv90: { value: cohortForRetention ? Number(cohortForRetention.ltv90) : 0 },
       },
@@ -436,7 +451,38 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     const avgCac = Number(latest.avgCac);
     const ltv180 = Number(latest.ltv180);
-    const ltvCacRatio = avgCac > 0 ? ltv180 / avgCac : 0;
+    const ltv90 = Number(latest.ltv90);
+    const ltv30 = Number(latest.ltv30);
+    const cohortLtv = ltv180 || ltv90;
+
+    // If cohort avgCac is 0, fall back to current period's blended CAC
+    let effectiveCac = avgCac;
+    if (effectiveCac <= 0) {
+      const now2 = new Date();
+      const periodStart = subDays(now2, 30);
+      const spendAgg = await prisma.factSpend.aggregate({
+        _sum: { spend: true },
+        where: { date: { gte: periodStart, lte: now2 } },
+      });
+      const newCustCount = await prisma.factOrder.count({
+        where: { orderDate: { gte: periodStart, lte: now2 }, isNewCustomer: true },
+      });
+      effectiveCac = newCustCount > 0 ? Number(spendAgg._sum.spend ?? 0) / newCustCount : 0;
+    }
+
+    const ltvCacRatio = effectiveCac > 0 && cohortLtv > 0 ? cohortLtv / effectiveCac : 0;
+
+    // Compute payback fallback
+    let effectivePayback = latest.paybackDays;
+    if (effectivePayback === null && effectiveCac > 0 && ltv30 > 0) {
+      const currentOrders = await prisma.factOrder.findMany({
+        where: { orderDate: { gte: subDays(now, 30), lte: now } },
+      });
+      const curCm = currentOrders.reduce((s, o) => s + Number(o.contributionMargin), 0);
+      const curRevNet = currentOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
+      const cmPct = curRevNet > 0 ? curCm / curRevNet : 0;
+      effectivePayback = kpiCalcs.kpis.paybackDays(effectiveCac, ltv30, cmPct);
+    }
 
     const recentCohorts = await prisma.cohort.findMany({
       orderBy: { cohortMonth: 'desc' },
@@ -460,8 +506,8 @@ export async function metricsRoutes(app: FastifyInstance) {
         ltv30: Number(latest.ltv30),
         ltv90: Number(latest.ltv90),
         ltv180: ltv180,
-        avgCac: avgCac,
-        paybackDays: latest.paybackDays,
+        avgCac: effectiveCac,
+        paybackDays: effectivePayback,
         ltvCacRatio: Math.round(ltvCacRatio * 10) / 10,
       },
       recentCohorts: recentCohorts.map((c) => ({
@@ -509,6 +555,39 @@ export async function metricsRoutes(app: FastifyInstance) {
     const totalSpend = Number(spendAgg._sum.spend ?? 0);
     const newCust = orders.filter((o) => o.isNewCustomer).length;
 
+    // Payment method breakdown
+    const paymentMethods = new Map<string, { count: number; revenue: number; succeeded: number; failed: number }>();
+    for (const o of orders) {
+      const method = o.paymentMethod ?? 'unknown';
+      const existing = paymentMethods.get(method);
+      const rev = Number(o.revenueNet);
+      const isSuccess = o.paymentStatus !== 'failed';
+      const isFailed = o.paymentStatus === 'failed';
+      if (existing) {
+        existing.count++;
+        existing.revenue += rev;
+        if (isSuccess) existing.succeeded++;
+        if (isFailed) existing.failed++;
+      } else {
+        paymentMethods.set(method, {
+          count: 1,
+          revenue: rev,
+          succeeded: isSuccess ? 1 : 0,
+          failed: isFailed ? 1 : 0,
+        });
+      }
+    }
+
+    const paymentBreakdown = Array.from(paymentMethods.entries())
+      .map(([method, data]) => ({
+        method,
+        count: data.count,
+        revenue: Math.round(data.revenue * 100) / 100,
+        share: orders.length > 0 ? data.count / orders.length : 0,
+        successRate: data.count > 0 ? data.succeeded / data.count : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
     return {
       breakdown: {
         revenueNet: totalRevNet,
@@ -527,6 +606,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         orderCount: orders.length,
         avgOrderValue: kpiCalcs.kpis.aov(totalRevNet, orders.length),
       },
+      paymentBreakdown,
     };
   });
 
@@ -535,27 +615,26 @@ export async function metricsRoutes(app: FastifyInstance) {
     schema: {
       tags: ['forecast'],
       summary: 'KPI forecast with confidence intervals',
-      description: 'Holt-Winters double exponential smoothing forecast for revenue, orders, or spend with 80% and 95% confidence intervals',
+      description: 'Holt-Winters forecast for revenue, orders, or spend with 80% and 95% confidence intervals. Use seasonal=true for weekly seasonality.',
       querystring: {
         type: 'object',
         properties: {
           metric: { type: 'string', enum: ['revenue', 'orders', 'spend'], description: 'Metric to forecast (default revenue)' },
           horizon: { type: 'string', description: 'Forecast days 1-90 (default 30)' },
+          seasonal: { type: 'string', enum: ['true', 'false'], description: 'Enable weekly seasonal decomposition (default false)' },
         },
       },
     },
   }, async (request) => {
-    const query = request.query as { metric?: string; horizon?: string };
+    const query = request.query as { metric?: string; horizon?: string; seasonal?: string };
     const metric = query.metric ?? 'revenue';
     const horizon = Math.min(Math.max(parseInt(query.horizon ?? '30', 10) || 30, 1), 90);
+    const useSeasonal = query.seasonal === 'true';
 
     if (!['revenue', 'orders', 'spend'].includes(metric)) {
       return { error: 'Invalid metric. Must be revenue, orders, or spend.' };
     }
 
-    // Use yesterday as end date: today is incomplete (partial data)
-    // and Holt-Winters with high alpha would interpret trailing zeros
-    // as a real signal, collapsing the forecast to 0.
     const yesterday = subDays(new Date(), 1);
     const start = subDays(yesterday, 180);
 
@@ -584,16 +663,18 @@ export async function metricsRoutes(app: FastifyInstance) {
       `;
     }
 
-    // Fill date gaps with 0 (missing days = zero activity, not missing data)
     const filled = fillDateGaps(dailyData, start, yesterday);
     const values = filled.map((d) => d.value);
 
-    const result = forecast(values, { horizon });
+    const result = useSeasonal
+      ? forecastSeasonal(values, { horizon, seasonalPeriod: 7 })
+      : forecast(values, { horizon });
 
     if (!result) {
       return {
         metric,
         horizon,
+        seasonal: useSeasonal,
         historical: filled.map((d) => ({ date: format(d.date, 'yyyy-MM-dd'), value: d.value })),
         forecast: null,
         error: 'Insufficient data for forecasting (need at least 14 days)',
@@ -605,10 +686,20 @@ export async function metricsRoutes(app: FastifyInstance) {
       format(addDays(lastDate, i + 1), 'yyyy-MM-dd'),
     );
 
+    const params: Record<string, number> = {
+      alpha: +result.alpha.toFixed(3),
+      beta: +result.beta.toFixed(3),
+      mse: Math.round(result.mse),
+    };
+    if (useSeasonal && 'gamma' in result) {
+      params.gamma = +(result as { gamma: number }).gamma.toFixed(3);
+    }
+
     return {
       metric,
       horizon,
-      parameters: { alpha: +result.alpha.toFixed(3), beta: +result.beta.toFixed(3), mse: Math.round(result.mse) },
+      seasonal: useSeasonal,
+      parameters: params,
       historical: filled.map((d) => ({
         date: format(d.date, 'yyyy-MM-dd'),
         value: Math.round(d.value * 100) / 100,
@@ -722,6 +813,155 @@ export async function metricsRoutes(app: FastifyInstance) {
         ltv90toLtv30: +avgLtv90toLtv30.toFixed(3),
         ltv180toLtv90: +avgLtv180toLtv90.toFixed(3),
         matureCohortCount: mature.length,
+      },
+    };
+  });
+
+  // ── Customer Segments (RFM) ─────────────────────────────────
+  app.get('/metrics/segments', {
+    schema: {
+      tags: ['metrics'],
+      summary: 'Customer segment distribution',
+      description: 'Returns RFM-based customer segments with counts, revenue, and averages',
+    },
+  }, async () => {
+    const segments = await prisma.$queryRaw<
+      Array<{
+        segment: string;
+        count: number;
+        total_revenue: number;
+        total_orders: number;
+      }>
+    >`
+      SELECT segment,
+             COUNT(*)::int as count,
+             COALESCE(SUM(total_revenue), 0)::float as total_revenue,
+             COALESCE(SUM(total_orders), 0)::int as total_orders
+      FROM dim_customer
+      WHERE segment IS NOT NULL
+      GROUP BY segment
+      ORDER BY total_revenue DESC
+    `;
+
+    return {
+      segments: segments.map((s) => ({
+        segment: s.segment,
+        count: s.count,
+        totalRevenue: Math.round(s.total_revenue * 100) / 100,
+        avgOrderValue: s.total_orders > 0
+          ? Math.round((s.total_revenue / s.total_orders) * 100) / 100
+          : 0,
+        avgOrdersPerCustomer: s.count > 0
+          ? Math.round((s.total_orders / s.count) * 100) / 100
+          : 0,
+      })),
+    };
+  });
+
+  // ── Email Performance ───────────────────────────────────────
+  app.get('/metrics/email', {
+    schema: {
+      tags: ['metrics'],
+      summary: 'Email performance metrics',
+      description: 'Returns Klaviyo email campaign and flow performance data',
+      querystring: {
+        type: 'object',
+        properties: { days: { type: 'string', description: 'Period in days (default 30)' } },
+      },
+    },
+  }, async (request) => {
+    const query = request.query as { days?: string };
+    const days = parseInt(query.days ?? '30', 10);
+    const now = new Date();
+    const start = subDays(now, days);
+
+    // Get campaigns (joined with dim_campaign for names)
+    const campaignData = await prisma.factEmail.findMany({
+      where: {
+        date: { gte: start, lte: now },
+        campaignId: { not: null },
+      },
+      include: { campaign: { select: { campaignName: true } } },
+    });
+
+    // Aggregate by campaign
+    const campAgg = new Map<string, {
+      name: string; sends: number; opens: number; clicks: number;
+      bounces: number; unsubscribes: number; conversions: number; revenue: number;
+    }>();
+    for (const row of campaignData) {
+      const key = row.campaignId ?? 'unknown';
+      const existing = campAgg.get(key);
+      if (existing) {
+        existing.sends += row.sends;
+        existing.opens += row.opens;
+        existing.clicks += row.clicks;
+        existing.bounces += row.bounces;
+        existing.unsubscribes += row.unsubscribes;
+        existing.conversions += row.conversions;
+        existing.revenue += Number(row.revenue);
+      } else {
+        campAgg.set(key, {
+          name: row.campaign?.campaignName ?? key,
+          sends: row.sends,
+          opens: row.opens,
+          clicks: row.clicks,
+          bounces: row.bounces,
+          unsubscribes: row.unsubscribes,
+          conversions: row.conversions,
+          revenue: Number(row.revenue),
+        });
+      }
+    }
+
+    const campaigns = Array.from(campAgg.entries()).map(([id, c]) => ({
+      campaignId: id,
+      campaignName: c.name,
+      sends: c.sends,
+      opens: c.opens,
+      clicks: c.clicks,
+      bounces: c.bounces,
+      unsubscribes: c.unsubscribes,
+      conversions: c.conversions,
+      revenue: Math.round(c.revenue * 100) / 100,
+      openRate: c.sends > 0 ? Math.round((c.opens / c.sends) * 10000) / 10000 : 0,
+      clickRate: c.opens > 0 ? Math.round((c.clicks / c.opens) * 10000) / 10000 : 0,
+      conversionRate: c.clicks > 0 ? Math.round((c.conversions / c.clicks) * 10000) / 10000 : 0,
+    })).sort((a, b) => b.revenue - a.revenue);
+
+    // Flow data (records without a campaign)
+    const flowData = await prisma.factEmail.findMany({
+      where: {
+        date: { gte: start, lte: now },
+        campaignId: null,
+      },
+    });
+
+    const flowTotals = {
+      sends: flowData.reduce((s, r) => s + r.sends, 0),
+      opens: flowData.reduce((s, r) => s + r.opens, 0),
+      clicks: flowData.reduce((s, r) => s + r.clicks, 0),
+      conversions: flowData.reduce((s, r) => s + r.conversions, 0),
+      revenue: flowData.reduce((s, r) => s + Number(r.revenue), 0),
+    };
+
+    // Summary totals
+    const allData = [...campaignData, ...flowData];
+    const totalSends = allData.reduce((s, r) => s + r.sends, 0);
+    const totalOpens = allData.reduce((s, r) => s + r.opens, 0);
+    const totalClicks = allData.reduce((s, r) => s + r.clicks, 0);
+    const totalUnsubscribes = allData.reduce((s, r) => s + r.unsubscribes, 0);
+    const totalRevenue = allData.reduce((s, r) => s + Number(r.revenue), 0);
+
+    return {
+      campaigns,
+      flows: flowTotals,
+      summary: {
+        totalSends,
+        avgOpenRate: totalSends > 0 ? Math.round((totalOpens / totalSends) * 10000) / 10000 : 0,
+        avgClickRate: totalOpens > 0 ? Math.round((totalClicks / totalOpens) * 10000) / 10000 : 0,
+        totalEmailRevenue: Math.round(totalRevenue * 100) / 100,
+        unsubscribeRate: totalSends > 0 ? Math.round((totalUnsubscribes / totalSends) * 10000) / 10000 : 0,
       },
     };
   });
