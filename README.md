@@ -15,13 +15,17 @@
 - **4-Source ETL Pipeline** — Shopify (GraphQL), Meta Marketing API, Google Ads API, GA4 Data API
 - **3-Step Transformation** — Raw → Staging → Dimensional Marts (star schema)
 - **18 KPI Functions** — Revenue, CAC, MER, ROAS, LTV, Retention, Funnel CVR, and more
-- **7 Alert Rules** — Automated anomaly detection with severity levels and recommendations
-- **8-Page Dashboard** — Executive summary, channels, cohorts, unit economics, alerts, WBR, connections, jobs
-- **Auto-Generated WBR** — Weekly Business Review narrative with copy-to-clipboard
-- **Demo Mode** — Full deterministic mock data (seed=42, 180 days) — no API credentials needed
+- **7 Alert Rules** — Automated anomaly detection with severity levels and contextual recommendations
+- **14-Page Dashboard** — Executive summary, channels, cohorts, unit economics, alerts, WBR, connections, jobs, experiments, AI suggestions, funnel, forecast, settings, ask AI
+- **Growth Experiments** — RICE-scored experiment tracking with full lifecycle (IDEA → RUNNING → COMPLETED)
+- **AI Suggestion Engine** — Signal detection → opportunity classification → experiment suggestions (OpenAI-powered or rule-based fallback)
+- **Auto-Generated WBR** — Weekly Business Review narrative with experiments/suggestions integration, AI-enhanced option, copy-to-clipboard
+- **Demo Mode** — Full deterministic mock data (seed=42, 180 days) with trailing anomalies for AI triggers — no API credentials needed
+- **Acronym Tooltips** — Hover definitions for all business acronyms (CAC, MER, AOV, LTV, etc.)
+- **DTC Benchmarks** — Industry reference ranges displayed on key KPI cards
 - **10 Data Quality Checks** — Automated validation after every pipeline run
 - **AES-256-GCM Encryption** — Connector credentials encrypted at rest
-- **200+ Automated Tests** — Unit, golden fixtures, integration, contract, E2E (Playwright)
+- **280+ Automated Tests** — Unit, golden fixtures, integration, contract, E2E (Playwright)
 - **CI/CD Pipeline** — GitHub Actions workflow with 5 QA stages
 
 ## Tech Stack
@@ -98,13 +102,14 @@ growth-os/
 ├── apps/
 │   ├── api/                 # Fastify REST API (port 4000)
 │   │   └── src/
-│   │       ├── routes/      # health, metrics, alerts, wbr, connections, jobs
+│   │       ├── routes/      # health, metrics, alerts, wbr, connections, jobs,
+│   │       │                # experiments, suggestions, settings, pipeline, ask
 │   │       ├── scheduler.ts # BullMQ hourly sync + daily marts
 │   │       └── index.ts     # Server entry point
 │   ├── web/                 # Next.js dashboard (port 3000)
 │   │   └── src/
-│   │       ├── app/         # App Router pages (8 pages)
-│   │       ├── components/  # Sidebar, KpiCard, Sparkline, Charts
+│   │       ├── app/         # App Router pages (14 pages)
+│   │       ├── components/  # Sidebar, KpiCard, Sparkline, Charts, Tooltip
 │   │       └── lib/         # API client, formatters
 │   └── e2e/                 # Playwright end-to-end tests
 ├── packages/
@@ -116,7 +121,10 @@ growth-os/
 │           ├── connectors/  # 4 API connectors + demo generator
 │           ├── pipeline/    # 3-step transformation + validation
 │           ├── kpis.ts      # 18 KPI calculation functions
-│           ├── alerts.ts    # 7 alert rules
+│           ├── alerts.ts    # 7 alert rules with context
+│           ├── signals.ts   # Signal detection engine
+│           ├── opportunities.ts # Opportunity classification
+│           ├── forecast.ts  # Holt-Winters forecasting
 │           ├── demo.ts      # Demo pipeline runner
 │           └── sync.ts      # Real sync runner
 ├── docs/                    # Architecture, KPI defs, acceptance criteria
@@ -164,19 +172,32 @@ growth-os/
 | POST | `/api/connections/:id/test` | Test connection |
 | DELETE | `/api/connections/:id` | Remove connection |
 | GET | `/api/connections/oauth/:source` | Start OAuth flow |
+| GET | `/api/experiments` | List experiments |
+| POST | `/api/experiments` | Create experiment with RICE |
+| PATCH | `/api/experiments/:id/status` | Transition experiment status |
+| POST | `/api/opportunities/generate` | Detect signals → generate suggestions |
+| GET | `/api/opportunities` | List opportunities with suggestions |
+| POST | `/api/suggestions/:id/feedback` | Approve/reject suggestion |
+| POST | `/api/suggestions/:id/promote` | Promote suggestion to experiment |
 
 ## Dashboard Pages
 
 | Page | URL | Description |
 |------|-----|-------------|
-| Executive Summary | `/` | 10 KPI cards + revenue chart |
+| Executive Summary | `/` | 10+ KPI cards with tooltips + benchmarks + revenue chart + forecast |
 | Channels | `/channels` | Sortable channel performance table |
 | Cohorts | `/cohorts` | Retention curves + LTV + cohort table |
 | Unit Economics | `/unit-economics` | Waterfall chart + cost breakdown |
-| Alerts | `/alerts` | Alert cards with severity + recommendations |
-| WBR | `/wbr` | Auto-generated narrative + copy button |
+| Funnel | `/funnel` | GA4 funnel conversion rates |
+| Alerts | `/alerts` | Alert cards with severity + contextual recommendations |
+| WBR | `/wbr` | Auto-generated narrative + experiments + AI insights |
+| Experiments | `/experiments` | RICE-scored experiment board with lifecycle |
+| AI Suggestions | `/suggestions` | Signal detection + opportunity + suggestion management |
 | Connections | `/connections` | Connector config + OAuth + test |
 | Jobs | `/jobs` | Job history with filters |
+| Settings | `/settings` | Demo/live mode, data management |
+| Ask AI | `/ask` | Natural language data Q&A |
+| Forecast | `/` (section) | Holt-Winters forecast with configurable horizon |
 
 ## Real Mode Setup
 
@@ -247,6 +268,8 @@ pnpm test               # Re-run
 
 - [Architecture](docs/architecture.md) — System overview with data flow diagram
 - [KPI Definitions](docs/kpi-definitions.md) — All 18 metric formulas
+- [Experiments](docs/experiments.md) — RICE scoring, lifecycle, API reference
+- [AI Suggestions](docs/ai-suggestions.md) — Signal detection, opportunity classification, suggestion pipeline
 - [Acceptance Criteria](docs/acceptance-criteria.md) — 50+ Gherkin scenarios
 - [Testing Plan](docs/testing-plan.md) — Test strategy, golden fixtures, security & performance testing
 - [QA Checklist](docs/qa-checklist.md) — 130+ checkpoint comprehensive QA guide

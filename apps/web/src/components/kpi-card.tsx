@@ -1,18 +1,20 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { formatCurrency, formatPercent, formatNumber, formatPercentChange, changeColor } from '@/lib/format';
 import { MiniSparkline } from './sparkline';
 
 interface KpiCardProps {
-  title: string;
+  title: ReactNode;
   value: number;
   change?: number;
   format?: 'currency' | 'percent' | 'number' | 'multiplier';
   invertColor?: boolean;
   sparkData?: number[];
+  benchmark?: string;
 }
 
-export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData }: KpiCardProps) {
+export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData, benchmark }: KpiCardProps) {
   const safeValue = Number.isFinite(value) ? value : 0;
   const formatted = (() => {
     switch (format) {
@@ -35,6 +37,9 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
       <p className={`text-sm font-medium ${changeColor(change ?? 0, invertColor)}`}>
         {change !== undefined ? `${formatPercentChange(change)} vs prior period` : '\u00A0'}
       </p>
+      {benchmark && (
+        <p className="text-[10px] text-slate-600">DTC benchmark: {benchmark}</p>
+      )}
     </div>
   );
 }

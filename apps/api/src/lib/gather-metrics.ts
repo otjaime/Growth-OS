@@ -8,11 +8,19 @@ import { subDays } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import type { AlertInput } from '@growth-os/etl';
 
+export interface CohortSummary {
+  ltvCacRatio: number;
+  paybackDays: number | null;
+  ltv90: number;
+  d30Retention: number;
+}
+
 export interface WoWMetrics {
   alertInput: AlertInput;
   currentRevenue: number;
   previousRevenue: number;
   currentRevenueNet: number;
+  previousRevenueNet: number;
   currentSpend: number;
   previousSpend: number;
   currentNewCustomers: number;
@@ -20,25 +28,29 @@ export interface WoWMetrics {
   currentOrders: number;
   previousOrders: number;
   currentCM: number;
+  previousCM: number;
   currentSessions: number;
   previousSessions: number;
   currentAOV: number;
   previousAOV: number;
   currentCAC: number;
+  previousCAC: number;
   currentMER: number;
   currentCMPct: number;
+  previousCMPct: number;
   funnelCurrent: { sessions: number; pdpViews: number; addToCart: number; checkouts: number; purchases: number } | null;
   funnelPrevious: { sessions: number; pdpViews: number; addToCart: number; checkouts: number; purchases: number } | null;
   channels: NonNullable<AlertInput['channels']>;
   cohortD30: number;
   baselineD30: number;
+  cohortSummary: CohortSummary | null;
   kpiContext: string;
 }
 
-export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
+export async function gatherWeekOverWeekData(days: number = 7): Promise<WoWMetrics> {
   const now = new Date();
-  const currentStart = subDays(now, 7);
-  const previousStart = subDays(currentStart, 7);
+  const currentStart = subDays(now, days);
+  const previousStart = subDays(currentStart, days);
 
   // Orders
   const currentOrders = await prisma.factOrder.findMany({
@@ -84,8 +96,10 @@ export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
   const curAOV = kpiCalcs.kpis.aov(curRevenueNet, currentOrders.length);
   const prevAOV = kpiCalcs.kpis.aov(prevRevenueNet, previousOrders.length);
   const curCAC = kpiCalcs.kpis.blendedCac(curSpend, curNewCust);
+  const prevCAC = kpiCalcs.kpis.blendedCac(prevSpend, prevNewCust);
   const curMER = kpiCalcs.kpis.mer(curRevenue, curSpend);
   const curCMPct = kpiCalcs.kpis.contributionMarginPct(curCM, curRevenueNet);
+  const prevCMPct = kpiCalcs.kpis.contributionMarginPct(prevCM, prevRevenueNet);
 
   // Per-channel breakdowns
   const channelSpendCur = await prisma.factSpend.groupBy({
@@ -151,6 +165,16 @@ export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
   const latestCohort = cohorts[0];
   const currentD30 = latestCohort ? Number(latestCohort.d30Retention) : baselineD30;
 
+  // Cohort summary for WBR and other consumers
+  const cohortSummary: CohortSummary | null = latestCohort ? {
+    ltvCacRatio: Number(latestCohort.avgCac) > 0
+      ? Math.round((Number(latestCohort.ltv180) / Number(latestCohort.avgCac)) * 10) / 10
+      : 0,
+    paybackDays: latestCohort.paybackDays,
+    ltv90: Number(latestCohort.ltv90),
+    d30Retention: Number(latestCohort.d30Retention),
+  } : null;
+
   // Build alert input
   const alertInput: AlertInput = {
     currentRevenue: curRevenue,
@@ -189,7 +213,7 @@ export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
 
   // Build formatted KPI context for LLM prompts
   const kpiContext = [
-    `CURRENT BUSINESS METRICS (last 7 days):`,
+    `CURRENT BUSINESS METRICS (last ${days} days):`,
     `- Revenue: $${curRevenue.toFixed(0)} (${curRevenue > prevRevenue ? '+' : ''}${(kpiCalcs.kpis.percentChange(curRevenue, prevRevenue) * 100).toFixed(1)}% WoW)`,
     `- Orders: ${currentOrders.length}`,
     `- Blended CAC: $${curCAC.toFixed(0)}`,
@@ -212,6 +236,7 @@ export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
     currentRevenue: curRevenue,
     previousRevenue: prevRevenue,
     currentRevenueNet: curRevenueNet,
+    previousRevenueNet: prevRevenueNet,
     currentSpend: curSpend,
     previousSpend: prevSpend,
     currentNewCustomers: curNewCust,
@@ -219,18 +244,22 @@ export async function gatherWeekOverWeekData(): Promise<WoWMetrics> {
     currentOrders: currentOrders.length,
     previousOrders: previousOrders.length,
     currentCM: curCM,
+    previousCM: prevCM,
     currentSessions: curSessions,
     previousSessions: prevSessions,
     currentAOV: curAOV,
     previousAOV: prevAOV,
     currentCAC: curCAC,
+    previousCAC: prevCAC,
     currentMER: curMER,
     currentCMPct: curCMPct,
+    previousCMPct: prevCMPct,
     funnelCurrent,
     funnelPrevious,
     channels: channelBreakdowns,
     cohortD30: currentD30,
     baselineD30,
+    cohortSummary,
     kpiContext,
   };
 }

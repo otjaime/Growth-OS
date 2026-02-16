@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '@growth-os/database';
+import { prisma, isDemoMode } from '@growth-os/database';
 import { subDays } from 'date-fns';
 import { detectSignals, classifyOpportunities } from '@growth-os/etl';
 import type { SignalInput } from '@growth-os/etl';
@@ -97,6 +97,96 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     const candidates = classifyOpportunities(signals);
 
     if (candidates.length === 0) {
+      // In demo mode, inject pre-built opportunities so the page isn't empty
+      const demoMode = await isDemoMode();
+      if (demoMode) {
+        const demoOpportunities = [
+          {
+            type: 'EFFICIENCY_DROP' as const,
+            title: 'Meta Ads spend efficiency declining',
+            description: 'Meta prospecting spend increased 35% in the last 7 days while conversions dropped 50%, causing blended CAC to spike. MER deteriorated from 3.2x to 2.4x.',
+            priority: 85,
+            signals: [{ type: 'alert', id: 'mer_deterioration', severity: 'warning' }],
+          },
+          {
+            type: 'FUNNEL_LEAK' as const,
+            title: 'Checkout funnel drop detected',
+            description: 'Sessions dropped 22% and checkout completion rate fell 35% in the last 7 days. The add-to-cart to checkout step shows the largest drop, suggesting friction in the checkout flow.',
+            priority: 70,
+            signals: [{ type: 'metric_delta', metric: 'atcToCheckout', change: -0.35 }],
+          },
+          {
+            type: 'QUICK_WIN' as const,
+            title: 'Retargeting ROAS exceeds prospecting 4:1',
+            description: 'Retargeting campaigns show 4x higher ROAS than prospecting. Shifting 15% of prospecting budget to retargeting could improve blended CAC by ~20%.',
+            priority: 60,
+            signals: [{ type: 'channel_efficiency', channel: 'meta', metric: 'roas_gap' }],
+          },
+        ];
+
+        const createdOpps = [];
+        let totalSuggestions = 0;
+
+        for (const demo of demoOpportunities) {
+          const cutoff = subDays(new Date(), 1);
+          const existing = await prisma.opportunity.findFirst({
+            where: { type: demo.type as never, createdAt: { gte: cutoff } },
+            include: { suggestions: true },
+          });
+
+          if (existing) {
+            createdOpps.push(existing);
+            continue;
+          }
+
+          const opp = await prisma.opportunity.create({
+            data: {
+              type: demo.type as never,
+              title: demo.title,
+              description: demo.description,
+              priority: demo.priority,
+              signalsJson: demo.signals as unknown as never,
+            },
+          });
+
+          const suggestions = getDemoSuggestions(demo.type);
+          for (const sd of suggestions) {
+            await prisma.suggestion.create({
+              data: {
+                opportunityId: opp.id,
+                type: 'RULE_BASED',
+                title: sd.title,
+                hypothesis: sd.hypothesis,
+                suggestedChannel: sd.channel,
+                suggestedMetric: sd.metric,
+                suggestedTargetLift: sd.targetLift,
+                impactScore: sd.impact,
+                confidenceScore: sd.confidence,
+                effortScore: sd.effort,
+                riskScore: sd.risk,
+                reasoning: sd.reasoning,
+              },
+            });
+            totalSuggestions++;
+          }
+
+          const full = await prisma.opportunity.findUnique({
+            where: { id: opp.id },
+            include: { suggestions: { include: { feedback: true } } },
+          });
+          if (full) createdOpps.push(full);
+        }
+
+        return {
+          opportunities: createdOpps,
+          signalsDetected: 0,
+          opportunitiesCreated: createdOpps.length,
+          suggestionsGenerated: totalSuggestions,
+          aiEnabled: isAIConfigured(),
+          demoGenerated: true,
+        };
+      }
+
       return {
         opportunities: [],
         signalsDetected: signals.length,

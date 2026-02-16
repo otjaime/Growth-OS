@@ -211,19 +211,20 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
           {/* RICE Scoring */}
           <div className="border-t border-slate-700 pt-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-400 uppercase tracking-wide">RICE Score</span>
               <span className="text-lg font-bold text-blue-400">{riceScore}</span>
             </div>
+            <p className="text-[11px] text-slate-500 mb-3">Score = (Reach x Impact x Confidence) / Effort</p>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Reach', value: reach, set: setReach },
-                { label: 'Impact', value: impact, set: setImpact },
-                { label: 'Confidence', value: confidence, set: setConfidence },
-                { label: 'Effort', value: effort, set: setEffort },
-              ].map(({ label, value, set }) => (
+                { label: 'Reach', value: reach, set: setReach, hint: '1 = few users, 10 = all users' },
+                { label: 'Impact', value: impact, set: setImpact, hint: '1 = minimal, 10 = transformative' },
+                { label: 'Confidence', value: confidence, set: setConfidence, hint: '1 = guessing, 10 = data-proven' },
+                { label: 'Effort', value: effort, set: setEffort, hint: '1 = hours, 10 = months' },
+              ].map(({ label, value, set, hint }) => (
                 <div key={label}>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-0.5">
                     <label className="text-xs text-slate-400">{label}</label>
                     <span className="text-xs text-white font-medium">{value}</span>
                   </div>
@@ -235,6 +236,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
                     onChange={(e) => set(parseInt(e.target.value))}
                     className="w-full accent-blue-500"
                   />
+                  <p className="text-[10px] text-slate-600 mt-0.5">{hint}</p>
                 </div>
               ))}
             </div>

@@ -43,6 +43,18 @@ const mockPrisma = vi.hoisted(() => ({
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
+  experiment: {
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+  },
+  opportunity: {
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+  },
+  suggestion: {
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+  },
 }));
 
 vi.mock('@growth-os/database', () => ({
@@ -378,6 +390,9 @@ describe('WBR Routes', () => {
     mockPrisma.factTraffic.aggregate.mockResolvedValue({ _sum: { sessions: 0, purchases: 0 } });
     mockPrisma.cohort.findMany.mockResolvedValue([]);
     mockPrisma.dimChannel.findMany.mockResolvedValue([]);
+    mockPrisma.experiment.findMany.mockResolvedValue([]);
+    mockPrisma.opportunity.count.mockResolvedValue(0);
+    mockPrisma.suggestion.count.mockResolvedValue(0);
   });
 
   it('GET /api/wbr returns 200 with narrative', async () => {

@@ -7,6 +7,7 @@ import { DateRangePicker } from '@/components/date-range-picker';
 import { RevenueChart } from '@/components/revenue-chart';
 import { ForecastChart } from '@/components/forecast-chart';
 import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from '@/components/skeleton';
+import { AcronymTip } from '@/components/tooltip';
 import { formatCurrency, formatPercent, formatNumber, formatDays, formatMultiplier } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
 
@@ -101,6 +102,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [forecastData, setForecastData] = useState<ForecastResponse | null>(null);
   const [forecastMetric, setForecastMetric] = useState<'revenue' | 'orders' | 'spend'>('revenue');
+  const [forecastHorizon, setForecastHorizon] = useState(30);
   const [forecastLoading, setForecastLoading] = useState(false);
 
   useEffect(() => {
@@ -130,14 +132,14 @@ export default function DashboardPage() {
   // Fetch forecast independently (always uses 180 days, not tied to dashboard period)
   useEffect(() => {
     setForecastLoading(true);
-    apiFetch(`/api/metrics/forecast?metric=${forecastMetric}&horizon=30`)
+    apiFetch(`/api/metrics/forecast?metric=${forecastMetric}&horizon=${forecastHorizon}`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         setForecastData(data as ForecastResponse | null);
         setForecastLoading(false);
       })
       .catch(() => setForecastLoading(false));
-  }, [forecastMetric]);
+  }, [forecastMetric, forecastHorizon]);
 
   if (loading) {
     return (
@@ -198,7 +200,7 @@ export default function DashboardPage() {
           <KpiCard title="Revenue (Gross)" value={k.revenueGross.value} change={k.revenueGross.change} sparkData={revenueSparkData} />
           <KpiCard title="Orders" value={k.orders.value} change={k.orders.change} format="number" />
           <KpiCard title="Gross Margin" value={k.grossMarginPct.value} format="percent" />
-          <KpiCard title="Contrib. Margin %" value={k.cmPct.value} change={k.cmPct.change} format="percent" />
+          <KpiCard title={<AcronymTip term="CM%" />} value={k.cmPct.value} change={k.cmPct.change} format="percent" benchmark="20–35%" />
         </div>
       </section>
 
@@ -220,22 +222,39 @@ export default function DashboardPage() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-            {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} Forecast (30-day)
+            {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} Forecast ({forecastHorizon}-day)
           </h2>
-          <div className="flex gap-1">
-            {(['revenue', 'orders', 'spend'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setForecastMetric(m)}
-                className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                  forecastMetric === m
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                {m === 'revenue' ? 'Revenue' : m === 'orders' ? 'Orders' : 'Spend'}
-              </button>
-            ))}
+          <div className="flex gap-3">
+            <div className="flex gap-1">
+              {([7, 14, 30, 60, 90] as const).map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setForecastHorizon(h)}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                    forecastHorizon === h
+                      ? 'bg-slate-600 text-white'
+                      : 'bg-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {h}d
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              {(['revenue', 'orders', 'spend'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setForecastMetric(m)}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    forecastMetric === m
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {m === 'revenue' ? 'Revenue' : m === 'orders' ? 'Orders' : 'Spend'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -243,7 +262,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div className="card flex flex-col gap-2">
               <p className="text-xs text-slate-400 uppercase tracking-wide">
-                Projected {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} (30d)
+                Projected {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} ({forecastHorizon}d)
               </p>
               <p className="text-2xl font-bold text-white">
                 {forecastMetric === 'orders'
@@ -296,16 +315,19 @@ export default function DashboardPage() {
 
       {/* SECTION 3: Customer Economics */}
       <section>
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Customer Economics</h2>
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Customer Economics</h2>
+          <p className="text-xs text-slate-500 mt-0.5">LTV, LTV:CAC, and Payback are based on the most recent mature cohort</p>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard title="Blended CAC" value={k.blendedCac.value} change={k.blendedCac.change} invertColor />
+          <KpiCard title={<><AcronymTip term="CAC" /> (Blended)</>} value={k.blendedCac.value} change={k.blendedCac.change} invertColor benchmark="$80–$150" />
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide">LTV (90-day)</p>
+            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="LTV" /> (90-day)</p>
             <p className="text-2xl font-bold text-white">{formatCurrency(k.ltv90.value)}</p>
-            <p className="text-sm text-slate-500">&nbsp;</p>
+            <p className="text-xs text-slate-500">Latest mature cohort</p>
           </div>
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide">LTV:CAC Ratio</p>
+            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="LTV" />:<AcronymTip term="CAC" /> Ratio</p>
             <p className={`text-2xl font-bold ${ltvCacColor}`}>{formatMultiplier(ltvCacValue)}</p>
             <p className="text-xs text-slate-500">
               {ltvCacValue >= 3 ? 'Healthy' : ltvCacValue >= 2 ? 'Monitor' : 'Critical'}
@@ -326,12 +348,12 @@ export default function DashboardPage() {
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Retention & Acquisition</h2>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide">D30 Retention</p>
+            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="D30" /> Retention</p>
             <p className="text-2xl font-bold text-white">{formatPercent(k.retentionD30.value)}</p>
             <p className="text-xs text-slate-500">Most recent mature cohort</p>
           </div>
           <KpiCard title="New Customers" value={k.newCustomers.value} change={k.newCustomers.change} format="number" />
-          <KpiCard title="MER" value={k.mer.value} change={k.mer.change} format="multiplier" />
+          <KpiCard title={<AcronymTip term="MER" />} value={k.mer.value} change={k.mer.change} format="multiplier" benchmark="3–5x" />
         </div>
       </section>
 

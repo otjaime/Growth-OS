@@ -46,6 +46,7 @@ export interface Alert {
   recommendation: string;
   metricValue: number;
   threshold: number;
+  context: Record<string, number | string>;
 }
 
 export function evaluateAlerts(input: AlertInput): Alert[] {
@@ -64,9 +65,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       description: `Blended CAC increased ${(cacChange * 100).toFixed(1)}% WoW ($${previousCac.toFixed(0)} → $${currentCac.toFixed(0)})`,
       impactedSegment: 'All Paid Channels',
       recommendation:
-        'Review channel-level CAC. Pause underperforming campaigns. Check for audience fatigue on Meta prospecting. Consider reallocating budget to higher-efficiency channels.',
+        `Review channel-level CAC (currently $${currentCac.toFixed(0)}, up from $${previousCac.toFixed(0)}). Pause underperforming campaigns. Check for audience fatigue on Meta prospecting. Consider reallocating budget to higher-efficiency channels.`,
       metricValue: cacChange,
       threshold: 0.15,
+      context: { currentCac, previousCac, cacChangePercent: cacChange * 100, totalSpend: input.currentSpend, newCustomers: input.currentNewCustomers },
     });
   }
 
@@ -89,9 +91,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       description: `CM% dropped ${(cmPpChange * 100).toFixed(1)}pp WoW (${(previousCmPct * 100).toFixed(1)}% → ${(currentCmPct * 100).toFixed(1)}%)`,
       impactedSegment: 'Unit Economics',
       recommendation:
-        'Investigate discount rate increases, product mix shifts, and shipping cost changes. Check if high-margin categories are underperforming.',
+        `Investigate discount rate increases, product mix shifts, and shipping cost changes. CM dropped from ${(previousCmPct * 100).toFixed(1)}% to ${(currentCmPct * 100).toFixed(1)}%. Check if high-margin categories are underperforming.`,
       metricValue: cmPpChange,
       threshold: -0.03,
+      context: { currentCmPct, previousCmPct, cmDropPp: cmPpChange * 100, currentCM: input.currentContributionMargin, currentRevenueNet: input.currentRevenueNet },
     });
   }
 
@@ -109,9 +112,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       description: `D30 retention dropped ${(retentionDrop * 100).toFixed(1)}pp vs baseline (${(input.baselineD30Retention * 100).toFixed(1)}% → ${(input.currentD30Retention * 100).toFixed(1)}%)`,
       impactedSegment: 'Customer Retention',
       recommendation:
-        'Review post-purchase flows, email engagement rates, and product quality feedback. Consider launching a win-back campaign for recent cohorts.',
+        `Review post-purchase flows, email engagement rates, and product quality feedback. Current D30 retention is ${(input.currentD30Retention * 100).toFixed(1)}% vs ${(input.baselineD30Retention * 100).toFixed(1)}% baseline. Consider launching a win-back campaign for recent cohorts.`,
       metricValue: retentionDrop,
       threshold: -0.05,
+      context: { currentD30: input.currentD30Retention, baselineD30: input.baselineD30Retention, dropPp: retentionDrop * 100 },
     });
   }
 
@@ -130,9 +134,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       description: `Spend up ${(spendChange * 100).toFixed(1)}% but revenue only ${revenueChange >= 0 ? '+' : ''}${(revenueChange * 100).toFixed(1)}%. MER dropped from ${previousMer.toFixed(2)}x to ${currentMer.toFixed(2)}x`,
       impactedSegment: 'Marketing Efficiency',
       recommendation:
-        'Audit spend allocation. Check for diminishing returns on scaled campaigns. Consider shifting budget from prospecting to retargeting.',
+        `Audit spend allocation ($${input.currentSpend.toFixed(0)} this week, up from $${input.previousSpend.toFixed(0)}). MER fell to ${currentMer.toFixed(2)}x. Check for diminishing returns on scaled campaigns. Consider shifting budget from prospecting to retargeting.`,
       metricValue: merChange,
       threshold: -0.10,
+      context: { currentMer, previousMer, currentSpend: input.currentSpend, previousSpend: input.previousSpend, currentRevenue: input.currentRevenue, previousRevenue: input.previousRevenue },
     });
   }
 
@@ -150,9 +155,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
           title: `${ch.name} CAC Spike`,
           description: `${ch.name} CAC up ${(chCacChange * 100).toFixed(1)}% WoW ($${chPreviousCac.toFixed(0)} → $${chCurrentCac.toFixed(0)})`,
           impactedSegment: ch.name,
-          recommendation: `Review ${ch.name} campaign performance. Check audience overlap, creative fatigue, and bid strategy. Consider creative refresh.`,
+          recommendation: `Review ${ch.name} campaign performance (spend: $${ch.currentSpend.toFixed(0)}, ${ch.currentNewCustomers} new customers). Check audience overlap, creative fatigue, and bid strategy. Consider creative refresh.`,
           metricValue: chCacChange,
           threshold: 0.25,
+          context: { channel: ch.name, currentCac: chCurrentCac, previousCac: chPreviousCac, channelSpend: ch.currentSpend, channelNewCustomers: ch.currentNewCustomers },
         });
       }
     }
@@ -167,9 +173,10 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       description: `Revenue dropped ${(revenueChange * 100).toFixed(1)}% WoW ($${input.previousRevenue.toFixed(0)} → $${input.currentRevenue.toFixed(0)})`,
       impactedSegment: 'Overall Revenue',
       recommendation:
-        'Investigate traffic volumes, conversion rates, and AOV. Check for site issues, inventory problems, or external factors.',
+        `Investigate traffic volumes, conversion rates, and AOV. Revenue fell from $${input.previousRevenue.toFixed(0)} to $${input.currentRevenue.toFixed(0)}. Check for site issues, inventory problems, or external factors.`,
       metricValue: revenueChange,
       threshold: -0.10,
+      context: { currentRevenue: input.currentRevenue, previousRevenue: input.previousRevenue, revenueDropPercent: revenueChange * 100 },
     });
   }
 
@@ -183,12 +190,13 @@ export function evaluateAlerts(input: AlertInput): Alert[] {
       id: 'new_customer_decline',
       severity: 'info',
       title: 'New Customer Acquisition Slowing',
-      description: `New customer share dropped ${(newShareChange * 100).toFixed(1)}pp`,
+      description: `New customer share dropped ${(newShareChange * 100).toFixed(1)}pp (${(previousNewShare * 100).toFixed(1)}% → ${(currentNewShare * 100).toFixed(1)}%)`,
       impactedSegment: 'Acquisition',
       recommendation:
-        'Review prospecting campaigns. Consider expanding audiences, testing new channels, or refreshing creative.',
+        `Review prospecting campaigns. New customer share fell from ${(previousNewShare * 100).toFixed(1)}% to ${(currentNewShare * 100).toFixed(1)}% (${input.currentNewCustomers} vs ${input.previousNewCustomers} new customers). Consider expanding audiences, testing new channels, or refreshing creative.`,
       metricValue: newShareChange,
       threshold: -0.08,
+      context: { currentNewShare, previousNewShare, currentNewCustomers: input.currentNewCustomers, previousNewCustomers: input.previousNewCustomers },
     });
   }
 
