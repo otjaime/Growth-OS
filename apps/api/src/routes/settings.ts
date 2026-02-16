@@ -21,6 +21,7 @@ async function clearAllData() {
     prisma.dimCustomer.deleteMany(),
     prisma.dimCampaign.deleteMany(),
     prisma.stgOrder.deleteMany(),
+    prisma.stgCustomer.deleteMany(),
     prisma.stgSpend.deleteMany(),
     prisma.stgTraffic.deleteMany(),
     prisma.jobRun.deleteMany(),
@@ -108,6 +109,9 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.post('/settings/seed-demo', async () => {
     try {
       await setMode('demo');
+      // Clear old data first to prevent stale records from persisting
+      // (the demo pipeline uses upsert, so surplus old orders would remain)
+      await clearAllData();
       // Import and run the demo pipeline dynamically
       const { exec } = await import('child_process');
       const { promisify } = await import('util');
