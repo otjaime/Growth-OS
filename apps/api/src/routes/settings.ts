@@ -4,6 +4,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
+import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, validateData } from '@growth-os/etl';
 import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
 
 async function clearAllData() {
@@ -28,6 +29,56 @@ async function clearAllData() {
   ]);
 }
 
+async function seedDimensions(): Promise<void> {
+  const channels = [
+    { slug: 'meta', name: 'Meta Ads' },
+    { slug: 'google', name: 'Google Ads' },
+    { slug: 'email', name: 'Email' },
+    { slug: 'organic', name: 'Organic' },
+    { slug: 'affiliate', name: 'Affiliate' },
+    { slug: 'direct', name: 'Direct' },
+    { slug: 'other', name: 'Other' },
+  ];
+  for (const ch of channels) {
+    await prisma.dimChannel.upsert({
+      where: { slug: ch.slug },
+      update: { name: ch.name },
+      create: ch,
+    });
+  }
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const startDate = new Date('2025-01-01');
+  const endDate = new Date('2026-12-31');
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dateOnly = new Date(current.toISOString().split('T')[0]! + 'T00:00:00Z');
+    const dayOfWeek = current.getUTCDay();
+    const d = new Date(Date.UTC(current.getFullYear(), current.getMonth(), current.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    await prisma.dimDate.upsert({
+      where: { date: dateOnly },
+      update: {},
+      create: {
+        date: dateOnly,
+        dayOfWeek,
+        dayName: dayNames[dayOfWeek]!,
+        week,
+        month: current.getUTCMonth() + 1,
+        monthName: monthNames[current.getUTCMonth()]!,
+        quarter: Math.floor(current.getUTCMonth() / 3) + 1,
+        year: current.getUTCFullYear(),
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+      },
+    });
+    current.setDate(current.getDate() + 1);
+  }
+}
+
 export async function settingsRoutes(app: FastifyInstance) {
   // ── GET /settings/mode — current mode + data overview ──────
   app.get('/settings/mode', async () => {
@@ -46,10 +97,14 @@ export async function settingsRoutes(app: FastifyInstance) {
       prisma.factTraffic.count(),
     ]);
 
+    const hasData = orders > 0;
+
     return {
       mode: demoMode ? 'demo' : 'live',
       data: {
         hasDemoData: !!demoJob,
+        hasData,
+        needsSeed: demoMode && !hasData,
         totalEvents,
         marts: { orders, spend, traffic },
       },
@@ -107,26 +162,74 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // ── POST /settings/seed-demo — run demo pipeline ──────────
   app.post('/settings/seed-demo', async () => {
+    const startTime = Date.now();
+    let jobRun: { id: string } | null = null;
+
     try {
       await setMode('demo');
-      // Clear old data first to prevent stale records from persisting
-      // (the demo pipeline uses upsert, so surplus old orders would remain)
       await clearAllData();
-      // Import and run the demo pipeline dynamically
-      const { exec } = await import('child_process');
-      const { promisify } = await import('util');
-      const execAsync = promisify(exec);
-      await execAsync('pnpm --filter @growth-os/etl demo', {
-        cwd: '/app',
-        env: { ...process.env, DEMO_MODE: 'true' },
-        timeout: 300_000, // 5 min max
+
+      // Seed dimensions (channels + dates) — required before pipeline
+      await seedDimensions();
+
+      // Generate demo data
+      const demoData = generateAllDemoData();
+      const allRecords = [
+        ...demoData.orders,
+        ...demoData.customers,
+        ...demoData.metaInsights,
+        ...demoData.googleAdsInsights,
+        ...demoData.ga4Traffic,
+      ];
+
+      // Create job run so Jobs page shows this execution
+      jobRun = await prisma.jobRun.create({
+        data: { jobName: 'demo_ingest', status: 'RUNNING' },
       });
+
+      // Run the 3-step ETL pipeline
+      const rowsLoaded = await ingestRaw(allRecords);
+      await normalizeStaging();
+      await buildMarts();
+
+      // Validate
+      const validationResults = await validateData();
+      const allPassed = validationResults.every((r: { passed: boolean }) => r.passed);
+      const durationMs = Date.now() - startTime;
+
+      await prisma.jobRun.update({
+        where: { id: jobRun.id },
+        data: {
+          status: allPassed ? 'SUCCESS' : 'FAILED',
+          finishedAt: new Date(),
+          rowsLoaded,
+          durationMs,
+          errorJson: allPassed
+            ? undefined
+            : (validationResults.filter((r: { passed: boolean }) => !r.passed).map((r: { message: string }) => r.message) as unknown as string),
+        },
+      });
+
       return {
         success: true,
-        message: 'Demo data seeded successfully.',
+        message: `Demo data seeded successfully in ${(durationMs / 1000).toFixed(1)}s.`,
+        rowsLoaded,
+        durationMs,
       };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      // Mark job as failed if it was created
+      if (jobRun) {
+        await prisma.jobRun.update({
+          where: { id: jobRun.id },
+          data: {
+            status: 'FAILED',
+            finishedAt: new Date(),
+            durationMs: Date.now() - startTime,
+            errorJson: message as unknown as string,
+          },
+        }).catch(() => { /* ignore update failure */ });
+      }
       return { success: false, message: `Demo seed failed: ${message}` };
     }
   });

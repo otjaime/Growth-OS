@@ -303,6 +303,8 @@ export function generateMetaInsights(ctx?: DemoContext): RawRecord[] {
     const date = addDays(c.startDate, day);
     const weekNum = Math.floor(day / 7);
     const growthFactor = 1 + (day / DEMO_DAYS) * 0.3;
+    // Days remaining until end of demo window
+    const daysFromEnd = DEMO_DAYS - day;
 
     for (const camp of campaigns) {
       // Base spend per campaign per day: $80-$300
@@ -311,13 +313,24 @@ export function generateMetaInsights(ctx?: DemoContext): RawRecord[] {
       if (weekNum >= 14 && weekNum <= 16 && camp.id === 'meta_camp_001') {
         baseSpend *= 2.0;
       }
+      // ── Trailing anomaly: boost Meta spend +35% in last 7 days ──
+      // This triggers mer_deterioration (spend up but revenue flat)
+      // and channel_cac_meta (CAC spike) alerts.
+      if (daysFromEnd < 7) {
+        baseSpend *= 1.35;
+      }
 
       const spend = Math.round(baseSpend * 100) / 100;
       const cpm = randFloat(8, 25, c.rng);
       const impressions = Math.round((spend / cpm) * 1000);
       const ctr = randFloat(0.008, 0.035, c.rng);
       const clicks = Math.round(impressions * ctr);
-      const cvr = camp.name.includes('RET') ? randFloat(0.02, 0.06, c.rng) : randFloat(0.005, 0.02, c.rng);
+      let cvr = camp.name.includes('RET') ? randFloat(0.02, 0.06, c.rng) : randFloat(0.005, 0.02, c.rng);
+      // ── Trailing anomaly: drop conversion rate in last 7 days ──
+      // Spend goes up but conversions stay flat → worse CAC & MER
+      if (daysFromEnd < 7) {
+        cvr *= 0.5;
+      }
       const conversions = Math.max(0, Math.round(clicks * cvr));
       const aov = randFloat(60, 150, c.rng);
       const conversionValue = Math.round(conversions * aov * 100) / 100;
@@ -419,9 +432,13 @@ export function generateGA4Traffic(ctx?: DemoContext): RawRecord[] {
     const dayOfWeek = date.getDay();
     const weekdayFactor = dayOfWeek === 0 || dayOfWeek === 6 ? 0.85 : 1.0;
     const weekNum = Math.floor(day / 7);
+    const daysFromEnd = DEMO_DAYS - day;
     let anomaly = 1.0;
     if (weekNum >= 19 && weekNum <= 21) anomaly = 1.45; // Traffic spike matching order spike
     if (weekNum === 10) anomaly = 0.7; // traffic dip
+    // ── Trailing anomaly: drop sessions in last 7 days ──
+    // Triggers session_decline signal for AI Suggestions
+    if (daysFromEnd < 7) anomaly *= 0.78;
     const totalSessions = Math.round(1800 * growthFactor * weekdayFactor * anomaly + randFloat(-200, 200, c.rng));
 
     for (let ch = 0; ch < channelGroups.length; ch++) {
@@ -429,8 +446,13 @@ export function generateGA4Traffic(ctx?: DemoContext): RawRecord[] {
       // Funnel conversion rates
       const pdpRate = randFloat(0.55, 0.75, c.rng);
       const atcRate = randFloat(0.15, 0.30, c.rng);
-      const checkoutRate = randFloat(0.50, 0.75, c.rng);
+      let checkoutRate = randFloat(0.50, 0.75, c.rng);
       const purchaseRate = randFloat(0.55, 0.80, c.rng);
+      // ── Trailing anomaly: funnel leak at checkout in last 7 days ──
+      // Drops atc-to-checkout by ~30%, triggering funnel_drop signal
+      if (daysFromEnd < 7) {
+        checkoutRate *= 0.65;
+      }
 
       const pdpViews = Math.round(sessions * pdpRate);
       const addToCart = Math.round(pdpViews * atcRate);

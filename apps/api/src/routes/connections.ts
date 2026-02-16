@@ -972,7 +972,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     };
     const scopes = (scopeMap[source ?? ''] ?? Object.values(scopeMap).flat()).join(' ');
 
-    const state = JSON.stringify({ source: source ?? 'google' });
+    const state = JSON.stringify({ source: source ?? 'google_ads' });
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code&scope=${encodeURIComponent(scopes)}&access_type=offline&prompt=consent` +
@@ -990,11 +990,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const redirectUri = googleOAuth.redirectUri;
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
-    let connectorType = 'google';
+    let connectorType = 'google_ads';
     try {
       const parsed = JSON.parse(stateRaw ?? '{}');
-      connectorType = parsed.source ?? 'google';
+      connectorType = parsed.source ?? 'google_ads';
     } catch { /* use default */ }
+    // Remap legacy 'google' to 'google_ads' for backwards compatibility
+    if (connectorType === 'google') connectorType = 'google_ads';
 
     try {
       const resp = await fetch('https://oauth2.googleapis.com/token', {
