@@ -5,6 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
+import { computeABTestResults, isValidABInput } from '../lib/ab-stats.js';
 
 // Valid status transitions
 const TRANSITIONS: Record<string, string[]> = {
@@ -143,10 +144,42 @@ export async function experimentsRoutes(app: FastifyInstance) {
       'name', 'hypothesis', 'primaryMetric', 'channel', 'targetLift',
       'impact', 'confidence', 'ease',
       'startDate', 'endDate', 'result', 'learnings', 'nextSteps',
+      'controlName', 'variantName',
+      'controlSampleSize', 'variantSampleSize',
+      'controlConversions', 'variantConversions',
     ];
     const data: Record<string, unknown> = { iceScore };
     for (const field of allowedFields) {
       if (field in body) data[field] = body[field];
+    }
+
+    // Auto-compute A/B test stats when all 4 numeric fields are available
+    const cSample = (body.controlSampleSize as number) ?? existing.controlSampleSize;
+    const vSample = (body.variantSampleSize as number) ?? existing.variantSampleSize;
+    const cConv = (body.controlConversions as number) ?? existing.controlConversions;
+    const vConv = (body.variantConversions as number) ?? existing.variantConversions;
+
+    if (cSample != null && vSample != null && cConv != null && vConv != null) {
+      const abInput = {
+        controlSampleSize: cSample,
+        variantSampleSize: vSample,
+        controlConversions: cConv,
+        variantConversions: vConv,
+      };
+      if (isValidABInput(abInput)) {
+        const abResult = computeABTestResults(abInput);
+        if (abResult) {
+          data.controlRate = abResult.controlRate;
+          data.variantRate = abResult.variantRate;
+          data.absoluteLift = abResult.absoluteLift;
+          data.relativeLift = abResult.relativeLift;
+          data.pValue = abResult.pValue;
+          data.confidenceLevel = abResult.confidenceLevel;
+          data.isSignificant = abResult.isSignificant;
+          data.confidenceInterval = abResult.confidenceInterval;
+          data.verdict = abResult.verdict;
+        }
+      }
     }
 
     const updated = await prisma.experiment.update({

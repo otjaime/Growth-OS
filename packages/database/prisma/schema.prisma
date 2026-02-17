@@ -396,6 +396,27 @@ model Experiment {
   learnings  String?   @db.Text
   nextSteps  String?   @db.Text @map("next_steps")
 
+  // A/B test variant metadata
+  controlName         String?  @map("control_name")
+  variantName         String?  @map("variant_name")
+
+  // A/B test sample data (user-provided)
+  controlSampleSize   Int?     @map("control_sample_size")
+  variantSampleSize   Int?     @map("variant_sample_size")
+  controlConversions  Int?     @map("control_conversions")
+  variantConversions  Int?     @map("variant_conversions")
+
+  // A/B test computed results (auto-computed on save)
+  controlRate         Float?   @map("control_rate")
+  variantRate         Float?   @map("variant_rate")
+  absoluteLift        Float?   @map("absolute_lift")
+  relativeLift        Float?   @map("relative_lift")
+  pValue              Float?   @map("p_value")
+  confidenceLevel     Float?   @map("confidence_level")
+  isSignificant       Boolean? @map("is_significant")
+  confidenceInterval  Json?    @map("confidence_interval")
+  verdict             String?
+
   metrics    ExperimentMetric[]
 
   createdAt  DateTime @default(now()) @map("created_at")

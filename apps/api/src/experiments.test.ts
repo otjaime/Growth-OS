@@ -42,6 +42,22 @@ function mockExperiment(overrides: Record<string, unknown> = {}) {
     result: null,
     learnings: null,
     nextSteps: null,
+    // A/B test fields
+    controlName: null,
+    variantName: null,
+    controlSampleSize: null,
+    variantSampleSize: null,
+    controlConversions: null,
+    variantConversions: null,
+    controlRate: null,
+    variantRate: null,
+    absoluteLift: null,
+    relativeLift: null,
+    pValue: null,
+    confidenceLevel: null,
+    isSignificant: null,
+    confidenceInterval: null,
+    verdict: null,
     createdAt: new Date('2026-02-15'),
     updatedAt: new Date('2026-02-15'),
     ...overrides,
@@ -196,5 +212,81 @@ describe('Experiments Routes', () => {
 
     const res = await app.inject({ method: 'DELETE', url: '/api/experiments/exp-1' });
     expect(res.statusCode).toBe(204);
+  });
+
+  // ── A/B Test auto-computation ──────────────────────────────
+  it('PATCH /api/experiments/:id with A/B data auto-computes verdict', async () => {
+    const existing = mockExperiment({ status: 'RUNNING' });
+    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
+      return Promise.resolve({ ...existing, ...data });
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/experiments/exp-1',
+      payload: {
+        controlSampleSize: 1000,
+        variantSampleSize: 1000,
+        controlConversions: 50,
+        variantConversions: 80,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    // Verify update was called with computed A/B stats
+    const updateCall = mockPrisma.experiment.update.mock.calls[0][0];
+    expect(updateCall.data.verdict).toBe('WINNER');
+    expect(updateCall.data.isSignificant).toBe(true);
+    expect(updateCall.data.pValue).toBeLessThan(0.05);
+    expect(updateCall.data.controlRate).toBeCloseTo(0.05, 3);
+    expect(updateCall.data.variantRate).toBeCloseTo(0.08, 3);
+    expect(updateCall.data.confidenceInterval).toBeDefined();
+  });
+
+  it('PATCH /api/experiments/:id with partial A/B data does NOT compute stats', async () => {
+    const existing = mockExperiment({ status: 'RUNNING' });
+    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
+      return Promise.resolve({ ...existing, ...data });
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/experiments/exp-1',
+      payload: {
+        controlSampleSize: 1000,
+        // Missing other 3 A/B fields
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const updateCall = mockPrisma.experiment.update.mock.calls[0][0];
+    expect(updateCall.data.verdict).toBeUndefined();
+    expect(updateCall.data.pValue).toBeUndefined();
+  });
+
+  it('PATCH /api/experiments/:id merges A/B data with existing experiment', async () => {
+    const existing = mockExperiment({
+      status: 'RUNNING',
+      controlSampleSize: 1000,
+      variantSampleSize: 1000,
+      controlConversions: 50,
+    });
+    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
+      return Promise.resolve({ ...existing, ...data });
+    });
+
+    // Only sending variantConversions — should merge with existing fields to compute
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/experiments/exp-1',
+      payload: {
+        variantConversions: 80,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const updateCall = mockPrisma.experiment.update.mock.calls[0][0];
+    expect(updateCall.data.verdict).toBe('WINNER');
+    expect(updateCall.data.isSignificant).toBe(true);
   });
 });

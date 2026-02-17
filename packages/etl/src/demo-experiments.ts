@@ -21,6 +21,13 @@ interface DemoExp {
   nextSteps: string | null;
   metricBaseline: number | null;
   metricTrend: number | null;
+  // Optional A/B test data
+  controlName?: string;
+  variantName?: string;
+  controlSampleSize?: number;
+  variantSampleSize?: number;
+  controlConversions?: number;
+  variantConversions?: number;
 }
 
 function generateMetricSeries(
@@ -50,6 +57,9 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'UGC video outperforms studio content for cold audiences on Meta. Key factors: authentic testimonials, vertical format, first 3 seconds hook. Worst performer was the unboxing format.',
     nextSteps: 'Scale UGC budget to $500/day. Test UGC on Google YouTube campaigns. Build a creator roster for ongoing content.',
     metricBaseline: 42, metricTrend: -0.52,
+    controlName: 'Studio Creative', variantName: 'UGC Video',
+    controlSampleSize: 12000, variantSampleSize: 12000,
+    controlConversions: 286, variantConversions: 389,
   },
   {
     name: 'Checkout Funnel Simplification',
@@ -60,6 +70,9 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Single-page checkout with progress indicators and inline validation dramatically reduces abandonment. Guest checkout option drove 30% of the lift. Mobile saw 2x the improvement vs desktop.',
     nextSteps: 'A/B test express checkout options (Apple Pay, Shop Pay). Optimize mobile-specific layout. Add address autocomplete.',
     metricBaseline: 0.021, metricTrend: 0.00014,
+    controlName: '3-Step Checkout', variantName: 'Single Page Checkout',
+    controlSampleSize: 8500, variantSampleSize: 8500,
+    controlConversions: 5270, variantConversions: 6273,
   },
   {
     name: 'Free Shipping Threshold Test',
@@ -80,6 +93,9 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'TikTok audience skews younger and browses with low purchase intent. Spark Ads drive awareness but not direct conversion. Attribution may undercount — will need holdout test. Best for top-of-funnel brand building.',
     nextSteps: 'Pause direct response campaigns. Test TikTok as awareness channel with Meta retargeting. Evaluate with 30-day attribution window.',
     metricBaseline: 50, metricTrend: 2.14,
+    controlName: 'Meta Prospecting', variantName: 'TikTok Spark Ads',
+    controlSampleSize: 15000, variantSampleSize: 15000,
+    controlConversions: 315, variantConversions: 120,
   },
   {
     name: 'Email Win-Back Flow Optimization',
@@ -90,6 +106,9 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Personalized product recommendations drove most of the lift. The 15% discount tier has the best margin-adjusted ROI. Timing: 45-day lapse is optimal trigger point, not 30-day.',
     nextSteps: 'Roll out to all customer segments. Test SMS as additional win-back channel. Adjust trigger to 45-day lapse window.',
     metricBaseline: 0.18, metricTrend: 0.0014,
+    controlName: 'Original Win-Back', variantName: 'Personalized Tiered',
+    controlSampleSize: 3200, variantSampleSize: 3200,
+    controlConversions: 576, variantConversions: 672,
   },
 
   // ── RUNNING (3) ────────────────────────────────────────────
@@ -172,6 +191,9 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Carousel ads drive higher CTR but don\'t necessarily improve downstream conversion. Single-image with strong CTA outperforms on CPA. Carousel works better for retargeting than prospecting.',
     nextSteps: 'Archived — learnings folded into UGC Video experiment which showed much stronger results. Use carousels only for retargeting catalog ads.',
     metricBaseline: 42, metricTrend: -0.05,
+    controlName: 'Single Image Ad', variantName: 'Carousel Ad',
+    controlSampleSize: 10000, variantSampleSize: 10000,
+    controlConversions: 160, variantConversions: 180,
   },
   {
     name: 'Exit-Intent Popup Discount',
@@ -182,12 +204,43 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Exit-intent popups erode brand perception for premium products. Discount cannibalization is real — most claimers were already in purchase flow. Better to invest in value messaging than panic discounts.',
     nextSteps: 'Archived — popup removed. Focus on improving the shopping experience rather than interrupting exits.',
     metricBaseline: 0.021, metricTrend: 0.0001,
+    controlName: 'No Popup', variantName: 'Exit-Intent 10% Off',
+    controlSampleSize: 14000, variantSampleSize: 14000,
+    controlConversions: 294, variantConversions: 287,
   },
 ];
 
 export async function seedDemoExperiments(): Promise<number> {
   const now = new Date();
   let count = 0;
+
+  // Inline A/B stats computation (same formulas as apps/api/src/lib/ab-stats.ts)
+  function round4(n: number): number { return Math.round(n * 10000) / 10000; }
+  function normalCDF(x: number): number {
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    const absX = Math.abs(x);
+    const t = 1.0 / (1.0 + p * absX);
+    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX / 2);
+    return round4(0.5 * (1.0 + sign * y));
+  }
+  function computeAB(nC: number, nV: number, xC: number, xV: number) {
+    const controlRate = xC / nC;
+    const variantRate = xV / nV;
+    const absoluteLift = variantRate - controlRate;
+    const relativeLift = controlRate > 0 ? absoluteLift / controlRate : 0;
+    const pooledP = (xC + xV) / (nC + nV);
+    const pooledSE = Math.sqrt(pooledP * (1 - pooledP) * (1 / nC + 1 / nV));
+    const zScore = pooledSE > 0 ? absoluteLift / pooledSE : 0;
+    const pValue = pooledSE > 0 ? round4(2 * (1 - normalCDF(Math.abs(zScore)))) : 1;
+    const confidenceLevel = round4(1 - pValue);
+    const isSignificant = pValue < 0.05;
+    const unpooledSE = Math.sqrt((controlRate * (1 - controlRate)) / nC + (variantRate * (1 - variantRate)) / nV);
+    const margin = 1.96 * unpooledSE;
+    const confidenceInterval = { lower: round4(absoluteLift - margin), upper: round4(absoluteLift + margin) };
+    const verdict = !isSignificant ? 'INCONCLUSIVE' : absoluteLift > 0 ? 'WINNER' : 'LOSER';
+    return { controlRate: round4(controlRate), variantRate: round4(variantRate), absoluteLift: round4(absoluteLift), relativeLift: round4(relativeLift), pValue, confidenceLevel, isSignificant, confidenceInterval, verdict };
+  }
 
   for (const exp of DEMO_EXPERIMENTS) {
     const iceScore = Math.round((exp.impact * exp.confidence * exp.ease / 10) * 100) / 100;
@@ -224,6 +277,17 @@ export async function seedDemoExperiments(): Promise<number> {
         result: exp.result,
         learnings: exp.learnings,
         nextSteps: exp.nextSteps,
+        // A/B test data (when present)
+        ...(exp.controlSampleSize != null && exp.variantSampleSize != null &&
+            exp.controlConversions != null && exp.variantConversions != null ? {
+          controlName: exp.controlName ?? 'Control',
+          variantName: exp.variantName ?? 'Variant',
+          controlSampleSize: exp.controlSampleSize,
+          variantSampleSize: exp.variantSampleSize,
+          controlConversions: exp.controlConversions,
+          variantConversions: exp.variantConversions,
+          ...computeAB(exp.controlSampleSize, exp.variantSampleSize, exp.controlConversions, exp.variantConversions),
+        } : {}),
       },
     });
 

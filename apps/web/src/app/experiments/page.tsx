@@ -1,522 +1,108 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, FlaskConical, ArrowUpDown, Pencil, Clock, CheckCircle, Trophy } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, FlaskConical, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
+import { exportToCSV } from '@/lib/export';
+import { KpiCardSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
+import {
+  type Experiment,
+  type ExperimentStatus,
+  type SortKey,
+  type SortDir,
+  type ViewMode,
+  STATUSES,
+  STATUS_ORDER,
+  getDurationDays,
+  SummaryCards,
+  CreateModal,
+  EditModal,
+  ExperimentRow,
+  SearchBar,
+  ViewToggle,
+  KanbanBoard,
+} from '@/components/experiments';
 
-interface Experiment {
-  id: string;
-  name: string;
-  hypothesis: string;
-  status: 'IDEA' | 'BACKLOG' | 'RUNNING' | 'COMPLETED' | 'ARCHIVED';
-  channel: string | null;
-  primaryMetric: string;
-  targetLift: number | null;
-  impact: number | null;
-  confidence: number | null;
-  ease: number | null;
-  iceScore: number | null;
-  startDate: string | null;
-  endDate: string | null;
-  result: string | null;
-  learnings: string | null;
-  nextSteps: string | null;
-  createdAt: string;
-  _count?: { metrics: number };
+// ── CSV Export Columns ──────────────────────────────────────
+
+const CSV_COLUMNS = [
+  { key: 'name' as const, label: 'Name' },
+  { key: 'hypothesis' as const, label: 'Hypothesis' },
+  { key: 'status' as const, label: 'Status' },
+  { key: 'channel' as const, label: 'Channel', format: (v: unknown) => (v as string | null)?.replace(/_/g, ' ') ?? '' },
+  { key: 'primaryMetric' as const, label: 'Primary Metric', format: (v: unknown) => (v as string).replace(/_/g, ' ') },
+  { key: 'iceScore' as const, label: 'ICE Score', format: (v: unknown) => v != null ? String(v) : '' },
+  { key: 'impact' as const, label: 'Impact', format: (v: unknown) => v != null ? String(v) : '' },
+  { key: 'confidence' as const, label: 'Confidence', format: (v: unknown) => v != null ? String(v) : '' },
+  { key: 'ease' as const, label: 'Ease', format: (v: unknown) => v != null ? String(v) : '' },
+  { key: 'targetLift' as const, label: 'Target Lift %', format: (v: unknown) => v != null ? String(v) : '' },
+  { key: 'startDate' as const, label: 'Start Date', format: (v: unknown) => v ? new Date(v as string).toLocaleDateString() : '' },
+  { key: 'endDate' as const, label: 'End Date', format: (v: unknown) => v ? new Date(v as string).toLocaleDateString() : '' },
+  { key: 'result' as const, label: 'Result', format: (v: unknown) => (v as string | null) ?? '' },
+  { key: 'learnings' as const, label: 'Learnings', format: (v: unknown) => (v as string | null) ?? '' },
+  { key: 'verdict' as const, label: 'Verdict', format: (v: unknown) => (v as string | null) ?? '' },
+];
+
+// ── Sort Logic ──────────────────────────────────────────────
+
+function sortExperiments(list: Experiment[], key: SortKey, dir: SortDir): Experiment[] {
+  const sorted = [...list].sort((a, b) => {
+    let cmp = 0;
+    switch (key) {
+      case 'name':
+        cmp = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        break;
+      case 'channel':
+        cmp = (a.channel ?? 'zzz').localeCompare(b.channel ?? 'zzz');
+        break;
+      case 'primaryMetric':
+        cmp = a.primaryMetric.localeCompare(b.primaryMetric);
+        break;
+      case 'iceScore':
+        cmp = (a.iceScore ?? 0) - (b.iceScore ?? 0);
+        break;
+      case 'status':
+        cmp = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        break;
+      case 'duration':
+        cmp = getDurationDays(a.startDate, a.endDate) - getDurationDays(b.startDate, b.endDate);
+        break;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  return sorted;
 }
 
-const STATUSES = ['ALL', 'IDEA', 'BACKLOG', 'RUNNING', 'COMPLETED', 'ARCHIVED'] as const;
+// ── Sortable Header ─────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  IDEA: 'bg-white/[0.04] text-[var(--foreground)]/80',
-  BACKLOG: 'bg-[var(--tint-blue)] text-apple-blue',
-  RUNNING: 'bg-[var(--tint-green)] text-apple-green',
-  COMPLETED: 'bg-[var(--tint-purple)] text-apple-purple',
-  ARCHIVED: 'bg-white/[0.04] text-[var(--foreground-secondary)]/70',
-};
-
-const CHANNELS = ['meta', 'google_ads', 'email', 'organic', 'affiliate', 'direct', 'other'];
-const METRICS = ['conversion_rate', 'aov', 'cac', 'ltv', 'mer', 'revenue', 'sessions', 'retention'];
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function formatDuration(startDate: string | null, endDate: string | null): string | null {
-  if (!startDate) return null;
-  const start = new Date(startDate).getTime();
-  const end = endDate ? new Date(endDate).getTime() : Date.now();
-  const days = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-  if (days === 0) return 'today';
-  if (days === 1) return '1 day';
-  return `${days} days`;
-}
-
-// ── Summary Cards ────────────────────────────────────────────
-
-function SummaryCards({ allExperiments }: { allExperiments: Experiment[] }) {
-  const total = allExperiments.length;
-  const running = allExperiments.filter((e) => e.status === 'RUNNING').length;
-  const completed = allExperiments.filter((e) => e.status === 'COMPLETED').length;
-  const withResult = allExperiments.filter((e) => e.status === 'COMPLETED' && e.result);
-  const wins = withResult.filter((e) => e.result && !e.result.toLowerCase().includes('no impact') && !e.result.toLowerCase().includes('failed') && !e.result.toLowerCase().includes('negative'));
-  const winRate = withResult.length > 0 ? Math.round((wins.length / withResult.length) * 100) : null;
-  const avgIce = allExperiments.filter((e) => e.iceScore != null);
-  const avgIceVal = avgIce.length > 0 ? Math.round(avgIce.reduce((sum, e) => sum + (e.iceScore ?? 0), 0) / avgIce.length) : null;
-
-  const cards = [
-    { label: 'Total Experiments', value: total, icon: FlaskConical, color: 'text-apple-blue' },
-    { label: 'Running Now', value: running, icon: Clock, color: 'text-apple-green' },
-    { label: 'Completed', value: completed, icon: CheckCircle, color: 'text-apple-purple' },
-    { label: 'Avg ICE', value: avgIceVal ?? '—', icon: Trophy, color: 'text-apple-yellow' },
-  ];
-
+function SortHeader({ label, sortKey, currentKey, currentDir, onSort, className }: {
+  label: string;
+  sortKey: SortKey;
+  currentKey: SortKey;
+  currentDir: SortDir;
+  onSort: (key: SortKey) => void;
+  className?: string;
+}): React.ReactElement {
+  const active = currentKey === sortKey;
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((c) => (
-        <div key={c.label} className="card">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{c.label}</span>
-            <c.icon className={`h-4 w-4 ${c.color}`} />
-          </div>
-          <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
-        </div>
-      ))}
-    </div>
+    <th
+      className={clsx('px-4 py-3 font-medium cursor-pointer select-none hover:text-[var(--foreground)] transition-colors', className)}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          currentDir === 'asc' ? <ArrowUp className="h-3 w-3 text-apple-blue" /> : <ArrowDown className="h-3 w-3 text-apple-blue" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </span>
+    </th>
   );
 }
 
-// ── Create Modal ─────────────────────────────────────────────
-
-function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState('');
-  const [hypothesis, setHypothesis] = useState('');
-  const [primaryMetric, setPrimaryMetric] = useState('conversion_rate');
-  const [channel, setChannel] = useState('');
-  const [targetLift, setTargetLift] = useState('');
-  const [impact, setImpact] = useState(5);
-  const [confidence, setConfidence] = useState(5);
-  const [ease, setEase] = useState(5);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const iceScore = Math.round((impact * confidence * ease / 10) * 100) / 100;
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !hypothesis) return;
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      const res = await apiFetch('/api/experiments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          hypothesis,
-          primaryMetric,
-          channel: channel || null,
-          targetLift: targetLift ? parseFloat(targetLift) : null,
-          impact, confidence, ease,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setFormError(body.error ?? 'Failed to create experiment');
-        setSubmitting(false);
-        return;
-      }
-      onCreated();
-      onClose();
-    } catch {
-      setFormError('Network error');
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div role="dialog" aria-label="New Experiment" className="bg-[var(--glass-bg-elevated)] border border-[var(--card-border)] rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--card-border)]">
-          <h2 className="text-lg font-semibold text-[var(--foreground)]">New Experiment</h2>
-          <button onClick={onClose} aria-label="Close" className="text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"><X className="h-5 w-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Name *</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="e.g., Test new Meta ad creative with UGC video"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Hypothesis *</label>
-            <textarea
-              value={hypothesis}
-              onChange={(e) => setHypothesis(e.target.value)}
-              rows={3}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="If we [change], then [metric] will [improve] because [reason]"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Primary Metric</label>
-              <select
-                value={primaryMetric}
-                onChange={(e) => setPrimaryMetric(e.target.value)}
-                className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              >
-                {METRICS.map((m) => (
-                  <option key={m} value={m}>{m.replace(/_/g, ' ').toUpperCase()}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Channel</label>
-              <select
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              >
-                <option value="">All / None</option>
-                {CHANNELS.map((c) => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Target Lift (%)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={targetLift}
-              onChange={(e) => setTargetLift(e.target.value)}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="e.g., 15"
-            />
-          </div>
-
-          {/* ICE Scoring */}
-          <div className="border-t border-[var(--glass-border)] pt-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">ICE Score</span>
-              <span className="text-lg font-bold text-apple-blue">{iceScore}</span>
-            </div>
-            <p className="text-[11px] text-[var(--foreground-secondary)]/70 mb-3">Score = (Impact x Confidence x Ease) / 10</p>
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: 'Impact', value: impact, set: setImpact, hint: '1 = minimal, 10 = transformative' },
-                { label: 'Confidence', value: confidence, set: setConfidence, hint: '1 = guessing, 10 = data-proven' },
-                { label: 'Ease', value: ease, set: setEase, hint: '1 = very hard, 10 = trivial' },
-              ].map(({ label, value, set, hint }) => (
-                <div key={label}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <label className="text-xs text-[var(--foreground-secondary)]">{label}</label>
-                    <span className="text-xs text-[var(--foreground)] font-medium">{value}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    value={value}
-                    onChange={(e) => set(parseInt(e.target.value))}
-                    className="w-full accent-[var(--accent)]"
-                  />
-                  <p className="text-[10px] text-[var(--foreground-secondary)]/50 mt-0.5">{hint}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {formError && (
-            <p className="text-sm text-apple-red bg-red-900/20 rounded-lg px-3 py-2">{formError}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting || !name || !hypothesis}
-            className="w-full bg-apple-blue hover:bg-apple-blue/90 disabled:opacity-50 text-[var(--foreground)] font-medium py-2.5 rounded-lg transition-all ease-spring"
-          >
-            {submitting ? 'Creating...' : 'Create Experiment'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ── Edit Modal ───────────────────────────────────────────────
-
-function EditModal({ experiment, onClose, onSaved }: { experiment: Experiment; onClose: () => void; onSaved: () => void }) {
-  const [result, setResult] = useState(experiment.result ?? '');
-  const [learnings, setLearnings] = useState(experiment.learnings ?? '');
-  const [nextSteps, setNextSteps] = useState(experiment.nextSteps ?? '');
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      const res = await apiFetch(`/api/experiments/${experiment.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          result: result || null,
-          learnings: learnings || null,
-          nextSteps: nextSteps || null,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setFormError(body.error ?? 'Failed to save');
-        setSubmitting(false);
-        return;
-      }
-      onSaved();
-      onClose();
-    } catch {
-      setFormError('Network error');
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div role="dialog" aria-label="Edit Experiment" className="bg-[var(--glass-bg-elevated)] border border-[var(--card-border)] rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--card-border)]">
-          <div>
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Edit Results</h2>
-            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{experiment.name}</p>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"><X className="h-5 w-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Result</label>
-            <textarea
-              value={result}
-              onChange={(e) => setResult(e.target.value)}
-              rows={3}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="What happened? e.g., CTR increased by 25%, CPA decreased 12%"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Learnings</label>
-            <textarea
-              value={learnings}
-              onChange={(e) => setLearnings(e.target.value)}
-              rows={3}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="What did we learn? e.g., UGC video outperforms studio content for cold audiences"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Next Steps</label>
-            <textarea
-              value={nextSteps}
-              onChange={(e) => setNextSteps(e.target.value)}
-              rows={2}
-              className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="What should we do next? e.g., Scale budget to $500/day, test on Google"
-            />
-          </div>
-
-          {formError && (
-            <p className="text-sm text-apple-red bg-red-900/20 rounded-lg px-3 py-2">{formError}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-apple-blue hover:bg-apple-blue/90 disabled:opacity-50 text-[var(--foreground)] font-medium py-2.5 rounded-lg transition-all ease-spring"
-          >
-            {submitting ? 'Saving...' : 'Save Results'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ── Experiment Row ───────────────────────────────────────────
-
-function ExperimentRow({ exp, onRefresh, onEdit }: { exp: Experiment; onRefresh: () => void; onEdit: (exp: Experiment) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
-
-  const transitionStatus = async (newStatus: string) => {
-    setTransitioning(true);
-    try {
-      const res = await apiFetch(`/api/experiments/${exp.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) onRefresh();
-    } catch {
-      // ignore
-    } finally {
-      setTransitioning(false);
-    }
-  };
-
-  const deleteExperiment = async () => {
-    if (!confirm(`Delete "${exp.name}"?`)) return;
-    try {
-      const res = await apiFetch(`/api/experiments/${exp.id}`, { method: 'DELETE' });
-      if (res.ok) onRefresh();
-    } catch {
-      // ignore
-    }
-  };
-
-  const transitions: Record<string, string[]> = {
-    IDEA: ['BACKLOG', 'ARCHIVED'],
-    BACKLOG: ['RUNNING', 'IDEA', 'ARCHIVED'],
-    RUNNING: ['COMPLETED', 'ARCHIVED'],
-    COMPLETED: ['ARCHIVED'],
-    ARCHIVED: ['IDEA'],
-  };
-
-  const allowed = transitions[exp.status] ?? [];
-  const duration = formatDuration(exp.startDate, exp.endDate);
-
-  return (
-    <>
-      <tr
-        className="border-b border-white/[0.04] hover:bg-white/[0.04] cursor-pointer transition-all ease-spring"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <td className="px-4 py-3">
-          <div className="text-sm text-[var(--foreground)] font-medium">{exp.name}</div>
-          <div className="text-xs text-[var(--foreground-secondary)]/70 mt-0.5 truncate max-w-xs">{exp.hypothesis}</div>
-        </td>
-        <td className="px-4 py-3">
-          {exp.channel
-            ? <span className="text-xs text-[var(--foreground)]/80">{exp.channel.replace(/_/g, ' ')}</span>
-            : <span className="text-xs text-[var(--foreground-secondary)]/50">&mdash;</span>}
-        </td>
-        <td className="px-4 py-3">
-          <span className="text-xs text-[var(--foreground)]/80">{exp.primaryMetric.replace(/_/g, ' ')}</span>
-        </td>
-        <td className="px-4 py-3 text-center">
-          {exp.iceScore != null
-            ? <span className="text-sm font-semibold text-apple-blue">{exp.iceScore}</span>
-            : <span className="text-xs text-[var(--foreground-secondary)]/50">&mdash;</span>}
-        </td>
-        <td className="px-4 py-3">
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[exp.status]}`}>
-            {exp.status}
-          </span>
-        </td>
-        <td className="px-4 py-3">
-          {duration ? (
-            <div>
-              <div className="text-xs text-[var(--foreground)]/80 flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {duration}
-              </div>
-              {exp.status === 'RUNNING' && (
-                <div className="text-[10px] text-apple-green mt-0.5">active</div>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-[var(--foreground-secondary)]/70">{new Date(exp.createdAt).toLocaleDateString()}</span>
-          )}
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="bg-white/[0.03]">
-          <td colSpan={6} className="px-4 py-4">
-            <div className="space-y-3">
-              <div>
-                <span className="text-xs text-[var(--foreground-secondary)] uppercase">Hypothesis</span>
-                <p className="text-sm text-[var(--foreground)] mt-1">{exp.hypothesis}</p>
-              </div>
-              {exp.targetLift != null && (
-                <div>
-                  <span className="text-xs text-[var(--foreground-secondary)]">Target Lift:</span>{' '}
-                  <span className="text-sm text-[var(--foreground)]">{exp.targetLift}%</span>
-                </div>
-              )}
-              {exp.impact != null && (
-                <div className="flex gap-4 text-xs text-[var(--foreground-secondary)]">
-                  <span>I: <strong className="text-[var(--foreground)]">{exp.impact}</strong></span>
-                  <span>C: <strong className="text-[var(--foreground)]">{exp.confidence}</strong></span>
-                  <span>E: <strong className="text-[var(--foreground)]">{exp.ease}</strong></span>
-                </div>
-              )}
-              {exp.result && (
-                <div className="p-3 bg-white/[0.04] rounded-lg">
-                  <span className="text-xs text-[var(--foreground-secondary)] uppercase">Result</span>
-                  <p className="text-sm text-[var(--foreground)] mt-1">{exp.result}</p>
-                </div>
-              )}
-              {exp.learnings && (
-                <div className="p-3 bg-white/[0.04] rounded-lg">
-                  <span className="text-xs text-[var(--foreground-secondary)] uppercase">Learnings</span>
-                  <p className="text-sm text-[var(--foreground)] mt-1">{exp.learnings}</p>
-                </div>
-              )}
-              {exp.nextSteps && (
-                <div className="p-3 bg-blue-900/20 border border-apple-blue/20 rounded-lg">
-                  <span className="text-xs text-apple-blue uppercase">Next Steps</span>
-                  <p className="text-sm text-blue-200 mt-1">{exp.nextSteps}</p>
-                </div>
-              )}
-              <div className="flex items-center gap-2 pt-2">
-                {allowed.map((s) => (
-                  <button
-                    key={s}
-                    onClick={(e) => { e.stopPropagation(); transitionStatus(s); }}
-                    disabled={transitioning}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-[var(--foreground)]/80 hover:bg-white/[0.1] hover:text-[var(--foreground)] transition-all ease-spring disabled:opacity-50"
-                  >
-                    Move to {s}
-                  </button>
-                ))}
-                <button
-                  onClick={(e) => { e.stopPropagation(); onEdit(exp); }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-[var(--foreground)]/80 hover:bg-white/[0.1] hover:text-[var(--foreground)] transition-all ease-spring flex items-center gap-1"
-                >
-                  <Pencil className="h-3 w-3" /> Edit Results
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteExperiment(); }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-red-900/30 text-apple-red hover:bg-red-900/50 hover:text-apple-red transition-all ease-spring ml-auto"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// ── Main Page ────────────────────────────────────────────────
+// ── Main Page ───────────────────────────────────────────────
 
 export default function ExperimentsPage() {
   const [allExperiments, setAllExperiments] = useState<Experiment[]>([]);
@@ -525,6 +111,12 @@ export default function ExperimentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [showCreate, setShowCreate] = useState(false);
   const [editingExp, setEditingExp] = useState<Experiment | null>(null);
+
+  // New state
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('iceScore');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const fetchExperiments = useCallback(() => {
     setLoading(true);
@@ -544,15 +136,54 @@ export default function ExperimentsPage() {
   }, [fetchExperiments]);
 
   // Compute counts per status from full list
-  const statusCounts: Record<string, number> = { ALL: allExperiments.length };
-  for (const s of ['IDEA', 'BACKLOG', 'RUNNING', 'COMPLETED', 'ARCHIVED']) {
-    statusCounts[s] = allExperiments.filter((e) => e.status === s).length;
-  }
+  const statusCounts: Record<string, number> = useMemo(() => {
+    const counts: Record<string, number> = { ALL: allExperiments.length };
+    for (const s of ['IDEA', 'BACKLOG', 'RUNNING', 'COMPLETED', 'ARCHIVED']) {
+      counts[s] = allExperiments.filter((e) => e.status === s).length;
+    }
+    return counts;
+  }, [allExperiments]);
 
-  // Filter displayed experiments by selected tab
-  const experiments = statusFilter === 'ALL'
-    ? allExperiments
-    : allExperiments.filter((e) => e.status === statusFilter);
+  // Data pipeline: status filter → search → sort
+  const displayedExperiments = useMemo(() => {
+    let list = statusFilter === 'ALL'
+      ? allExperiments
+      : allExperiments.filter((e) => e.status === statusFilter);
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.hypothesis.toLowerCase().includes(q) ||
+        (e.learnings?.toLowerCase().includes(q) ?? false) ||
+        (e.result?.toLowerCase().includes(q) ?? false)
+      );
+    }
+
+    return sortExperiments(list, sortKey, sortDir);
+  }, [allExperiments, statusFilter, searchQuery, sortKey, sortDir]);
+
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  }, [sortKey]);
+
+  const handleStatusChange = useCallback(async (id: string, newStatus: ExperimentStatus) => {
+    await apiFetch(`/api/experiments/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    fetchExperiments();
+  }, [fetchExperiments]);
+
+  const handleExportCSV = useCallback(() => {
+    exportToCSV(displayedExperiments, 'experiments', CSV_COLUMNS);
+  }, [displayedExperiments]);
 
   if (error) {
     return (
@@ -568,63 +199,85 @@ export default function ExperimentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <FlaskConical className="h-6 w-6 text-apple-blue" />
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Growth Experiments</h1>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring"
-        >
-          <Plus className="h-4 w-4" />
-          New Experiment
-        </button>
+        <div className="flex items-center gap-2">
+          <SearchBar value={searchQuery} onChange={setSearchQuery} />
+          <button
+            onClick={handleExportCSV}
+            disabled={loading || displayedExperiments.length === 0}
+            className="flex items-center gap-1.5 border border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06] text-xs font-medium px-3 py-1.5 rounded-lg transition-all ease-spring disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV
+          </button>
+          <ViewToggle view={viewMode} onChange={setViewMode} />
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring"
+          >
+            <Plus className="h-4 w-4" />
+            New Experiment
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
-      {!loading && <SummaryCards allExperiments={allExperiments} />}
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => <KpiCardSkeleton key={i} />)}
+        </div>
+      ) : (
+        <SummaryCards allExperiments={allExperiments} />
+      )}
 
       {/* Status filter tabs with counts */}
-      <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
-        {STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={clsx(
-              'px-3 py-1.5 text-xs font-medium rounded-md transition-all ease-spring flex items-center gap-1.5',
-              statusFilter === s
-                ? 'bg-[var(--tint-blue)] text-apple-blue'
-                : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
-            )}
-          >
-            {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-            {!loading && (
+      {loading ? (
+        <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-8 w-20 rounded-md" />)}
+        </div>
+      ) : (
+        <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={clsx(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-all ease-spring flex items-center gap-1.5',
+                statusFilter === s
+                  ? 'bg-[var(--tint-blue)] text-apple-blue'
+                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
+              )}
+            >
+              {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
               <span className={clsx(
                 'text-[10px] px-1.5 py-0.5 rounded-full',
                 statusFilter === s ? 'bg-apple-blue/30 text-apple-blue' : 'bg-white/[0.06] text-[var(--foreground-secondary)]/70',
               )}>
                 {statusCounts[s] ?? 0}
               </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+            </button>
+          ))}
         </div>
-      ) : experiments.length === 0 ? (
+      )}
+
+      {/* Content area */}
+      {loading ? (
+        <TableSkeleton rows={8} cols={6} />
+      ) : displayedExperiments.length === 0 ? (
         <div className="card text-center py-16">
           <FlaskConical className="h-12 w-12 text-[var(--foreground-secondary)]/50 mx-auto mb-4" />
           <p className="text-[var(--foreground-secondary)] text-lg">
-            {statusFilter === 'ALL'
-              ? 'No experiments yet. Start by adding your first growth hypothesis.'
-              : `No ${statusFilter.toLowerCase()} experiments.`}
+            {searchQuery
+              ? `No experiments matching "${searchQuery}"`
+              : statusFilter === 'ALL'
+                ? 'No experiments yet. Start by adding your first growth hypothesis.'
+                : `No ${statusFilter.toLowerCase()} experiments.`}
           </p>
-          {statusFilter === 'ALL' && (
+          {statusFilter === 'ALL' && !searchQuery && (
             <button
               onClick={() => setShowCreate(true)}
               className="mt-4 text-apple-blue hover:text-apple-blue text-sm font-medium"
@@ -633,25 +286,27 @@ export default function ExperimentsPage() {
             </button>
           )}
         </div>
+      ) : viewMode === 'kanban' ? (
+        <KanbanBoard
+          experiments={displayedExperiments}
+          onStatusChange={handleStatusChange}
+          onEdit={setEditingExp}
+        />
       ) : (
         <div className="card overflow-hidden !p-0">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[var(--glass-border)] text-xs text-[var(--foreground-secondary)] uppercase">
-                <th className="px-4 py-3 font-medium">Experiment</th>
-                <th className="px-4 py-3 font-medium">Channel</th>
-                <th className="px-4 py-3 font-medium">Metric</th>
-                <th className="px-4 py-3 font-medium text-center">
-                  <span className="inline-flex items-center gap-1">
-                    ICE <ArrowUpDown className="h-3 w-3" />
-                  </span>
-                </th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Duration</th>
+                <SortHeader label="Experiment" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Channel" sortKey="channel" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Metric" sortKey="primaryMetric" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="ICE" sortKey="iceScore" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="text-center" />
+                <SortHeader label="Status" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Duration" sortKey="duration" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
               </tr>
             </thead>
             <tbody>
-              {experiments.map((exp) => (
+              {displayedExperiments.map((exp) => (
                 <ExperimentRow key={exp.id} exp={exp} onRefresh={fetchExperiments} onEdit={setEditingExp} />
               ))}
             </tbody>
