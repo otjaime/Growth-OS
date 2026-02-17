@@ -9,14 +9,14 @@ import { exportToCSV } from '@/lib/export';
 import { useFilters } from '@/contexts/filters';
 
 const CHANNEL_COLORS: Record<string, string> = {
-  meta: '#3b82f6',
-  google: '#22c55e',
-  tiktok: '#00f2ea',
-  email: '#f59e0b',
-  organic: '#8b5cf6',
-  affiliate: '#ec4899',
-  direct: '#64748b',
-  other: '#94a3b8',
+  meta: '#0a84ff',
+  google: '#30d158',
+  tiktok: '#64d2ff',
+  email: '#ff9f0a',
+  organic: '#bf5af2',
+  affiliate: '#ff375f',
+  direct: '#98989f',
+  other: '#98989f',
 };
 
 interface ChannelData {
@@ -81,7 +81,7 @@ export default function ChannelsPage() {
 
   const SortHeader = ({ label, field }: { label: string; field: keyof ChannelData }) => (
     <th
-      className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white select-none"
+      className="px-4 py-3 text-left text-xs font-medium text-[var(--foreground-secondary)] uppercase tracking-wider cursor-pointer hover:text-[var(--foreground)] select-none"
       onClick={() => toggleSort(field)}
     >
       {label} {sortKey === field ? (sortDir === 'desc' ? '↓' : '↑') : ''}
@@ -109,20 +109,20 @@ export default function ChannelsPage() {
     }));
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" /></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Channel Performance</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Channel Performance</h1>
         <DateRangePicker onChange={setDays} defaultDays={days} />
       </div>
 
       {/* Revenue Mix Donut */}
       {pieData.length > 0 && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Revenue Mix</h2>
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue Mix</h2>
           <div className="h-48 flex items-center">
             <ResponsiveContainer width="50%" height="100%">
               <PieChart>
@@ -142,10 +142,13 @@ export default function ChannelsPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: '#e2e8f0',
+                    backgroundColor: 'rgba(30,30,36,0.85)',
+                    backdropFilter: 'blur(20px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    color: '#f5f5f7',
+                    boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
                   }}
                   formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                 />
@@ -153,10 +156,10 @@ export default function ChannelsPage() {
             </ResponsiveContainer>
             <div className="flex flex-col gap-2">
               {pieData.map((entry, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-slate-300">
+                <div key={i} className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
                   <span>{entry.name}</span>
-                  <span className="text-slate-500">{formatCurrency(entry.value)}</span>
+                  <span className="text-[var(--foreground-secondary)]/70">{formatCurrency(entry.value)}</span>
                 </div>
               ))}
             </div>
@@ -166,7 +169,7 @@ export default function ChannelsPage() {
 
       <div className="card overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Channel Breakdown</h2>
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">Channel Breakdown</h2>
           <button
             onClick={() => exportToCSV(channels, `channels-${days}d`, [
               { key: 'name', label: 'Channel' },
@@ -179,14 +182,14 @@ export default function ChannelsPage() {
               { key: 'newCustomers', label: 'New Customers' },
               { key: 'returningCustomers', label: 'Returning' },
             ])}
-            className="text-xs text-slate-400 hover:text-white px-2 py-1 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+            className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--glass-border)] rounded hover:border-[var(--glass-border-hover)] transition-all ease-spring"
           >
             Export CSV
           </button>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700">
+            <tr className="border-b border-[var(--glass-border)]">
               <SortHeader label="Channel" field="name" />
               <SortHeader label="Spend" field="spend" />
               <SortHeader label="Revenue" field="revenue" />
@@ -198,20 +201,20 @@ export default function ChannelsPage() {
               <SortHeader label="Share" field="channelShare" />
               <SortHeader label="New" field="newCustomers" />
               <SortHeader label="Existing" field="returningCustomers" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Rev Δ</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--foreground-secondary)]">Rev Δ</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((ch) => (
-              <tr key={ch.id} className="border-b border-slate-800 hover:bg-slate-800/50">
-                <td className="px-4 py-3 font-medium text-white">{ch.name}</td>
+              <tr key={ch.id} className="border-b border-white/[0.04] hover:bg-white/[0.04]">
+                <td className="px-4 py-3 font-medium text-[var(--foreground)]">{ch.name}</td>
                 <td className="px-4 py-3">{formatCurrency(ch.spend)}</td>
                 <td className="px-4 py-3">{formatCurrency(ch.revenue)}</td>
                 <td className="px-4 py-3">{formatNumber(ch.orders)}</td>
                 <td className="px-4 py-3">{ch.cac > 0 ? formatCurrency(ch.cac) : '—'}</td>
                 <td className="px-4 py-3">{ch.roas > 0 ? `${ch.roas.toFixed(2)}x` : '—'}</td>
                 <td className="px-4 py-3">{formatPercent(ch.cmPct)}</td>
-                <td className={`px-4 py-3 font-medium ${ch.channelProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <td className={`px-4 py-3 font-medium ${ch.channelProfit >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
                   {ch.channelProfit >= 0 ? '+' : ''}{formatCurrency(ch.channelProfit)}
                 </td>
                 <td className="px-4 py-3">{formatPercent(ch.channelShare)}</td>
@@ -224,7 +227,7 @@ export default function ChannelsPage() {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-slate-600 text-white font-semibold">
+            <tr className="border-t border-[var(--glass-border)] text-[var(--foreground)] font-semibold">
               <td className="px-4 py-3">Total</td>
               <td className="px-4 py-3">{formatCurrency(totals.spend)}</td>
               <td className="px-4 py-3">{formatCurrency(totals.revenue)}</td>
@@ -232,7 +235,7 @@ export default function ChannelsPage() {
               <td className="px-4 py-3">—</td>
               <td className="px-4 py-3">—</td>
               <td className="px-4 py-3">—</td>
-              <td className={`px-4 py-3 ${totals.channelProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <td className={`px-4 py-3 ${totals.channelProfit >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
                 {totals.channelProfit >= 0 ? '+' : ''}{formatCurrency(totals.channelProfit)}
               </td>
               <td className="px-4 py-3">100.0%</td>

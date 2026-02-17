@@ -91,25 +91,28 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
     <div className="h-80">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={merged}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
           <XAxis
             dataKey="date"
-            stroke="#94a3b8"
+            stroke="rgba(255,255,255,0.35)"
             fontSize={11}
             tickFormatter={(v: string) => format(new Date(v + 'T00:00:00'), 'MMM d')}
             interval="preserveStartEnd"
           />
           <YAxis
-            stroke="#94a3b8"
+            stroke="rgba(255,255,255,0.35)"
             fontSize={11}
             tickFormatter={(v: number) => fmtAxis(v, metric)}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#e2e8f0',
+              backgroundColor: 'rgba(30,30,36,0.85)',
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              color: '#f5f5f7',
+              boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
             }}
             formatter={(value: number, name: string) => {
               if (name === 'Actual' || name === 'Forecast') {
@@ -133,7 +136,7 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
             type="monotone"
             dataKey="band95Height"
             stackId="ci95"
-            fill="#3b82f6"
+            fill="#0a84ff"
             fillOpacity={0.07}
             stroke="none"
             name="95% CI"
@@ -151,7 +154,7 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
             type="monotone"
             dataKey="band80Height"
             stackId="ci80"
-            fill="#3b82f6"
+            fill="#0a84ff"
             fillOpacity={0.14}
             stroke="none"
             name="80% CI"
@@ -162,7 +165,7 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
             type="monotone"
             dataKey="actual"
             name="Actual"
-            stroke="#3b82f6"
+            stroke="#0a84ff"
             strokeWidth={2}
             dot={false}
             connectNulls={false}
@@ -173,7 +176,7 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
             type="monotone"
             dataKey="forecast"
             name="Forecast"
-            stroke="#3b82f6"
+            stroke="#0a84ff"
             strokeWidth={2}
             strokeDasharray="6 4"
             dot={false}

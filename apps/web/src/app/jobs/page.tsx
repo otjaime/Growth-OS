@@ -40,19 +40,19 @@ export default function JobsPage() {
 
   const statusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case 'failed': return <XCircle className="h-4 w-4 text-red-400" />;
-      case 'running': return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
-      default: return <Clock className="h-4 w-4 text-slate-400" />;
+      case 'completed': return <CheckCircle className="h-4 w-4 text-apple-green" />;
+      case 'failed': return <XCircle className="h-4 w-4 text-apple-red" />;
+      case 'running': return <Loader2 className="h-4 w-4 text-apple-blue animate-spin" />;
+      default: return <Clock className="h-4 w-4 text-[var(--foreground-secondary)]" />;
     }
   };
 
   const statusBadge = (status: string) => {
     const cls: Record<string, string> = {
-      completed: 'bg-green-500/20 text-green-400',
-      failed: 'bg-red-500/20 text-red-400',
-      running: 'bg-blue-500/20 text-blue-400',
-      pending: 'bg-slate-500/20 text-slate-400',
+      completed: 'bg-[var(--tint-green)] text-apple-green',
+      failed: 'bg-[var(--tint-red)] text-apple-red',
+      running: 'bg-[var(--tint-blue)] text-apple-blue',
+      pending: 'bg-white/[0.04] text-[var(--foreground-secondary)]',
     };
     return cls[status] ?? cls.pending;
   };
@@ -66,16 +66,16 @@ export default function JobsPage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" /></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Job Runs</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Job Runs</h1>
         <button
           onClick={fetchJobs}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
@@ -87,8 +87,8 @@ export default function JobsPage() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              filter === f ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ease-spring ${
+              filter === f ? 'bg-apple-blue text-[var(--foreground)]' : 'bg-white/[0.06] text-[var(--foreground-secondary)] hover:bg-white/[0.1]'
             }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -99,13 +99,13 @@ export default function JobsPage() {
       {/* Table */}
       {jobs.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-slate-400">No job runs found.</p>
+          <p className="text-[var(--foreground-secondary)]">No job runs found.</p>
         </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-700">
+              <tr className="text-left text-[var(--foreground-secondary)] border-b border-[var(--glass-border)]">
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4">Started</th>
@@ -116,7 +116,7 @@ export default function JobsPage() {
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id} className="border-b border-slate-800 hover:bg-slate-800/50">
+                <tr key={job.id} className="border-b border-white/[0.04] hover:bg-white/[0.04]">
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       {statusIcon(job.status)}
@@ -125,15 +125,15 @@ export default function JobsPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-white font-medium">{job.type}</td>
-                  <td className="py-3 px-4 text-slate-300">
+                  <td className="py-3 px-4 text-[var(--foreground)] font-medium">{job.type}</td>
+                  <td className="py-3 px-4 text-[var(--foreground)]/80">
                     {new Date(job.startedAt).toLocaleString()}
                   </td>
-                  <td className="py-3 px-4 text-slate-300">{formatDuration(job.durationMs)}</td>
-                  <td className="py-3 px-4 text-right text-slate-300">
+                  <td className="py-3 px-4 text-[var(--foreground)]/80">{formatDuration(job.durationMs)}</td>
+                  <td className="py-3 px-4 text-right text-[var(--foreground)]/80">
                     {job.rowsLoaded !== null ? job.rowsLoaded.toLocaleString() : '—'}
                   </td>
-                  <td className="py-3 px-4 text-red-400 text-xs max-w-xs truncate">
+                  <td className="py-3 px-4 text-apple-red text-xs max-w-xs truncate">
                     {job.error ?? '—'}
                   </td>
                 </tr>

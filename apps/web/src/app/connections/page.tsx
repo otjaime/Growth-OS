@@ -83,8 +83,8 @@ export default function ConnectionsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-          <p className="text-sm text-slate-400">Loading connectors...</p>
+          <Loader2 className="h-8 w-8 text-apple-blue animate-spin" />
+          <p className="text-sm text-[var(--foreground-secondary)]">Loading connectors...</p>
         </div>
       </div>
     );
@@ -94,7 +94,7 @@ export default function ConnectionsPage() {
     <div className="space-y-6 max-w-6xl">
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-500/10 border border-green-500/20 rounded-xl text-sm text-green-400 shadow-xl animate-in slide-in-from-top-2">
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-[var(--tint-green)] border border-apple-green/20 rounded-xl text-sm text-apple-green shadow-xl animate-in slide-in-from-top-2">
           <CheckCircle2 className="h-4 w-4" />
           {toastMsg}
         </div>
@@ -102,15 +102,15 @@ export default function ConnectionsPage() {
 
       {/* API Error Banner */}
       {error && (
-        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-5 py-4">
-          <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+        <div className="flex items-center gap-3 bg-[var(--tint-red)] border border-apple-red/20 rounded-xl px-5 py-4">
+          <AlertCircle className="h-5 w-5 text-apple-red flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-sm text-red-300 font-medium">Connection Error</p>
-            <p className="text-xs text-slate-400 mt-0.5">{error}</p>
+            <p className="text-sm text-apple-red font-medium">Connection Error</p>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{error}</p>
           </div>
           <button
             onClick={fetchData}
-            className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-xs font-medium transition-colors"
+            className="px-3 py-1.5 bg-[var(--tint-red)] hover:bg-apple-red/30 text-apple-red rounded-lg text-xs font-medium transition-all ease-spring"
           >
             Retry
           </button>
@@ -120,21 +120,21 @@ export default function ConnectionsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Data Connections</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Data Connections</h1>
+          <p className="text-sm text-[var(--foreground-secondary)] mt-1">
             Connect your data sources to unify all your analytics in one place.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start">
           <button
             onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-[var(--foreground)] rounded-xl text-sm font-medium transition-all ease-spring"
           >
             <Upload className="h-4 w-4" /> Upload CSV
           </button>
           <button
             onClick={() => setActiveTab(activeTab === 'catalog' ? 'active' : 'catalog')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] rounded-xl text-sm font-medium transition-all ease-spring"
           >
           {activeTab === 'catalog' ? (
             <><Cable className="h-4 w-4" /> My Connections</>
@@ -149,24 +149,24 @@ export default function ConnectionsPage() {
       {connections.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
-            <p className="text-xs text-slate-400">Connected</p>
-            <p className="text-xl font-bold text-white mt-0.5">{connections.length}</p>
+            <p className="text-xs text-[var(--foreground-secondary)]">Connected</p>
+            <p className="text-xl font-bold text-[var(--foreground)] mt-0.5">{connections.length}</p>
           </div>
           <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
-            <p className="text-xs text-slate-400">Active</p>
-            <p className="text-xl font-bold text-green-400 mt-0.5">
+            <p className="text-xs text-[var(--foreground-secondary)]">Active</p>
+            <p className="text-xl font-bold text-apple-green mt-0.5">
               {connections.filter((c) => c.status === 'active' || c.status === 'pending').length}
             </p>
           </div>
           <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
-            <p className="text-xs text-slate-400">Syncing</p>
-            <p className="text-xl font-bold text-yellow-400 mt-0.5">
+            <p className="text-xs text-[var(--foreground-secondary)]">Syncing</p>
+            <p className="text-xl font-bold text-apple-yellow mt-0.5">
               {connections.filter((c) => c.status === 'syncing').length}
             </p>
           </div>
           <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl px-4 py-3">
-            <p className="text-xs text-slate-400">Errors</p>
-            <p className="text-xl font-bold text-red-400 mt-0.5">
+            <p className="text-xs text-[var(--foreground-secondary)]">Errors</p>
+            <p className="text-xl font-bold text-apple-red mt-0.5">
               {connections.filter((c) => c.status === 'error').length}
             </p>
           </div>
@@ -174,18 +174,18 @@ export default function ConnectionsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-800/50 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-white/[0.04] rounded-xl p-1 w-fit">
         <button
           onClick={() => setActiveTab('active')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'active' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ease-spring ${
+            activeTab === 'active' ? 'bg-white/[0.06] text-[var(--foreground)]' : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
           }`}
         >
           <div className="flex items-center gap-2">
             <Cable className="h-4 w-4" />
             My Connections
             {connections.length > 0 && (
-              <span className="bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="bg-[var(--tint-blue)] text-apple-blue text-xs px-1.5 py-0.5 rounded-full">
                 {connections.length}
               </span>
             )}
@@ -193,14 +193,14 @@ export default function ConnectionsPage() {
         </button>
         <button
           onClick={() => setActiveTab('catalog')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'catalog' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ease-spring ${
+            activeTab === 'catalog' ? 'bg-white/[0.06] text-[var(--foreground)]' : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
           }`}
         >
           <div className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Add Source
-            <span className="bg-slate-600 text-slate-300 text-xs px-1.5 py-0.5 rounded-full">
+            <span className="bg-white/[0.08] text-[var(--foreground)]/80 text-xs px-1.5 py-0.5 rounded-full">
               {catalog.length}
             </span>
           </div>
@@ -212,16 +212,16 @@ export default function ConnectionsPage() {
         <>
           {connections.length === 0 ? (
             <div className="card flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center mb-4">
-                <Unplug className="h-8 w-8 text-slate-500" />
+              <div className="w-16 h-16 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4">
+                <Unplug className="h-8 w-8 text-[var(--foreground-secondary)]/70" />
               </div>
-              <h3 className="text-white font-semibold mb-2">No connections yet</h3>
-              <p className="text-sm text-slate-400 max-w-md mb-6">
+              <h3 className="text-[var(--foreground)] font-semibold mb-2">No connections yet</h3>
+              <p className="text-sm text-[var(--foreground-secondary)] max-w-md mb-6">
                 Connect your e-commerce platform, ad accounts, analytics, and other tools to start syncing data into Growth OS.
               </p>
               <button
                 onClick={() => setActiveTab('catalog')}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
+                className="flex items-center gap-2 px-5 py-2.5 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] rounded-xl text-sm font-medium transition-all ease-spring"
               >
                 <Plus className="h-4 w-4" /> Browse Connectors
               </button>
@@ -246,7 +246,7 @@ export default function ConnectionsPage() {
               {/* Add more card */}
               <button
                 onClick={() => setActiveTab('catalog')}
-                className="flex flex-col items-center justify-center gap-2 min-h-[180px] border-2 border-dashed border-slate-700 hover:border-blue-500/50 rounded-xl text-slate-500 hover:text-blue-400 transition-all"
+                className="flex flex-col items-center justify-center gap-2 min-h-[180px] border-2 border-dashed border-[var(--glass-border)] hover:border-apple-blue/50 rounded-xl text-[var(--foreground-secondary)]/70 hover:text-apple-blue transition-all"
               >
                 <Plus className="h-8 w-8" />
                 <span className="text-sm font-medium">Add Another Source</span>
@@ -278,15 +278,15 @@ export default function ConnectionsPage() {
       {/* CSV Upload Modal */}
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowUpload(false)} />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowUpload(false)} />
           <div className="relative w-full max-w-2xl bg-[var(--card)] border border-[var(--card-border)] rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+            <div className="flex items-center justify-between p-5 border-b border-[var(--glass-border)]">
               <div>
-                <h2 className="text-lg font-semibold text-white">Upload CSV Data</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Import offline data — orders, spend, traffic, or custom events</p>
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">Upload CSV Data</h2>
+                <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">Import offline data — orders, spend, traffic, or custom events</p>
               </div>
-              <button onClick={() => setShowUpload(false)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
-                <Plus className="h-5 w-5 text-slate-400 rotate-45" />
+              <button onClick={() => setShowUpload(false)} className="p-2 hover:bg-white/[0.1] rounded-lg transition-all ease-spring">
+                <Plus className="h-5 w-5 text-[var(--foreground-secondary)] rotate-45" />
               </button>
             </div>
             <div className="p-5">
@@ -297,10 +297,10 @@ export default function ConnectionsPage() {
       )}
 
       {/* Footer info */}
-      <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/10 rounded-xl px-5 py-4">
-        <AlertCircle className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-slate-400">
-          <p className="text-blue-300 font-medium mb-1">Credentials are encrypted at rest</p>
+      <div className="flex items-start gap-3 bg-apple-blue/5 border border-apple-blue/10 rounded-xl px-5 py-4">
+        <AlertCircle className="h-5 w-5 text-apple-blue flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-[var(--foreground-secondary)]">
+          <p className="text-apple-blue font-medium mb-1">Credentials are encrypted at rest</p>
           <p>All API keys and tokens are encrypted with AES-256-GCM before storage. We never expose sensitive credentials in API responses or logs.</p>
         </div>
       </div>

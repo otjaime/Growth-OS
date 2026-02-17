@@ -36,16 +36,16 @@ export function RevenueChart({ revenueData, spendData, marginData }: RevenueChar
     <div className="h-80">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={merged}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
           <XAxis
             dataKey="date"
-            stroke="#94a3b8"
+            stroke="rgba(255,255,255,0.35)"
             fontSize={11}
             tickFormatter={(v: string) => format(new Date(v + 'T00:00:00'), 'MMM d')}
           />
           <YAxis
             yAxisId="revenue"
-            stroke="#94a3b8"
+            stroke="rgba(255,255,255,0.35)"
             fontSize={11}
             tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`}
           />
@@ -53,21 +53,24 @@ export function RevenueChart({ revenueData, spendData, marginData }: RevenueChar
             <YAxis
               yAxisId="percent"
               orientation="right"
-              stroke="#94a3b8"
+              stroke="rgba(255,255,255,0.35)"
               fontSize={11}
               domain={[0, 100]}
               tickFormatter={(v: number) => `${v}%`}
             />
           )}
           {!hasMarginData && (
-            <YAxis yAxisId="percent" orientation="right" stroke="#94a3b8" fontSize={11} hide />
+            <YAxis yAxisId="percent" orientation="right" stroke="rgba(255,255,255,0.35)" fontSize={11} hide />
           )}
           <Tooltip
             contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#e2e8f0',
+              backgroundColor: 'rgba(30,30,36,0.85)',
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              color: '#f5f5f7',
+              boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
             }}
             formatter={(value: number, name: string) => {
               if (name === 'CM%') return [`${value}%`, name];
@@ -81,8 +84,8 @@ export function RevenueChart({ revenueData, spendData, marginData }: RevenueChar
             type="monotone"
             dataKey="revenue"
             name="Revenue"
-            stroke="#3b82f6"
-            fill="#3b82f6"
+            stroke="#0a84ff"
+            fill="#0a84ff"
             fillOpacity={0.15}
             strokeWidth={2}
           />
@@ -90,7 +93,7 @@ export function RevenueChart({ revenueData, spendData, marginData }: RevenueChar
             yAxisId="revenue"
             dataKey="spend"
             name="Ad Spend"
-            fill="#f59e0b"
+            fill="#ff9f0a"
             fillOpacity={0.6}
             radius={[2, 2, 0, 0]}
           />
@@ -100,7 +103,7 @@ export function RevenueChart({ revenueData, spendData, marginData }: RevenueChar
               type="monotone"
               dataKey="cmPct"
               name="CM%"
-              stroke="#22c55e"
+              stroke="#30d158"
               strokeWidth={2}
               strokeDasharray="5 3"
               dot={false}

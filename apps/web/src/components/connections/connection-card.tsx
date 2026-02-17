@@ -66,10 +66,10 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
   };
 
   const statusDot = connection.status === 'active' || connection.status === 'pending'
-    ? 'bg-green-500'
+    ? 'bg-apple-green'
     : connection.status === 'syncing'
-      ? 'bg-yellow-500 animate-pulse'
-      : 'bg-red-500';
+      ? 'bg-apple-yellow animate-pulse'
+      : 'bg-apple-red';
 
   const statusLabel = connection.status === 'active' || connection.status === 'pending'
     ? 'Active'
@@ -90,51 +90,51 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
   };
 
   return (
-    <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5 hover:border-slate-500/50 transition-all group">
+    <div className="card glass-interactive p-5 group">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <ConnectorIcon icon={connection.icon} color={connection.color} />
           <div>
-            <h3 className="text-white font-semibold">{connection.label}</h3>
-            <p className="text-xs text-slate-400">{connection.name}</p>
+            <h3 className="text-[var(--foreground)] font-semibold">{connection.label}</h3>
+            <p className="text-xs text-[var(--foreground-secondary)]">{connection.name}</p>
           </div>
         </div>
 
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-1.5 hover:bg-slate-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+            className="p-1.5 hover:bg-white/[0.1] rounded-lg transition-all ease-spring opacity-0 group-hover:opacity-100"
           >
-            <MoreVertical className="h-4 w-4 text-slate-400" />
+            <MoreVertical className="h-4 w-4 text-[var(--foreground-secondary)]" />
           </button>
 
           {showMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => { setShowMenu(false); setConfirmDelete(false); }} />
-              <div className="absolute right-0 top-8 z-20 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+              <div className="absolute right-0 top-8 z-20 w-48 bg-white/[0.06] border border-[var(--glass-border)] rounded-lg shadow-xl overflow-hidden">
                 <button
                   onClick={() => { onEdit?.(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--foreground)]/80 hover:bg-white/[0.1] transition-all ease-spring"
                 >
                   <Settings2 className="h-4 w-4" /> Edit Keys
                 </button>
                 <button
                   onClick={() => { handleTest(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--foreground)]/80 hover:bg-white/[0.1] transition-all ease-spring"
                 >
                   <TestTube className="h-4 w-4" /> Test Connection
                 </button>
                 <button
                   onClick={() => { handleSync(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--foreground)]/80 hover:bg-white/[0.1] transition-all ease-spring"
                 >
                   <RefreshCw className="h-4 w-4" /> Sync Now
                 </button>
-                <hr className="border-slate-700" />
+                <hr className="border-[var(--glass-border)]" />
                 {!confirmDelete ? (
                   <button
                     onClick={() => setConfirmDelete(true)}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-apple-red hover:bg-[var(--tint-red)] transition-all ease-spring"
                   >
                     <Trash2 className="h-4 w-4" /> Remove
                   </button>
@@ -142,7 +142,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
                   <button
                     onClick={handleDelete}
                     disabled={deleting}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors font-medium"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-apple-red hover:bg-[var(--tint-red)] transition-all ease-spring font-medium"
                   >
                     {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     Confirm Remove
@@ -158,9 +158,9 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${statusDot}`} />
-          <span className="text-xs text-slate-400">{statusLabel}</span>
+          <span className="text-xs text-[var(--foreground-secondary)]">{statusLabel}</span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-slate-500">
+        <div className="flex items-center gap-1 text-xs text-[var(--foreground-secondary)]/70">
           <Clock className="h-3 w-3" />
           {timeAgo(connection.lastSyncAt)}
         </div>
@@ -171,7 +171,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
         <button
           onClick={handleTest}
           disabled={testing}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700/50 hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-white/[0.04] hover:bg-white/[0.06] disabled:opacity-50 text-[var(--foreground)] rounded-lg text-xs font-medium transition-all ease-spring"
         >
           {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
           Test
@@ -179,7 +179,7 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
         <button
           onClick={handleSync}
           disabled={syncing}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 disabled:opacity-50 text-blue-400 rounded-lg text-xs font-medium transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[var(--tint-blue)] hover:bg-[var(--tint-blue)]/80 disabled:opacity-50 text-apple-blue rounded-lg text-xs font-medium transition-all ease-spring"
         >
           {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
           Sync
@@ -190,8 +190,8 @@ export function ConnectionCard({ connection, onRefresh, onEdit }: ConnectionCard
       {testResult && (
         <div className={`flex items-center gap-2 mt-3 px-3 py-2 rounded-lg text-xs ${
           testResult.success
-            ? 'bg-green-500/10 border border-green-500/20 text-green-400'
-            : 'bg-red-500/10 border border-red-500/20 text-red-400'
+            ? 'bg-[var(--tint-green)] border border-apple-green/20 text-apple-green'
+            : 'bg-[var(--tint-red)] border border-apple-red/20 text-apple-red'
         }`}>
           {testResult.success ? <CheckCircle className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
           {testResult.message}

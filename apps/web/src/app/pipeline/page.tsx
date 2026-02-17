@@ -57,23 +57,23 @@ function formatRelativeTime(iso: string | null): string {
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === 'SUCCESS') return <CheckCircle className="h-4 w-4 text-green-400" />;
-  if (status === 'FAILED') return <XCircle className="h-4 w-4 text-red-400" />;
-  if (status === 'RUNNING') return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
-  return <Clock className="h-4 w-4 text-slate-400" />;
+  if (status === 'SUCCESS') return <CheckCircle className="h-4 w-4 text-apple-green" />;
+  if (status === 'FAILED') return <XCircle className="h-4 w-4 text-apple-red" />;
+  if (status === 'RUNNING') return <Loader2 className="h-4 w-4 text-apple-blue animate-spin" />;
+  return <Clock className="h-4 w-4 text-[var(--foreground-secondary)]" />;
 }
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    SUCCESS: 'bg-green-500/20 text-green-400',
-    FAILED: 'bg-red-500/20 text-red-400',
-    RUNNING: 'bg-blue-500/20 text-blue-400',
-    synced: 'bg-green-500/20 text-green-400',
-    error: 'bg-red-500/20 text-red-400',
-    syncing: 'bg-blue-500/20 text-blue-400',
+    SUCCESS: 'bg-[var(--tint-green)] text-apple-green',
+    FAILED: 'bg-[var(--tint-red)] text-apple-red',
+    RUNNING: 'bg-[var(--tint-blue)] text-apple-blue',
+    synced: 'bg-[var(--tint-green)] text-apple-green',
+    error: 'bg-[var(--tint-red)] text-apple-red',
+    syncing: 'bg-[var(--tint-blue)] text-apple-blue',
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-slate-500/20 text-slate-400'}`}>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-white/[0.04] text-[var(--foreground-secondary)]'}`}>
       {status}
     </span>
   );
@@ -133,13 +133,13 @@ export default function PipelinePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Pipeline Health</h1>
-          <p className="text-sm text-slate-400 mt-1">ETL observability: runs, freshness, and data layer metrics</p>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Pipeline Health</h1>
+          <p className="text-sm text-[var(--foreground-secondary)] mt-1">ETL observability: runs, freshness, and data layer metrics</p>
         </div>
         <button
           onClick={fetchData}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50 text-sm"
+          className="flex items-center gap-2 px-3 py-2 bg-white/[0.06] text-[var(--foreground)]/80 rounded-lg hover:bg-white/[0.1] transition-all ease-spring disabled:opacity-50 text-sm"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -148,10 +148,10 @@ export default function PipelinePage() {
 
       {loading && !data ? (
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
         </div>
       ) : !data ? (
-        <div className="card text-center text-slate-400 py-12">
+        <div className="card text-center text-[var(--foreground-secondary)] py-12">
           Failed to load pipeline data. Is the API running?
         </div>
       ) : (
@@ -159,20 +159,20 @@ export default function PipelinePage() {
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Avg Duration</p>
-              <p className="text-2xl font-bold text-white">{formatDuration(data.stats.avgDurationMs)}</p>
-              <p className="text-xs text-slate-500 mt-1">across last {data.stats.totalRuns} runs</p>
+              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Avg Duration</p>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{formatDuration(data.stats.avgDurationMs)}</p>
+              <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">across last {data.stats.totalRuns} runs</p>
             </div>
             <div className="card">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Success Rate</p>
-              <p className={`text-2xl font-bold ${data.stats.successRate !== null && data.stats.successRate >= 0.9 ? 'text-green-400' : data.stats.successRate !== null && data.stats.successRate >= 0.7 ? 'text-yellow-400' : 'text-red-400'}`}>
+              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Success Rate</p>
+              <p className={`text-2xl font-bold ${data.stats.successRate !== null && data.stats.successRate >= 0.9 ? 'text-apple-green' : data.stats.successRate !== null && data.stats.successRate >= 0.7 ? 'text-apple-yellow' : 'text-apple-red'}`}>
                 {data.stats.successRate !== null ? `${Math.round(data.stats.successRate * 100)}%` : '-'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">completed runs</p>
+              <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">completed runs</p>
             </div>
             <div className="card">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Data Freshness</p>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Data Freshness</p>
+              <p className="text-2xl font-bold text-[var(--foreground)]">
                 {data.freshness.length > 0
                   ? formatRelativeTime(
                       data.freshness
@@ -181,21 +181,21 @@ export default function PipelinePage() {
                     )
                   : 'No connectors'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">most recent sync</p>
+              <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">most recent sync</p>
             </div>
           </div>
 
           {/* Data Quality */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-apple-blue" />
                 Data Quality
               </h2>
               <button
                 onClick={fetchQuality}
                 disabled={qualityLoading}
-                className="text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-all ease-spring disabled:opacity-50"
               >
                 {qualityLoading ? 'Running...' : 'Re-run checks'}
               </button>
@@ -204,18 +204,18 @@ export default function PipelinePage() {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                   <div className="card">
-                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Quality Score</p>
-                    <p className={`text-2xl font-bold ${quality.score >= 90 ? 'text-green-400' : quality.score >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Quality Score</p>
+                    <p className={`text-2xl font-bold ${quality.score >= 90 ? 'text-apple-green' : quality.score >= 70 ? 'text-apple-yellow' : 'text-apple-red'}`}>
                       {quality.score}%
                     </p>
                   </div>
                   <div className="card">
-                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Passed</p>
-                    <p className="text-2xl font-bold text-green-400">{quality.summary.passed}/{quality.summary.total}</p>
+                    <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Passed</p>
+                    <p className="text-2xl font-bold text-apple-green">{quality.summary.passed}/{quality.summary.total}</p>
                   </div>
                   <div className="card">
-                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Failed</p>
-                    <p className={`text-2xl font-bold ${quality.summary.failed > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Failed</p>
+                    <p className={`text-2xl font-bold ${quality.summary.failed > 0 ? 'text-apple-red' : 'text-apple-green'}`}>
                       {quality.summary.failed}
                     </p>
                   </div>
@@ -223,15 +223,15 @@ export default function PipelinePage() {
                 <div className="card">
                   <div className="space-y-2">
                     {quality.checks.map((check) => (
-                      <div key={check.check} className="flex items-center gap-3 py-1.5 border-b border-slate-800 last:border-0">
+                      <div key={check.check} className="flex items-center gap-3 py-1.5 border-b border-white/[0.04] last:border-0">
                         {check.passed ? (
-                          <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
+                          <CheckCircle className="h-4 w-4 text-apple-green flex-shrink-0" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                          <XCircle className="h-4 w-4 text-apple-red flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm text-white font-medium">{check.check.replace(/_/g, ' ')}</span>
-                          <p className="text-xs text-slate-400 truncate">{check.message}</p>
+                          <span className="text-sm text-[var(--foreground)] font-medium">{check.check.replace(/_/g, ' ')}</span>
+                          <p className="text-xs text-[var(--foreground-secondary)] truncate">{check.message}</p>
                         </div>
                       </div>
                     ))}
@@ -240,84 +240,84 @@ export default function PipelinePage() {
               </>
             ) : qualityLoading ? (
               <div className="card flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
+                <Loader2 className="h-5 w-5 text-apple-blue animate-spin" />
               </div>
             ) : (
-              <div className="card text-center text-slate-500 py-8">Quality checks unavailable</div>
+              <div className="card text-center text-[var(--foreground-secondary)]/70 py-8">Quality checks unavailable</div>
             )}
           </div>
 
           {/* Row Counts */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Layers className="h-5 w-5 text-blue-400" />
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+              <Layers className="h-5 w-5 text-apple-blue" />
               Data Layer Metrics
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="card">
                 <div className="flex items-center gap-2 mb-2">
-                  <Database className="h-4 w-4 text-slate-400" />
-                  <p className="text-xs text-slate-400 uppercase tracking-wider">Raw Events</p>
+                  <Database className="h-4 w-4 text-[var(--foreground-secondary)]" />
+                  <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Raw Events</p>
                 </div>
-                <p className="text-xl font-bold text-white">{data.rowCounts.raw.events.toLocaleString()}</p>
+                <p className="text-xl font-bold text-[var(--foreground)]">{data.rowCounts.raw.events.toLocaleString()}</p>
               </div>
               <div className="card">
                 <div className="flex items-center gap-2 mb-2">
-                  <Server className="h-4 w-4 text-yellow-400" />
-                  <p className="text-xs text-slate-400 uppercase tracking-wider">Staging</p>
+                  <Server className="h-4 w-4 text-apple-yellow" />
+                  <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Staging</p>
                 </div>
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Orders</span>
-                    <span className="text-white font-medium">{data.rowCounts.staging.orders.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Orders</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.staging.orders.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Spend</span>
-                    <span className="text-white font-medium">{data.rowCounts.staging.spend.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Spend</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.staging.spend.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Traffic</span>
-                    <span className="text-white font-medium">{data.rowCounts.staging.traffic.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="card">
-                <div className="flex items-center gap-2 mb-2">
-                  <Server className="h-4 w-4 text-green-400" />
-                  <p className="text-xs text-slate-400 uppercase tracking-wider">Facts</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Orders</span>
-                    <span className="text-white font-medium">{data.rowCounts.facts.orders.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Spend</span>
-                    <span className="text-white font-medium">{data.rowCounts.facts.spend.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Traffic</span>
-                    <span className="text-white font-medium">{data.rowCounts.facts.traffic.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Traffic</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.staging.traffic.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
               <div className="card">
                 <div className="flex items-center gap-2 mb-2">
-                  <Database className="h-4 w-4 text-purple-400" />
-                  <p className="text-xs text-slate-400 uppercase tracking-wider">Dimensions</p>
+                  <Server className="h-4 w-4 text-apple-green" />
+                  <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Facts</p>
                 </div>
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Customers</span>
-                    <span className="text-white font-medium">{data.rowCounts.dimensions.customers.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Orders</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.facts.orders.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Campaigns</span>
-                    <span className="text-white font-medium">{data.rowCounts.dimensions.campaigns.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Spend</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.facts.spend.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Cohorts</span>
-                    <span className="text-white font-medium">{data.rowCounts.dimensions.cohorts.toLocaleString()}</span>
+                    <span className="text-[var(--foreground-secondary)]">Traffic</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.facts.traffic.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="card">
+                <div className="flex items-center gap-2 mb-2">
+                  <Database className="h-4 w-4 text-apple-purple" />
+                  <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Dimensions</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--foreground-secondary)]">Customers</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.dimensions.customers.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--foreground-secondary)]">Campaigns</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.dimensions.campaigns.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--foreground-secondary)]">Cohorts</span>
+                    <span className="text-[var(--foreground)] font-medium">{data.rowCounts.dimensions.cohorts.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -327,14 +327,14 @@ export default function PipelinePage() {
           {/* Connector Freshness */}
           {data.freshness.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <Server className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+                <Server className="h-5 w-5 text-apple-blue" />
                 Connector Freshness
               </h2>
               <div className="card overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-700">
+                    <tr className="text-left text-[var(--foreground-secondary)] border-b border-[var(--glass-border)]">
                       <th className="pb-2 font-medium">Source</th>
                       <th className="pb-2 font-medium">Last Sync</th>
                       <th className="pb-2 font-medium">Status</th>
@@ -342,11 +342,11 @@ export default function PipelinePage() {
                   </thead>
                   <tbody>
                     {data.freshness.map((c) => (
-                      <tr key={c.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/50">
-                        <td className="py-2 text-white font-medium">{c.source}</td>
-                        <td className="py-2 text-slate-300">{formatRelativeTime(c.lastSyncAt)}</td>
+                      <tr key={c.id} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.04]">
+                        <td className="py-2 text-[var(--foreground)] font-medium">{c.source}</td>
+                        <td className="py-2 text-[var(--foreground)]/80">{formatRelativeTime(c.lastSyncAt)}</td>
                         <td className="py-2">
-                          {c.lastSyncStatus ? <StatusBadge status={c.lastSyncStatus} /> : <span className="text-slate-500">-</span>}
+                          {c.lastSyncStatus ? <StatusBadge status={c.lastSyncStatus} /> : <span className="text-[var(--foreground-secondary)]/70">-</span>}
                         </td>
                       </tr>
                     ))}
@@ -358,14 +358,14 @@ export default function PipelinePage() {
 
           {/* Run History */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Clock className="h-5 w-5 text-blue-400" />
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-apple-blue" />
               Run History
             </h2>
             <div className="card overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-700">
+                  <tr className="text-left text-[var(--foreground-secondary)] border-b border-[var(--glass-border)]">
                     <th className="pb-2 font-medium">Status</th>
                     <th className="pb-2 font-medium">Job</th>
                     <th className="pb-2 font-medium">Started</th>
@@ -374,21 +374,21 @@ export default function PipelinePage() {
                 </thead>
                 <tbody>
                   {data.runs.map((run) => (
-                    <tr key={run.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/50">
+                    <tr key={run.id} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.04]">
                       <td className="py-2">
                         <div className="flex items-center gap-2">
                           <StatusIcon status={run.status} />
                           <StatusBadge status={run.status} />
                         </div>
                       </td>
-                      <td className="py-2 text-white font-medium">{run.jobName}</td>
-                      <td className="py-2 text-slate-300">{formatRelativeTime(run.startedAt)}</td>
-                      <td className="py-2 text-slate-300">{formatDuration(run.durationMs)}</td>
+                      <td className="py-2 text-[var(--foreground)] font-medium">{run.jobName}</td>
+                      <td className="py-2 text-[var(--foreground)]/80">{formatRelativeTime(run.startedAt)}</td>
+                      <td className="py-2 text-[var(--foreground)]/80">{formatDuration(run.durationMs)}</td>
                     </tr>
                   ))}
                   {data.runs.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-slate-500">No pipeline runs yet</td>
+                      <td colSpan={4} className="py-8 text-center text-[var(--foreground-secondary)]/70">No pipeline runs yet</td>
                     </tr>
                   )}
                 </tbody>

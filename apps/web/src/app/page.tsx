@@ -145,8 +145,8 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="animate-pulse rounded bg-slate-700/50 h-8 w-56" />
-          <div className="animate-pulse rounded bg-slate-700/50 h-9 w-36" />
+          <div className="animate-pulse rounded bg-white/[0.04] h-8 w-56" />
+          <div className="animate-pulse rounded bg-white/[0.04] h-9 w-36" />
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 8 }, (_, i) => <KpiCardSkeleton key={i} />)}
@@ -162,9 +162,9 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="card border-red-500/50">
-        <p className="text-red-400">Failed to load dashboard data. Is the API running?</p>
-        <p className="text-xs text-slate-500 mt-2">{error}</p>
+      <div className="card border-apple-red/50">
+        <p className="text-apple-red">Failed to load dashboard data. Is the API running?</p>
+        <p className="text-xs text-[var(--foreground-secondary)]/70 mt-2">{error}</p>
       </div>
     );
   }
@@ -178,15 +178,15 @@ export default function DashboardPage() {
 
   // LTV:CAC color coding
   const ltvCacValue = cohort?.ltvCacRatio ?? k.ltvCacRatio.value;
-  const ltvCacColor = ltvCacValue >= 3 ? 'text-green-400' : ltvCacValue >= 2 ? 'text-yellow-400' : 'text-red-400';
+  const ltvCacColor = ltvCacValue >= 3 ? 'text-apple-green' : ltvCacValue >= 2 ? 'text-apple-yellow' : 'text-apple-red';
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Executive Summary</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Executive Summary</h1>
+          <p className="text-sm text-[var(--foreground-secondary)] mt-1">
             {summary.period.start} — {summary.period.end}
           </p>
         </div>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
 
       {/* SECTION 1: Revenue & Profitability */}
       <section>
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Revenue & Profitability</h2>
+        <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue & Profitability</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard title="Revenue (Gross)" value={k.revenueGross.value} change={k.revenueGross.change} sparkData={revenueSparkData} />
           <KpiCard title="Orders" value={k.orders.value} change={k.orders.change} format="number" />
@@ -207,7 +207,7 @@ export default function DashboardPage() {
       {/* SECTION 2: Revenue & Margin Trend */}
       {timeseries && (
         <section>
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Revenue & Margin Trend</h2>
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue & Margin Trend</h2>
           <div className="card">
             <RevenueChart
               revenueData={timeseries.dailyRevenue}
@@ -221,7 +221,7 @@ export default function DashboardPage() {
       {/* SECTION 2.5: Revenue Forecast */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">
             {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} Forecast ({forecastHorizon}-day)
           </h2>
           <div className="flex gap-3">
@@ -230,10 +230,10 @@ export default function DashboardPage() {
                 <button
                   key={h}
                   onClick={() => setForecastHorizon(h)}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                  className={`px-2 py-1 text-xs rounded-md transition-all ease-spring ${
                     forecastHorizon === h
-                      ? 'bg-slate-600 text-white'
-                      : 'bg-slate-800 text-slate-500 hover:text-slate-300'
+                      ? 'bg-white/[0.08] text-[var(--foreground)]'
+                      : 'bg-white/[0.06] text-[var(--foreground-secondary)]/70 hover:text-[var(--foreground)]'
                   }`}
                 >
                   {h}d
@@ -245,10 +245,10 @@ export default function DashboardPage() {
                 <button
                   key={m}
                   onClick={() => setForecastMetric(m)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                  className={`px-3 py-1 text-xs rounded-md transition-all ease-spring ${
                     forecastMetric === m
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                      ? 'bg-apple-blue text-[var(--foreground)]'
+                      : 'bg-white/[0.06] text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   {m === 'revenue' ? 'Revenue' : m === 'orders' ? 'Orders' : 'Spend'}
@@ -261,15 +261,15 @@ export default function DashboardPage() {
         {forecastData?.forecast && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div className="card flex flex-col gap-2">
-              <p className="text-xs text-slate-400 uppercase tracking-wide">
+              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">
                 Projected {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} ({forecastHorizon}d)
               </p>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-2xl font-bold text-[var(--foreground)]">
                 {forecastMetric === 'orders'
                   ? formatNumber(Math.round(forecastData.forecast.reduce((s, f) => s + f.value, 0)))
                   : formatCurrency(forecastData.forecast.reduce((s, f) => s + f.value, 0))}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[var(--foreground-secondary)]/70">
                 80% range:{' '}
                 {forecastMetric === 'orders'
                   ? formatNumber(Math.round(forecastData.forecast.reduce((s, f) => s + f.lower80, 0)))
@@ -282,11 +282,11 @@ export default function DashboardPage() {
             </div>
             {forecastData.parameters && (
               <div className="card flex flex-col gap-2">
-                <p className="text-xs text-slate-400 uppercase tracking-wide">Forecast Model</p>
-                <p className="text-sm text-slate-300">
+                <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">Forecast Model</p>
+                <p className="text-sm text-[var(--foreground)]/80">
                   Holt-Winters double exponential smoothing
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[var(--foreground-secondary)]/70">
                   Level sensitivity {forecastData.parameters.alpha} · Trend sensitivity {forecastData.parameters.beta}
                 </p>
               </div>
@@ -297,7 +297,7 @@ export default function DashboardPage() {
         <div className="card">
           {forecastLoading ? (
             <div className="flex items-center justify-center h-80">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
             </div>
           ) : forecastData?.historical ? (
             <ForecastChart
@@ -306,7 +306,7 @@ export default function DashboardPage() {
               metric={forecastMetric}
             />
           ) : (
-            <div className="flex items-center justify-center h-80 text-slate-500">
+            <div className="flex items-center justify-center h-80 text-[var(--foreground-secondary)]/70">
               No forecast data available
             </div>
           )}
@@ -316,27 +316,27 @@ export default function DashboardPage() {
       {/* SECTION 3: Customer Economics */}
       <section>
         <div className="mb-3">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Customer Economics</h2>
-          <p className="text-xs text-slate-500 mt-0.5">LTV, LTV:CAC, and Payback are based on the most recent mature cohort</p>
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">Customer Economics</h2>
+          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-0.5">LTV, LTV:CAC, and Payback are based on the most recent mature cohort</p>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard title={<><AcronymTip term="CAC" /> (Blended)</>} value={k.blendedCac.value} change={k.blendedCac.change} invertColor benchmark="$80–$150" />
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="LTV" /> (90-day)</p>
-            <p className="text-2xl font-bold text-white">{formatCurrency(k.ltv90.value)}</p>
-            <p className="text-xs text-slate-500">Latest mature cohort</p>
+            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide"><AcronymTip term="LTV" /> (90-day)</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatCurrency(k.ltv90.value)}</p>
+            <p className="text-xs text-[var(--foreground-secondary)]/70">Latest mature cohort</p>
           </div>
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="LTV" />:<AcronymTip term="CAC" /> Ratio</p>
+            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide"><AcronymTip term="LTV" />:<AcronymTip term="CAC" /> Ratio</p>
             <p className={`text-2xl font-bold ${ltvCacColor}`}>{formatMultiplier(ltvCacValue)}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[var(--foreground-secondary)]/70">
               {ltvCacValue >= 3 ? 'Healthy' : ltvCacValue >= 2 ? 'Monitor' : 'Critical'}
             </p>
           </div>
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide">Payback Period</p>
-            <p className="text-2xl font-bold text-white">{formatDays(k.paybackDays.value)}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">Payback Period</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatDays(k.paybackDays.value)}</p>
+            <p className="text-xs text-[var(--foreground-secondary)]/70">
               {k.paybackDays.value !== null && k.paybackDays.value <= 90 ? 'Within target' : k.paybackDays.value !== null ? 'Above 90d target' : ''}
             </p>
           </div>
@@ -345,12 +345,12 @@ export default function DashboardPage() {
 
       {/* SECTION 4: Retention & Acquisition */}
       <section>
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Retention & Acquisition</h2>
+        <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Retention & Acquisition</h2>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="card flex flex-col gap-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wide"><AcronymTip term="D30" /> Retention</p>
-            <p className="text-2xl font-bold text-white">{formatPercent(k.retentionD30.value)}</p>
-            <p className="text-xs text-slate-500">Most recent mature cohort</p>
+            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide"><AcronymTip term="D30" /> Retention</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatPercent(k.retentionD30.value)}</p>
+            <p className="text-xs text-[var(--foreground-secondary)]/70">Most recent mature cohort</p>
           </div>
           <KpiCard title="New Customers" value={k.newCustomers.value} change={k.newCustomers.change} format="number" />
           <KpiCard title={<AcronymTip term="MER" />} value={k.mer.value} change={k.mer.change} format="multiplier" benchmark="3–5x" />
@@ -361,15 +361,15 @@ export default function DashboardPage() {
       {channels && channels.channels.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Channel Overview</h2>
-            <Link href="/channels" className="text-xs text-blue-400 hover:text-blue-300">
+            <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">Channel Overview</h2>
+            <Link href="/channels" className="text-xs text-apple-blue hover:text-apple-blue">
               View all channels &rarr;
             </Link>
           </div>
           <div className="card overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-700">
+                <tr className="text-left text-[var(--foreground-secondary)] border-b border-[var(--glass-border)]">
                   <th className="pb-2 font-medium">Channel</th>
                   <th className="pb-2 font-medium text-right">Spend</th>
                   <th className="pb-2 font-medium text-right">Revenue</th>
@@ -380,12 +380,12 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {channels.channels.slice(0, 5).map((ch) => (
-                  <tr key={ch.id} className="border-b border-slate-800 text-slate-300">
-                    <td className="py-2 font-medium text-white">{ch.name}</td>
+                  <tr key={ch.id} className="border-b border-white/[0.04] text-[var(--foreground)]/80">
+                    <td className="py-2 font-medium text-[var(--foreground)]">{ch.name}</td>
                     <td className="py-2 text-right">{formatCurrency(ch.spend)}</td>
                     <td className="py-2 text-right">{formatCurrency(ch.revenue)}</td>
                     <td className="py-2 text-right">{formatPercent(ch.cmPct)}</td>
-                    <td className={`py-2 text-right font-medium ${ch.channelProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <td className={`py-2 text-right font-medium ${ch.channelProfit >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
                       {ch.channelProfit >= 0 ? '+' : ''}{formatCurrency(ch.channelProfit)}
                     </td>
                     <td className="py-2 text-right">{formatPercent(ch.channelShare)}</td>

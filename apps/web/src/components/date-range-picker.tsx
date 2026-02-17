@@ -26,10 +26,10 @@ export function DateRangePicker({ onChange, defaultDays = 7 }: DateRangePickerPr
             setSelected(preset.days);
             onChange(preset.days);
           }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-all ease-spring ${
             selected === preset.days
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+              ? 'bg-[var(--tint-blue)] text-apple-blue border border-apple-blue/30'
+              : 'bg-white/[0.06] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.1] border border-transparent'
           }`}
         >
           {preset.label}

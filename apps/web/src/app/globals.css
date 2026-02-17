@@ -2,51 +2,219 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================
+   APPLE TAHOE 26 — LIQUID GLASS DESIGN SYSTEM
+   Growth OS Dashboard — Dark Mode
+   ========================================================== */
+
 :root {
-  --background: #0f172a;
-  --foreground: #e2e8f0;
-  --card: #1e293b;
-  --card-border: #334155;
-  --accent: #3b82f6;
-  --positive: #22c55e;
-  --negative: #ef4444;
-  --warning: #f59e0b;
+  /* ── Backgrounds ──────────────────────────── */
+  --background: #0f0f14;
+  --background-secondary: #1a1a24;
+  --foreground: #f5f5f7;
+  --foreground-secondary: #98989f;
+
+  /* ── Glass Materials ──────────────────────── */
+  --glass-bg: rgba(30, 30, 36, 0.72);
+  --glass-bg-thick: rgba(30, 30, 36, 0.85);
+  --glass-bg-thin: rgba(30, 30, 36, 0.52);
+  --glass-bg-elevated: rgba(40, 40, 48, 0.82);
+  --glass-blur: 20px;
+  --glass-blur-thick: 30px;
+  --glass-blur-thin: 12px;
+  --glass-saturate: 180%;
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.15);
+  --glass-specular: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0) 40%
+  );
+
+  /* ── Backward-compat aliases ──────────────── */
+  --card: var(--glass-bg);
+  --card-border: var(--glass-border);
+
+  /* ── Apple System Colors (dark mode) ──────── */
+  --accent: #0a84ff;
+  --positive: #30d158;
+  --negative: #ff453a;
+  --warning: #ffd60a;
+  --accent-secondary: #bf5af2;
+
+  /* Tint overlays (18% opacity for badges/chips) */
+  --tint-blue: rgba(10, 132, 255, 0.18);
+  --tint-green: rgba(48, 209, 88, 0.18);
+  --tint-red: rgba(255, 69, 58, 0.18);
+  --tint-yellow: rgba(255, 214, 10, 0.18);
+  --tint-purple: rgba(191, 90, 242, 0.18);
+
+  /* ── Typography ───────────────────────────── */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+    'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+  --tracking-tight: -0.022em;
+  --tracking-normal: -0.01em;
+
+  /* ── Radii (Apple Tahoe — larger, softer) ── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+
+  /* ── Shadows ──────────────────────────────── */
+  --shadow-glass: 0 2px 16px rgba(0, 0, 0, 0.28),
+    0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 1px rgba(255, 255, 255, 0.08);
+
+  /* ── Spring Animations ────────────────────── */
+  --ease-spring: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --transition-fast: 150ms var(--ease-spring);
+  --transition-normal: 250ms var(--ease-spring);
+
+  /* ── Chart Tokens ─────────────────────────── */
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-axis: rgba(255, 255, 255, 0.35);
 }
 
+/* ==========================================================
+   BASE STYLES
+   ========================================================== */
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ==========================================================
+   GLASS CARD (base surface)
+   ========================================================== */
 .card {
-  @apply bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-6;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-glass);
+  position: relative;
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
+/* ==========================================================
+   GLASS VARIANTS
+   ========================================================== */
+
+/* Thick Glass — sidebar, nav bars */
+.glass-thick {
+  background: var(--glass-bg-thick);
+  backdrop-filter: blur(var(--glass-blur-thick)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-thick)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+/* Thin Glass — tooltips, overlays */
+.glass-thin {
+  background: var(--glass-bg-thin);
+  backdrop-filter: blur(var(--glass-blur-thin)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-thin)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+}
+
+/* Elevated Glass — modals, popovers */
+.glass-elevated {
+  background: var(--glass-bg-elevated);
+  backdrop-filter: blur(var(--glass-blur-thick)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-thick)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-hover);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* Interactive Glass — hover lift + shadow */
+.glass-interactive {
+  cursor: pointer;
+}
+.glass-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-elevated);
+  border-color: var(--glass-border-hover);
+}
+.glass-interactive:active {
+  transform: translateY(0);
+}
+
+/* Specular Highlight — signature Tahoe glass shine */
+.glass-specular {
+  overflow: hidden;
+}
+.glass-specular::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ==========================================================
+   SEMANTIC KPI COLORS
+   ========================================================== */
 .kpi-positive { color: var(--positive); }
 .kpi-negative { color: var(--negative); }
-.kpi-neutral { color: var(--foreground); }
+.kpi-neutral { color: var(--foreground-secondary); }
 
-/* Print styles — used by WBR Export PDF */
+/* ==========================================================
+   ANIMATIONS
+   ========================================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================
+   PRINT STYLES — WBR Export PDF
+   ========================================================== */
 @media print {
-  /* Hide sidebar and nav */
   aside { display: none !important; }
   button[aria-label="Open menu"] { display: none !important; }
-  /* Expand main content to full width */
   main { margin-left: 0 !important; padding: 0 !important; }
-  /* White background for print */
   body { background: white !important; color: black !important; }
-  .card { background: white !important; border: 1px solid #e2e8f0 !important; color: black !important; break-inside: avoid; }
-  /* Ensure text is dark for readability */
+  .card {
+    background: white !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    color: black !important;
+    break-inside: avoid;
+  }
+  .glass-thick, .glass-thin, .glass-elevated {
+    background: white !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+  .glass-specular::before { display: none !important; }
   h1, h2, h3, p, span, div { color: black !important; }
-  .text-white { color: black !important; }
-  .text-slate-300, .text-slate-400, .text-slate-500 { color: #374151 !important; }
-  /* Hide interactive buttons */
+  .text-white, .text-\[var\(--foreground\)\] { color: black !important; }
+  .text-\[var\(--foreground-secondary\)\] { color: #374151 !important; }
   .print\:hidden { display: none !important; }
-  /* Header branded bar */
   .print\:block { display: block !important; }
-  /* Page breaks between major sections */
   .print\:break-before { break-before: page !important; }
-  /* Optimize for A4 */
   @page { size: A4; margin: 1cm; }
 }

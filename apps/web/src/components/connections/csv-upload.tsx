@@ -108,16 +108,16 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
     <div className="space-y-4">
       {/* Data Type Selector */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">Data Type</label>
+        <label className="block text-sm font-medium text-[var(--foreground)]/80 mb-2">Data Type</label>
         <div className="flex flex-wrap gap-2">
           {DATA_TYPES.map((t) => (
             <button
               key={t.value}
               onClick={() => setDataType(t.value)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ease-spring ${
                 dataType === t.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700'
+                  ? 'bg-apple-blue text-[var(--foreground)]'
+                  : 'bg-white/[0.04] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.1]'
               }`}
             >
               {t.label}
@@ -125,19 +125,19 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
           ))}
         </div>
         {selectedType && (
-          <p className="text-xs text-slate-500 mt-1.5">{selectedType.hint}</p>
+          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1.5">{selectedType.hint}</p>
         )}
       </div>
 
       {/* Label */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1">Dataset Label</label>
+        <label className="block text-sm font-medium text-[var(--foreground)]/80 mb-1">Dataset Label</label>
         <input
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="e.g. Q4 2024 Historical Orders"
-          className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+          className="w-full px-3 py-2 bg-white/[0.06] border border-[var(--glass-border)] rounded-lg text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/70 focus:outline-none focus:border-apple-blue"
         />
       </div>
 
@@ -149,10 +149,10 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
         onClick={() => inputRef.current?.click()}
         className={`relative flex flex-col items-center justify-center gap-3 py-10 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
           dragOver
-            ? 'border-blue-500 bg-blue-500/10'
+            ? 'border-apple-blue bg-[var(--tint-blue)]'
             : file
-              ? 'border-green-500/50 bg-green-500/5'
-              : 'border-slate-700 hover:border-slate-500 hover:bg-slate-800/50'
+              ? 'border-apple-green/50 bg-apple-green/5'
+              : 'border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] hover:bg-white/[0.04]'
         }`}
       >
         <input
@@ -168,27 +168,27 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
 
         {file ? (
           <>
-            <FileText className="h-8 w-8 text-green-400" />
+            <FileText className="h-8 w-8 text-apple-green" />
             <div className="text-center">
-              <p className="text-sm text-white font-medium">{file.name}</p>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-sm text-[var(--foreground)] font-medium">{file.name}</p>
+              <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
                 {(file.size / 1024).toFixed(1)} KB
                 {preview.length > 1 && ` \u00b7 ${preview.length - 1} rows previewed`}
               </p>
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); clearFile(); }}
-              className="absolute top-3 right-3 p-1 hover:bg-slate-700 rounded-lg transition-colors"
+              className="absolute top-3 right-3 p-1 hover:bg-white/[0.1] rounded-lg transition-all ease-spring"
             >
-              <X className="h-4 w-4 text-slate-400" />
+              <X className="h-4 w-4 text-[var(--foreground-secondary)]" />
             </button>
           </>
         ) : (
           <>
-            <Upload className="h-8 w-8 text-slate-500" />
+            <Upload className="h-8 w-8 text-[var(--foreground-secondary)]/70" />
             <div className="text-center">
-              <p className="text-sm text-slate-300">Drop a CSV file here or click to browse</p>
-              <p className="text-xs text-slate-500 mt-1">Supports .csv, .tsv, .txt up to 50MB</p>
+              <p className="text-sm text-[var(--foreground)]/80">Drop a CSV file here or click to browse</p>
+              <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">Supports .csv, .tsv, .txt up to 50MB</p>
             </div>
           </>
         )}
@@ -196,12 +196,12 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
 
       {/* Preview Table */}
       {preview.length > 1 && (
-        <div className="overflow-x-auto rounded-lg border border-slate-700">
+        <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-800">
+              <tr className="bg-white/[0.06]">
                 {preview[0]!.map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-left text-slate-400 font-medium whitespace-nowrap">
+                  <th key={i} className="px-3 py-2 text-left text-[var(--foreground-secondary)] font-medium whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -209,9 +209,9 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
             </thead>
             <tbody>
               {preview.slice(1).map((row, i) => (
-                <tr key={i} className="border-t border-slate-800">
+                <tr key={i} className="border-t border-white/[0.04]">
                   {row.map((cell, j) => (
-                    <td key={j} className="px-3 py-1.5 text-slate-300 whitespace-nowrap max-w-[200px] truncate">
+                    <td key={j} className="px-3 py-1.5 text-[var(--foreground)]/80 whitespace-nowrap max-w-[200px] truncate">
                       {cell}
                     </td>
                   ))}
@@ -220,7 +220,7 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
             </tbody>
           </table>
           {preview.length > 5 && (
-            <p className="text-xs text-slate-500 text-center py-1.5 bg-slate-800/50">Showing first {preview.length - 1} rows...</p>
+            <p className="text-xs text-[var(--foreground-secondary)]/70 text-center py-1.5 bg-white/[0.04]">Showing first {preview.length - 1} rows...</p>
           )}
         </div>
       )}
@@ -229,7 +229,7 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
       <button
         onClick={handleUpload}
         disabled={!file || uploading}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl text-sm font-medium transition-colors"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-apple-blue hover:bg-apple-blue/90 disabled:bg-white/[0.06] disabled:text-[var(--foreground-secondary)]/70 text-[var(--foreground)] rounded-xl text-sm font-medium transition-all ease-spring"
       >
         {uploading ? (
           <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
@@ -242,8 +242,8 @@ export function CSVUpload({ onComplete }: CSVUploadProps) {
       {result && (
         <div className={`flex items-start gap-2 px-4 py-3 rounded-xl text-sm ${
           result.success
-            ? 'bg-green-500/10 border border-green-500/20 text-green-400'
-            : 'bg-red-500/10 border border-red-500/20 text-red-400'
+            ? 'bg-[var(--tint-green)] border border-apple-green/20 text-apple-green'
+            : 'bg-[var(--tint-red)] border border-apple-red/20 text-apple-red'
         }`}>
           {result.success ? <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />}
           <div>

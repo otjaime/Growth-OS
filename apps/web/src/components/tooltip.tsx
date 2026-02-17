@@ -45,12 +45,12 @@ export function Tip({ label, definition, children }: TooltipProps) {
 
   return (
     <span className="relative inline-flex items-center" onMouseEnter={show} onMouseLeave={hide}>
-      <span className="border-b border-dotted border-slate-500 cursor-help">
+      <span className="border-b border-dotted border-[var(--foreground-secondary)]/30 cursor-help">
         {children ?? label}
       </span>
       {visible && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 px-3 py-2 text-xs text-slate-200 bg-slate-800 border border-slate-700 rounded-lg shadow-lg whitespace-normal max-w-xs text-center">
-          <strong className="text-white">{label}</strong>
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 px-3 py-2 text-xs text-[var(--foreground)]/80 glass-thin rounded-[var(--radius-md)] shadow-glass whitespace-normal max-w-xs text-center">
+          <strong className="text-[var(--foreground)]">{label}</strong>
           <br />
           {definition}
         </span>

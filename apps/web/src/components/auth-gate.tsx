@@ -67,38 +67,38 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (authed === null) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0a0f1a]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      <div className="flex items-center justify-center min-h-screen bg-[var(--background)]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
       </div>
     );
   }
 
   if (!authed) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0a0f1a]">
+      <div className="flex items-center justify-center min-h-screen bg-[var(--background)]">
         <div className="w-full max-w-sm">
           <div className="flex items-center justify-center gap-3 mb-8">
-            <BarChart3 className="h-8 w-8 text-blue-500" />
-            <h1 className="text-2xl font-bold text-white">Growth OS</h1>
+            <BarChart3 className="h-8 w-8 text-apple-blue" />
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Growth OS</h1>
           </div>
-          <form onSubmit={handleLogin} className="card space-y-4">
+          <form onSubmit={handleLogin} className="card glass-elevated space-y-4">
             <div className="flex items-center gap-2 mb-2">
-              <Lock className="h-4 w-4 text-slate-400" />
-              <p className="text-sm text-slate-400">Enter your password to continue</p>
+              <Lock className="h-4 w-4 text-[var(--foreground-secondary)]" />
+              <p className="text-sm text-[var(--foreground-secondary)]">Enter your password to continue</p>
             </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              className="w-full px-4 py-2.5 bg-white/[0.06] border border-[var(--glass-border)] rounded-[var(--radius-md)] text-[var(--foreground)] text-sm placeholder-[var(--foreground-secondary)]/50 focus:border-apple-blue focus:outline-none"
               autoFocus
             />
-            {error && <p className="text-red-400 text-sm">{error}</p>}
+            {error && <p className="text-apple-red text-sm">{error}</p>}
             <button
               type="submit"
               disabled={loading || !password}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+              className="w-full py-2.5 bg-apple-blue hover:bg-apple-blue/90 disabled:opacity-50 text-white rounded-[var(--radius-md)] text-sm font-medium transition-all ease-spring"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
@@ -122,7 +122,7 @@ export function LogoutButton() {
     <button
       onClick={logout}
       title="Sign out"
-      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+      className="flex items-center gap-1.5 text-xs text-[var(--foreground-secondary)]/50 hover:text-[var(--foreground-secondary)] transition-all ease-spring"
     >
       <LogOut className="h-3 w-3" /> Sign out
     </button>

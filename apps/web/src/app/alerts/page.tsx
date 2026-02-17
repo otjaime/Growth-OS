@@ -55,17 +55,17 @@ function AlertCard({ alert }: { alert: Alert }) {
 
   const severityIcon = (severity: string) => {
     switch (severity) {
-      case 'critical': return <AlertTriangle className="h-5 w-5 text-red-500" />;
-      case 'warning': return <AlertCircle className="h-5 w-5 text-yellow-500" />;
-      default: return <Info className="h-5 w-5 text-blue-500" />;
+      case 'critical': return <AlertTriangle className="h-5 w-5 text-apple-red" />;
+      case 'warning': return <AlertCircle className="h-5 w-5 text-apple-yellow" />;
+      default: return <Info className="h-5 w-5 text-apple-blue" />;
     }
   };
 
   const severityBorder = (severity: string) => {
     switch (severity) {
-      case 'critical': return 'border-l-red-500';
-      case 'warning': return 'border-l-yellow-500';
-      default: return 'border-l-blue-500';
+      case 'critical': return 'border-l-apple-red';
+      case 'warning': return 'border-l-apple-yellow';
+      default: return 'border-l-apple-blue';
     }
   };
 
@@ -75,28 +75,28 @@ function AlertCard({ alert }: { alert: Alert }) {
         <div className="mt-0.5">{severityIcon(alert.severity)}</div>
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-semibold">{alert.title}</h3>
+            <h3 className="text-[var(--foreground)] font-semibold">{alert.title}</h3>
             <span className={`text-xs px-2 py-1 rounded-full uppercase font-medium ${
-              alert.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
-              alert.severity === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
-              'bg-blue-500/20 text-blue-400'
+              alert.severity === 'critical' ? 'bg-[var(--tint-red)] text-apple-red' :
+              alert.severity === 'warning' ? 'bg-[var(--tint-yellow)] text-apple-yellow' :
+              'bg-[var(--tint-blue)] text-apple-blue'
             }`}>
               {alert.severity}
             </span>
           </div>
-          <p className="text-slate-300 mt-1">{alert.description}</p>
-          <div className="mt-3 flex gap-6 text-xs text-slate-400">
-            <span>Segment: <strong className="text-slate-300">{alert.impactedSegment}</strong></span>
+          <p className="text-[var(--foreground)]/80 mt-1">{alert.description}</p>
+          <div className="mt-3 flex gap-6 text-xs text-[var(--foreground-secondary)]">
+            <span>Segment: <strong className="text-[var(--foreground)]/80">{alert.impactedSegment}</strong></span>
           </div>
-          <div className="mt-3 p-3 bg-slate-800/50 rounded-lg">
-            <p className="text-xs text-slate-400 uppercase font-medium mb-1">Recommended Action</p>
-            <p className="text-sm text-slate-200">{alert.recommendation}</p>
+          <div className="mt-3 p-3 bg-white/[0.04] rounded-lg">
+            <p className="text-xs text-[var(--foreground-secondary)] uppercase font-medium mb-1">Recommended Action</p>
+            <p className="text-sm text-[var(--foreground)]">{alert.recommendation}</p>
           </div>
 
           {/* AI Analysis toggle */}
           <button
             onClick={fetchExplanation}
-            className="mt-3 flex items-center gap-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+            className="mt-3 flex items-center gap-2 text-xs text-apple-purple hover:text-apple-purple transition-all ease-spring"
           >
             <Sparkles className="h-3.5 w-3.5" />
             AI Analysis
@@ -104,14 +104,14 @@ function AlertCard({ alert }: { alert: Alert }) {
           </button>
 
           {expanded && (
-            <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/20 rounded-lg">
+            <div className="mt-2 p-3 bg-[var(--tint-purple)] border border-apple-purple/20 rounded-lg">
               {aiLoading ? (
-                <div className="flex items-center gap-2 text-sm text-purple-300">
+                <div className="flex items-center gap-2 text-sm text-apple-purple">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Analyzing alert...
                 </div>
               ) : aiError ? (
-                <p className="text-sm text-yellow-400">{aiError}</p>
+                <p className="text-sm text-apple-yellow">{aiError}</p>
               ) : aiExplanation ? (
                 <div className="text-sm text-purple-200 whitespace-pre-wrap">{aiExplanation}</div>
               ) : null}
@@ -140,15 +140,15 @@ export default function AlertsPage() {
   }, []);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" /></div>;
   }
 
   if (error) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">Alerts & Recommendations</h1>
-        <div className="card border-red-500/50 flex items-center justify-center h-64">
-          <p className="text-red-400">Failed to load alerts. Check that your API is running.</p>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Alerts & Recommendations</h1>
+        <div className="card border-apple-red/50 flex items-center justify-center h-64">
+          <p className="text-apple-red">Failed to load alerts. Check that your API is running.</p>
         </div>
       </div>
     );
@@ -157,15 +157,15 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Alerts & Recommendations</h1>
-        <span className="text-sm text-slate-400">
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Alerts & Recommendations</h1>
+        <span className="text-sm text-[var(--foreground-secondary)]">
           {alerts.length} active alert{alerts.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {alerts.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-slate-400 text-lg">No alerts — all metrics within thresholds</p>
+          <p className="text-[var(--foreground-secondary)] text-lg">No alerts — all metrics within thresholds</p>
         </div>
       ) : (
         <div className="space-y-4">

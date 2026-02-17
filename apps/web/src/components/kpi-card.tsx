@@ -26,19 +26,19 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
   })();
 
   return (
-    <div className="card flex flex-col gap-2">
-      <p className="text-xs text-slate-400 uppercase tracking-wide">{title}</p>
+    <div className="card glass-interactive flex flex-col gap-2">
+      <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{title}</p>
       <div className="flex items-end justify-between">
-        <p className="text-2xl font-bold text-white">{formatted}</p>
+        <p className="text-2xl font-bold text-[var(--foreground)]">{formatted}</p>
         {sparkData && sparkData.length > 0 && (
-          <MiniSparkline data={sparkData} color={(change ?? 0) >= 0 ? '#22c55e' : '#ef4444'} />
+          <MiniSparkline data={sparkData} color={(change ?? 0) >= 0 ? '#30d158' : '#ff453a'} />
         )}
       </div>
       <p className={`text-sm font-medium ${changeColor(change ?? 0, invertColor)}`}>
         {change !== undefined ? `${formatPercentChange(change)} vs prior period` : '\u00A0'}
       </p>
       {benchmark && (
-        <p className="text-[10px] text-slate-600">DTC benchmark: {benchmark}</p>
+        <p className="text-[10px] text-[var(--foreground-secondary)]/50">DTC benchmark: {benchmark}</p>
       )}
     </div>
   );

@@ -121,15 +121,15 @@ export default function WbrPage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" /></div>;
   }
 
   if (error || !data) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">Weekly Business Review</h1>
-        <div className="card border-red-500/50 flex items-center justify-center h-64">
-          <p className="text-red-400">Failed to load WBR data. Check that your API is running.</p>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Weekly Business Review</h1>
+        <div className="card border-apple-red/50 flex items-center justify-center h-64">
+          <p className="text-apple-red">Failed to load WBR data. Check that your API is running.</p>
         </div>
       </div>
     );
@@ -162,7 +162,7 @@ export default function WbrPage() {
     if (numMatch) {
       return (
         <div key={key} className="flex gap-3 ml-2 my-1">
-          <span className="text-indigo-400 font-medium min-w-[1.25rem] text-right">{numMatch[1]}.</span>
+          <span className="text-apple-blue font-medium min-w-[1.25rem] text-right">{numMatch[1]}.</span>
           <span>{renderInlineBold(numMatch[2])}</span>
         </div>
       );
@@ -170,7 +170,7 @@ export default function WbrPage() {
     if (line.startsWith('- ')) {
       return (
         <div key={key} className="flex gap-2 ml-2 my-1">
-          <span className="text-indigo-400">•</span>
+          <span className="text-apple-blue">•</span>
           <span>{renderInlineBold(line.slice(2))}</span>
         </div>
       );
@@ -184,7 +184,7 @@ export default function WbrPage() {
     if (parts.length === 1) return text;
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
+        return <strong key={i} className="text-[var(--foreground)] font-semibold">{part.slice(2, -2)}</strong>;
       }
       return <span key={i}>{part}</span>;
     });
@@ -192,17 +192,17 @@ export default function WbrPage() {
 
   const severityIcon = (severity: string) => {
     switch (severity) {
-      case 'critical': return <AlertTriangle className="h-4 w-4 text-red-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      default: return <Info className="h-4 w-4 text-blue-500" />;
+      case 'critical': return <AlertTriangle className="h-4 w-4 text-apple-red" />;
+      case 'warning': return <AlertCircle className="h-4 w-4 text-apple-yellow" />;
+      default: return <Info className="h-4 w-4 text-apple-blue" />;
     }
   };
 
   const severityBadge = (severity: string) => {
     switch (severity) {
-      case 'critical': return 'bg-red-500/20 text-red-400';
-      case 'warning': return 'bg-yellow-500/20 text-yellow-400';
-      default: return 'bg-blue-500/20 text-blue-400';
+      case 'critical': return 'bg-[var(--tint-red)] text-apple-red';
+      case 'warning': return 'bg-[var(--tint-yellow)] text-apple-yellow';
+      default: return 'bg-[var(--tint-blue)] text-apple-blue';
     }
   };
 
@@ -211,10 +211,10 @@ export default function WbrPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FileText className="h-6 w-6 text-indigo-400" />
+          <FileText className="h-6 w-6 text-apple-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-white">Weekly Business Review</h1>
-            <p className="text-xs text-slate-500 mt-0.5">{data.weekLabel}</p>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Weekly Business Review</h1>
+            <p className="text-xs text-[var(--foreground-secondary)]/70 mt-0.5">{data.weekLabel}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ export default function WbrPage() {
             <button
               onClick={handleGenerateAI}
               disabled={aiStreaming}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-apple-purple hover:bg-apple-purple disabled:opacity-50 text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
             >
               {aiStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               {aiStreaming ? 'Generating...' : aiDone ? 'Regenerate AI' : 'AI Analysis'}
@@ -230,14 +230,14 @@ export default function WbrPage() {
           )}
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors print:hidden"
+            className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring print:hidden"
           >
             <Download className="h-4 w-4" />
             Export PDF
           </button>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors print:hidden"
+            className="flex items-center gap-2 px-4 py-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring print:hidden"
           >
             {copied ? <Check className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
             {copied ? 'Copied!' : 'Copy Markdown'}
@@ -247,43 +247,43 @@ export default function WbrPage() {
 
       {/* AI Badge */}
       {(aiStreaming || aiDone) && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg w-fit">
-          <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-          <span className="text-xs text-purple-300">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--tint-purple)] border border-apple-purple/20 rounded-lg w-fit">
+          <Sparkles className="h-3.5 w-3.5 text-apple-purple" />
+          <span className="text-xs text-apple-purple">
             {aiStreaming ? 'AI is analyzing your data...' : 'AI-generated analysis'}
           </span>
-          {aiStreaming && <Loader2 className="h-3 w-3 text-purple-400 animate-spin" />}
+          {aiStreaming && <Loader2 className="h-3 w-3 text-apple-purple animate-spin" />}
         </div>
       )}
 
       {/* KPI Summary Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card">
-          <p className="text-xs text-slate-400 uppercase">Revenue</p>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(s.revenue)}</p>
+          <p className="text-xs text-[var(--foreground-secondary)] uppercase">Revenue</p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{formatCurrency(s.revenue)}</p>
           <p className={`text-sm font-medium ${changeColor(s.revenueChange)}`}>{formatPercentChange(s.revenueChange)} WoW</p>
         </div>
         <div className="card">
-          <p className="text-xs text-slate-400 uppercase">Orders</p>
-          <p className="text-2xl font-bold text-white mt-1">{s.orders.toLocaleString()}</p>
+          <p className="text-xs text-[var(--foreground-secondary)] uppercase">Orders</p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{s.orders.toLocaleString()}</p>
           <p className={`text-sm font-medium ${changeColor(s.ordersChange)}`}>{formatPercentChange(s.ordersChange)} WoW</p>
         </div>
         <div className="card">
-          <p className="text-xs text-slate-400 uppercase">Blended CAC</p>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(s.cac)}</p>
+          <p className="text-xs text-[var(--foreground-secondary)] uppercase">Blended CAC</p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{formatCurrency(s.cac)}</p>
           <p className={`text-sm font-medium ${changeColor(s.spendChange, true)}`}>Spend {formatPercentChange(s.spendChange)}</p>
         </div>
         <div className="card">
-          <p className="text-xs text-slate-400 uppercase">MER</p>
-          <p className="text-2xl font-bold text-white mt-1">{formatMultiplier(s.mer)}</p>
-          <p className="text-sm text-slate-500">CM {formatPercent(s.cmPct)}</p>
+          <p className="text-xs text-[var(--foreground-secondary)] uppercase">MER</p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{formatMultiplier(s.mer)}</p>
+          <p className="text-sm text-[var(--foreground-secondary)]/70">CM {formatPercent(s.cmPct)}</p>
         </div>
       </div>
 
       {/* Alerts Banner (if any) */}
       {data.alerts.length > 0 && (
-        <div className="card border-l-4 border-l-yellow-500 space-y-3">
-          <h2 className="text-sm font-semibold text-yellow-400 uppercase tracking-wide">
+        <div className="card border-l-4 border-l-apple-yellow space-y-3">
+          <h2 className="text-sm font-semibold text-apple-yellow uppercase tracking-wide">
             {data.alerts.length} Active Alert{data.alerts.length !== 1 ? 's' : ''}
           </h2>
           {data.alerts.map((alert) => (
@@ -291,13 +291,13 @@ export default function WbrPage() {
               <div className="mt-0.5">{severityIcon(alert.severity)}</div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-white">{alert.title}</span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">{alert.title}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase font-medium ${severityBadge(alert.severity)}`}>
                     {alert.severity}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">{alert.description}</p>
-                <p className="text-xs text-slate-500 mt-1">{alert.recommendation}</p>
+                <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{alert.description}</p>
+                <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">{alert.recommendation}</p>
               </div>
             </div>
           ))}
@@ -312,15 +312,15 @@ export default function WbrPage() {
               if (section.level === 1) return null;
               return (
                 <div key={i} className="card">
-                  <h2 className="text-lg font-semibold text-white mb-3">{section.heading}</h2>
-                  <div className="text-slate-300 text-sm leading-relaxed">
+                  <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3">{section.heading}</h2>
+                  <div className="text-[var(--foreground)]/80 text-sm leading-relaxed">
                     {section.body.split('\n').map((line, j) => renderLine(line, j))}
                   </div>
                 </div>
               );
             })}
             {aiStreaming && (
-              <div className="flex items-center gap-2 text-purple-400 text-sm">
+              <div className="flex items-center gap-2 text-apple-purple text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Analyzing...</span>
               </div>
@@ -328,7 +328,7 @@ export default function WbrPage() {
           </div>
         ) : (
           <div className="card">
-            <div className="text-slate-300 whitespace-pre-wrap text-sm leading-relaxed">
+            <div className="text-[var(--foreground)]/80 whitespace-pre-wrap text-sm leading-relaxed">
               {activeNarrative}
               {aiStreaming && <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5" />}
             </div>
@@ -337,7 +337,7 @@ export default function WbrPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-xs text-slate-600 text-right">
+      <p className="text-xs text-[var(--foreground-secondary)]/50 text-right">
         Generated {new Date(data.generatedAt).toLocaleString()}
         {aiDone && ' | AI-enhanced'}
       </p>

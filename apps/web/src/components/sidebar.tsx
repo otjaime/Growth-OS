@@ -107,19 +107,19 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-[var(--card-border)]">
+      <div className="px-6 py-5 border-b border-[var(--glass-border)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BarChart3 className="h-7 w-7 text-blue-500" />
+            <BarChart3 className="h-7 w-7 text-apple-blue" />
             <div>
-              <h1 className="text-lg font-bold text-white">Growth OS</h1>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest">Analytics Platform</p>
+              <h1 className="text-lg font-bold text-[var(--foreground)]">Growth OS</h1>
+              <p className="text-[10px] text-[var(--foreground-secondary)]/70 uppercase tracking-widest">Analytics Platform</p>
             </div>
           </div>
           {/* Close button on mobile */}
           <button
             onClick={() => setMobileOpen(false)}
-            className="lg:hidden p-1 text-slate-400 hover:text-white"
+            className="lg:hidden p-1 text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -136,10 +136,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
                 isActive
-                  ? 'bg-blue-600/20 text-blue-400'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800',
+                  ? 'bg-[var(--tint-blue)] text-apple-blue'
+                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
               )}
             >
               <Icon className="h-4 w-4" />
@@ -150,12 +150,12 @@ export function Sidebar() {
       </nav>
 
       {/* Channel Filter */}
-      <div className="px-4 py-3 border-t border-[var(--card-border)]">
-        <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Channel Filter</label>
+      <div className="px-4 py-3 border-t border-[var(--glass-border)]">
+        <label className="text-[10px] text-[var(--foreground-secondary)]/50 uppercase tracking-wider mb-1 block">Channel Filter</label>
         <select
           value={channelFilter ?? ''}
           onChange={(e) => setChannelFilter(e.target.value || null)}
-          className="w-full px-2 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded-lg text-slate-300 focus:outline-none focus:border-blue-500"
+          className="w-full px-2 py-1.5 text-xs bg-white/[0.06] border border-[var(--glass-border)] rounded-[var(--radius-md)] text-[var(--foreground-secondary)] focus:outline-none focus:border-apple-blue"
         >
           <option value="">All Channels</option>
           {CHANNELS.map((ch) => (
@@ -165,18 +165,18 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-[var(--card-border)] space-y-2">
+      <div className="px-6 py-4 border-t border-[var(--glass-border)] space-y-2">
         <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className={clsx(
             'w-2 h-2 rounded-full animate-pulse',
-            !apiOk ? 'bg-red-500' : demoMode ? 'bg-purple-500' : 'bg-green-500',
+            !apiOk ? 'bg-apple-red' : demoMode ? 'bg-apple-purple' : 'bg-apple-green',
           )} />
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-[var(--foreground-secondary)]">
             {!apiOk ? 'API Disconnected' : demoMode ? 'Demo Mode' : 'Live Mode'}
           </span>
         </Link>
         {apiOk && (
-          <p className="text-[10px] text-slate-500 pl-4">{syncLabel}</p>
+          <p className="text-[10px] text-[var(--foreground-secondary)]/50 pl-4">{syncLabel}</p>
         )}
         <LogoutButton />
       </div>
@@ -188,7 +188,7 @@ export function Sidebar() {
       {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-slate-800 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-white/[0.06] backdrop-blur-md rounded-lg text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.1] transition-all ease-spring"
         aria-label="Open menu"
       >
         <Menu className="h-5 w-5" />
@@ -197,7 +197,7 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -205,7 +205,7 @@ export function Sidebar() {
       {/* Sidebar — desktop: fixed, mobile: slide-out */}
       <aside
         className={clsx(
-          'fixed left-0 top-0 h-screen w-64 bg-[#0c1524] border-r border-[var(--card-border)] flex flex-col z-50 transition-transform duration-200',
+          'fixed left-0 top-0 h-screen w-64 glass-thick glass-specular border-r border-[var(--glass-border)] flex flex-col z-50 transition-transform duration-200',
           // Desktop: always visible
           'lg:translate-x-0',
           // Mobile: slide in/out

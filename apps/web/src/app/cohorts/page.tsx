@@ -52,18 +52,18 @@ interface SegmentData {
 }
 
 const SEGMENT_COLORS: Record<string, string> = {
-  Champions: '#22c55e',
-  Loyal: '#3b82f6',
-  Potential: '#a855f7',
-  'At Risk': '#f59e0b',
-  Dormant: '#6b7280',
-  Lost: '#ef4444',
+  Champions: '#30d158',
+  Loyal: '#0a84ff',
+  Potential: '#bf5af2',
+  'At Risk': '#ff9f0a',
+  Dormant: '#98989f',
+  Lost: '#ff453a',
 };
 
 function ProjectedCell({ value, projected, formatter }: { value: number; projected: boolean; formatter: (v: number) => string }) {
-  if (value === 0 && projected) return <span className="text-slate-600">--</span>;
+  if (value === 0 && projected) return <span className="text-[var(--foreground-secondary)]/50">--</span>;
   return (
-    <span className={projected ? 'text-blue-400/60 italic' : ''}>
+    <span className={projected ? 'text-apple-blue/60 italic' : ''}>
       {formatter(value)}
       {projected && <span className="text-[10px] ml-0.5">*</span>}
     </span>
@@ -89,14 +89,14 @@ export default function CohortsPage() {
   }, []);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" /></div>;
   }
 
   if (!data || data.projections.length === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
-        <div className="card flex flex-col items-center justify-center h-64 text-slate-400">
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Cohorts & Retention</h1>
+        <div className="card flex flex-col items-center justify-center h-64 text-[var(--foreground-secondary)]">
           <p className="text-lg font-medium">No cohort data yet</p>
           <p className="text-sm mt-2">Cohorts will appear after your first data sync completes.</p>
         </div>
@@ -125,9 +125,9 @@ export default function CohortsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Cohorts & Retention</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Cohorts & Retention</h1>
         {data.decayRatios.matureCohortCount > 0 && (
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">
             * Projected values based on decay curves from {data.decayRatios.matureCohortCount} mature cohort{data.decayRatios.matureCohortCount !== 1 ? 's' : ''}
           </p>
         )}
@@ -135,22 +135,30 @@ export default function CohortsPage() {
 
       {/* Retention Curves */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-white mb-2">Retention Curves by Cohort</h2>
-        <p className="text-xs text-slate-400 mb-4">
+        <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">Retention Curves by Cohort</h2>
+        <p className="text-xs text-[var(--foreground-secondary)] mb-4">
           Each line represents a monthly cohort of first-time customers. The Y-axis shows what percentage made a repeat purchase within D7, D30, D60, or D90. Higher and flatter curves indicate stronger retention.
         </p>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={retentionChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="cohort" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v: number) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="cohort" stroke="rgba(255,255,255,0.35)" fontSize={11} />
+              <YAxis stroke="rgba(255,255,255,0.35)" fontSize={11} tickFormatter={(v: number) => `${v}%`} />
+              <Tooltip contentStyle={{
+                backgroundColor: 'rgba(30,30,36,0.85)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                color: '#f5f5f7',
+                boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
+              }} />
               <Legend />
-              <Line type="monotone" dataKey="D7" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls={false} />
-              <Line type="monotone" dataKey="D30" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls={false} />
-              <Line type="monotone" dataKey="D60" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls={false} />
-              <Line type="monotone" dataKey="D90" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D7" stroke="#30d158" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D30" stroke="#0a84ff" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D60" stroke="#ff9f0a" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="D90" stroke="#ff453a" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -158,21 +166,29 @@ export default function CohortsPage() {
 
       {/* LTV Curves */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-white mb-2">LTV by Cohort</h2>
-        <p className="text-xs text-slate-400 mb-4">
+        <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">LTV by Cohort</h2>
+        <p className="text-xs text-[var(--foreground-secondary)] mb-4">
           Shows the cumulative revenue per customer at 30, 90, and 180 days after acquisition. Rising curves across cohorts mean newer customers are spending more over time. Compare against CAC to assess profitability.
         </p>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={ltvChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="cohort" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v: number) => `$${v}`} />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="cohort" stroke="rgba(255,255,255,0.35)" fontSize={11} />
+              <YAxis stroke="rgba(255,255,255,0.35)" fontSize={11} tickFormatter={(v: number) => `$${v}`} />
+              <Tooltip contentStyle={{
+                backgroundColor: 'rgba(30,30,36,0.85)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                color: '#f5f5f7',
+                boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
+              }} />
               <Legend />
-              <Line type="monotone" dataKey="LTV30" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls={false} />
-              <Line type="monotone" dataKey="LTV90" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls={false} />
-              <Line type="monotone" dataKey="LTV180" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="LTV30" stroke="#0a84ff" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="LTV90" stroke="#30d158" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="LTV180" stroke="#ff9f0a" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -181,7 +197,7 @@ export default function CohortsPage() {
       {/* Cohort Table */}
       <div className="card overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Cohort Detail</h2>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Cohort Detail</h2>
           <button
             onClick={() => exportToCSV(
               cohorts.map((c) => ({
@@ -212,26 +228,26 @@ export default function CohortsPage() {
                 { key: 'paybackDays', label: 'Payback Days' },
               ],
             )}
-            className="text-xs text-slate-400 hover:text-white px-2 py-1 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+            className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--glass-border)] rounded hover:border-[var(--glass-border-hover)] transition-all ease-spring"
           >
             Export CSV
           </button>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700">
-              <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Cohort</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Size</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">D7</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">D30</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">D60</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">D90</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV 30</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV 90</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV 180</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">CAC</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Payback</th>
-              <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">LTV:CAC</th>
+            <tr className="border-b border-[var(--glass-border)]">
+              <th className="px-3 py-2 text-left text-xs text-[var(--foreground-secondary)] uppercase">Cohort</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Size</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">D7</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">D30</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">D60</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">D90</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">LTV 30</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">LTV 90</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">LTV 180</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">CAC</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Payback</th>
+              <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">LTV:CAC</th>
             </tr>
           </thead>
           <tbody>
@@ -241,8 +257,8 @@ export default function CohortsPage() {
               const ratio = cac > 0 ? ltv180 / cac : 0;
               const ratioProjected = c.ltv.ltv180.projected;
               return (
-                <tr key={c.cohortMonth} className="border-b border-slate-800 hover:bg-slate-800/50">
-                  <td className="px-3 py-2 font-medium text-white">{c.cohortMonth}</td>
+                <tr key={c.cohortMonth} className="border-b border-white/[0.04] hover:bg-white/[0.04]">
+                  <td className="px-3 py-2 font-medium text-[var(--foreground)]">{c.cohortMonth}</td>
                   <td className="px-3 py-2 text-right">{formatNumber(c.cohortSize)}</td>
                   <td className="px-3 py-2 text-right">
                     <ProjectedCell value={c.retention.d7.value} projected={c.retention.d7.projected} formatter={formatPercent} />
@@ -267,7 +283,7 @@ export default function CohortsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">{formatCurrency(cac)}</td>
                   <td className="px-3 py-2 text-right">{c.paybackDays ? `${c.paybackDays}d` : '--'}</td>
-                  <td className={`px-3 py-2 text-right font-medium ${cac > 0 && ratio >= 3 ? 'text-green-400' : cac > 0 && ratio >= 2 ? 'text-yellow-400' : 'text-red-400'} ${ratioProjected ? 'opacity-60 italic' : ''}`}>
+                  <td className={`px-3 py-2 text-right font-medium ${cac > 0 && ratio >= 3 ? 'text-apple-green' : cac > 0 && ratio >= 2 ? 'text-apple-yellow' : 'text-apple-red'} ${ratioProjected ? 'opacity-60 italic' : ''}`}>
                     {cac > 0 ? (
                       <>
                         {formatMultiplier(ratio)}
@@ -286,27 +302,35 @@ export default function CohortsPage() {
       {segments.length > 0 && (
         <>
           <div>
-            <h2 className="text-xl font-bold text-white">Customer Segments</h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <h2 className="text-xl font-bold text-[var(--foreground)]">Customer Segments</h2>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
               RFM segmentation based on Recency, Frequency, and Monetary value. Each customer is scored 1-5 on each dimension and classified into a segment.
             </p>
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-white mb-4">Segment Distribution</h3>
+            <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Segment Distribution</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={segments} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={11} />
-                  <YAxis type="category" dataKey="segment" stroke="#94a3b8" fontSize={12} width={80} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                  <XAxis type="number" stroke="rgba(255,255,255,0.35)" fontSize={11} />
+                  <YAxis type="category" dataKey="segment" stroke="rgba(255,255,255,0.35)" fontSize={12} width={80} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }}
+                    contentStyle={{
+                      backgroundColor: 'rgba(30,30,36,0.85)',
+                      backdropFilter: 'blur(20px) saturate(180%)',
+                      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px',
+                      color: '#f5f5f7',
+                      boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
+                    }}
                     formatter={(value: number) => [formatNumber(value), 'Customers']}
                   />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                     {segments.map((s) => (
-                      <Cell key={s.segment} fill={SEGMENT_COLORS[s.segment] ?? '#6b7280'} />
+                      <Cell key={s.segment} fill={SEGMENT_COLORS[s.segment] ?? '#98989f'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -315,24 +339,24 @@ export default function CohortsPage() {
           </div>
 
           <div className="card overflow-x-auto">
-            <h3 className="text-lg font-semibold text-white mb-4">Segment Detail</h3>
+            <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Segment Detail</h3>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-700">
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Segment</th>
-                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Customers</th>
-                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Revenue</th>
-                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Avg Orders</th>
-                  <th className="px-3 py-2 text-right text-xs text-slate-400 uppercase">Avg Order Value</th>
+                <tr className="border-b border-[var(--glass-border)]">
+                  <th className="px-3 py-2 text-left text-xs text-[var(--foreground-secondary)] uppercase">Segment</th>
+                  <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Customers</th>
+                  <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Revenue</th>
+                  <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Avg Orders</th>
+                  <th className="px-3 py-2 text-right text-xs text-[var(--foreground-secondary)] uppercase">Avg Order Value</th>
                 </tr>
               </thead>
               <tbody>
                 {segments.map((s) => (
-                  <tr key={s.segment} className="border-b border-slate-800 hover:bg-slate-800/50">
+                  <tr key={s.segment} className="border-b border-white/[0.04] hover:bg-white/[0.04]">
                     <td className="px-3 py-2">
                       <span className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[s.segment] ?? '#6b7280' }} />
-                        <span className="font-medium text-white">{s.segment}</span>
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[s.segment] ?? '#98989f' }} />
+                        <span className="font-medium text-[var(--foreground)]">{s.segment}</span>
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">{formatNumber(s.count)}</td>

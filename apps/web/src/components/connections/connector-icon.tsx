@@ -15,17 +15,17 @@ import {
 } from 'lucide-react';
 
 const colorMap: Record<string, string> = {
-  green: 'bg-green-500/15 text-green-400 ring-green-500/30',
-  blue: 'bg-blue-500/15 text-blue-400 ring-blue-500/30',
-  purple: 'bg-purple-500/15 text-purple-400 ring-purple-500/30',
-  yellow: 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30',
-  orange: 'bg-orange-500/15 text-orange-400 ring-orange-500/30',
-  pink: 'bg-pink-500/15 text-pink-400 ring-pink-500/30',
-  emerald: 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30',
-  violet: 'bg-violet-500/15 text-violet-400 ring-violet-500/30',
-  cyan: 'bg-cyan-500/15 text-cyan-400 ring-cyan-500/30',
-  slate: 'bg-slate-500/15 text-slate-400 ring-slate-500/30',
-  red: 'bg-red-500/15 text-red-400 ring-red-500/30',
+  green: 'bg-apple-green/15 text-apple-green ring-apple-green/30',
+  blue: 'bg-apple-blue/15 text-apple-blue ring-apple-blue/30',
+  purple: 'bg-apple-purple/15 text-apple-purple ring-apple-purple/30',
+  yellow: 'bg-apple-yellow/15 text-apple-yellow ring-apple-yellow/30',
+  orange: 'bg-apple-orange/15 text-apple-orange ring-apple-orange/30',
+  pink: 'bg-apple-pink/15 text-apple-pink ring-apple-pink/30',
+  emerald: 'bg-apple-green/15 text-apple-green ring-apple-green/30',
+  violet: 'bg-apple-purple/15 text-apple-purple ring-apple-purple/30',
+  cyan: 'bg-apple-teal/15 text-apple-teal ring-apple-teal/30',
+  slate: 'bg-apple-gray/15 text-apple-gray ring-apple-gray/30',
+  red: 'bg-apple-red/15 text-apple-red ring-apple-red/30',
 };
 
 const iconMap: Record<string, React.ReactNode> = {

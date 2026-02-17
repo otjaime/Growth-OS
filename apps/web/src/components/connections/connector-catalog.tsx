@@ -54,20 +54,20 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
       {/* Search + Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--foreground-secondary)]" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, data type, or platform..."
-            className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder:text-slate-500"
+            className="w-full bg-white/[0.04] border border-[var(--glass-border)] rounded-xl pl-10 pr-4 py-2.5 text-[var(--foreground)] text-sm focus:ring-2 focus:ring-apple-blue focus:border-apple-blue transition-all placeholder:text-[var(--foreground-secondary)]/70"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setFilterCategory(null)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              !filterCategory ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ease-spring ${
+              !filterCategory ? 'bg-apple-blue text-[var(--foreground)]' : 'bg-white/[0.06] text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
             }`}
           >
             All
@@ -76,8 +76,8 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
             <button
               key={cat}
               onClick={() => setFilterCategory(cat === filterCategory ? null : cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                cat === filterCategory ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ease-spring ${
+                cat === filterCategory ? 'bg-apple-blue text-[var(--foreground)]' : 'bg-white/[0.06] text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
               }`}
             >
               {CATEGORY_LABELS[cat] ?? cat}
@@ -89,7 +89,7 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
       {/* Catalog Grid */}
       {categories.map((category) => (
         <div key={category}>
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">
             {CATEGORY_LABELS[category] ?? category}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -99,38 +99,38 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
                 <button
                   key={connector.id}
                   onClick={() => onSelect(connector)}
-                  className={`text-left bg-slate-800/30 border rounded-xl p-4 hover:border-blue-500/50 hover:bg-slate-800/60 transition-all group ${
-                    isConnected ? 'border-green-500/30' : 'border-slate-700/50'
+                  className={`text-left bg-white/[0.03] border rounded-xl p-4 hover:border-apple-blue/50 hover:bg-white/[0.06]/60 transition-all group ${
+                    isConnected ? 'border-apple-green/30' : 'border-[var(--glass-border)]/50'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <ConnectorIcon icon={connector.icon} color={connector.color} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-white font-medium text-sm truncate">{connector.name}</h4>
+                        <h4 className="text-[var(--foreground)] font-medium text-sm truncate">{connector.name}</h4>
                         {isConnected && (
-                          <span className="flex-shrink-0 text-[10px] font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-full">
+                          <span className="flex-shrink-0 text-[10px] font-medium text-apple-green bg-[var(--tint-green)] px-1.5 py-0.5 rounded-full">
                             Connected
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{connector.description}</p>
+                      <p className="text-xs text-[var(--foreground-secondary)] mt-0.5 line-clamp-2">{connector.description}</p>
 
                       {/* Quick info row */}
                       <div className="flex items-center gap-3 mt-2">
                         {connector.setupTime && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--foreground-secondary)]/70">
                             <Clock className="h-3 w-3" /> {connector.setupTime}
                           </span>
                         )}
                         {connector.dataSync && connector.dataSync.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--foreground-secondary)]/70">
                             <Database className="h-3 w-3" /> {connector.dataSync.length} data types
                           </span>
                         )}
                       </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-blue-400 transition-colors flex-shrink-0 mt-1" />
+                    <ChevronRight className="h-4 w-4 text-[var(--foreground-secondary)]/50 group-hover:text-apple-blue transition-all ease-spring flex-shrink-0 mt-1" />
                   </div>
                 </button>
               );
@@ -141,15 +141,15 @@ export function ConnectorCatalog({ connectors, connectedIds, onSelect }: Connect
 
       {connectors.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-slate-400 text-sm">Failed to load connectors from the API.</p>
-          <p className="text-xs text-slate-500 mt-1">Please check your connection and try refreshing the page.</p>
+          <p className="text-[var(--foreground-secondary)] text-sm">Failed to load connectors from the API.</p>
+          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">Please check your connection and try refreshing the page.</p>
         </div>
       )}
 
       {connectors.length > 0 && filtered.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-slate-400 text-sm">No connectors match your search.</p>
-          <p className="text-xs text-slate-500 mt-1">Try searching by data type (e.g. &quot;orders&quot;, &quot;campaigns&quot;) or platform name.</p>
+          <p className="text-[var(--foreground-secondary)] text-sm">No connectors match your search.</p>
+          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1">Try searching by data type (e.g. &quot;orders&quot;, &quot;campaigns&quot;) or platform name.</p>
         </div>
       )}
     </div>
