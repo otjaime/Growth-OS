@@ -9,6 +9,7 @@ import { ingestRaw } from './pipeline/step1-ingest-raw.js';
 import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
 import { validateData } from './pipeline/validate.js';
+import { seedDemoExperiments } from './demo-experiments.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('demo');
@@ -72,6 +73,11 @@ async function runDemo() {
     log.info('Step 5: Validating data...');
     const validationResults = await validateData();
     const allPassed = validationResults.every((r) => r.passed);
+
+    // Step 6: Seed demo experiments (all 5 statuses)
+    log.info('Step 6: Seeding demo experiments...');
+    const experimentsSeeded = await seedDemoExperiments();
+    log.info({ experimentsSeeded }, 'Demo experiments seeded');
 
     // Update job run
     const durationMs = Date.now() - startTime;

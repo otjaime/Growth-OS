@@ -15,3 +15,4 @@ export { computeGrowthModel, computeMonthlyBreakdown, DEMO_SCENARIOS } from './g
 export type { GrowthModelInput, GrowthModelOutput, MonthlyProjection, DemoScenario } from './growth-model.js';
 export { computeRFMScores, classifySegment, getSegmentDistribution } from './segmentation.js';
 export type { CustomerRFM, RFMScores, CustomerSegment, SegmentSummary } from './segmentation.js';
+export { seedDemoExperiments } from './demo-experiments.js';
