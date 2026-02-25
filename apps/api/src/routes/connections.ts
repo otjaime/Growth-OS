@@ -549,6 +549,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         }
 
         // Refresh the OAuth token before testing (access tokens expire after ~1 hour)
+        let gadsRefreshError = '';
         if (refreshToken) {
           const googleOAuth = await getGoogleOAuthConfig();
           if (googleOAuth.clientId && googleOAuth.clientSecret) {
@@ -576,13 +577,23 @@ export async function connectionsRoutes(app: FastifyInstance) {
               } else {
                 const refreshErr = await refreshResp.text();
                 app.log.warn({ status: refreshResp.status, body: refreshErr.substring(0, 200) }, 'Google Ads token refresh failed');
+                gadsRefreshError = `Token refresh failed (${refreshResp.status}): ${refreshErr.substring(0, 150)}`;
               }
-            } catch (refreshError) {
-              app.log.warn({ error: (refreshError as Error).message }, 'Google Ads token refresh error');
+            } catch (err) {
+              app.log.warn({ error: (err as Error).message }, 'Google Ads token refresh error');
+              gadsRefreshError = `Token refresh error: ${(err as Error).message}`;
             }
           } else {
-            app.log.warn('Cannot refresh Google Ads token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured');
+            gadsRefreshError = 'GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured. Set them in Settings > Google OAuth.';
           }
+        } else if (accessToken) {
+          // Has access token but no refresh token - warn that it may be expired
+          gadsRefreshError = 'No refresh token stored. If test fails, disconnect and re-authorize via "Connect with Google".';
+        }
+
+        // If refresh failed and we still have the original (likely expired) token, fail early
+        if (gadsRefreshError && accessToken === (creds.accessToken ?? '')) {
+          return { success: false, message: `Google Ads connection failed: ${gadsRefreshError}` };
         }
 
         // If we have an OAuth access token, validate via the REST API
@@ -635,8 +646,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
           return { success: false, message: 'No OAuth token found. Click "Connect with Google" to authorize.' };
         }
 
-        // Try to refresh the token first
+        // Try to refresh the token first (access tokens expire after ~1 hour)
         let token = accessToken;
+        let refreshError = '';
         const googleOAuth = await getGoogleOAuthConfig();
         if (refreshToken && googleOAuth.clientId && googleOAuth.clientSecret) {
           try {
@@ -663,14 +675,21 @@ export async function connectionsRoutes(app: FastifyInstance) {
             } else {
               const refreshErr = await refreshResp.text();
               app.log.warn({ status: refreshResp.status, body: refreshErr.substring(0, 200) }, 'GA4 token refresh failed');
+              refreshError = `Token refresh failed (${refreshResp.status}): ${refreshErr.substring(0, 150)}`;
             }
-          } catch (refreshError) {
-            app.log.warn({ error: (refreshError as Error).message }, 'GA4 token refresh error');
+          } catch (err) {
+            app.log.warn({ error: (err as Error).message }, 'GA4 token refresh error');
+            refreshError = `Token refresh error: ${(err as Error).message}`;
           }
         } else if (!refreshToken) {
-          app.log.warn('GA4: no refresh token stored — cannot refresh expired access token. Re-authorize via Google OAuth.');
-        } else {
-          app.log.warn('Cannot refresh GA4 token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured');
+          refreshError = 'No refresh token stored. Disconnect GA4 and re-authorize via "Connect with Google" to get a new refresh token.';
+        } else if (!googleOAuth.clientId || !googleOAuth.clientSecret) {
+          refreshError = 'GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured. Set them in Settings > Google OAuth.';
+        }
+
+        // If refresh failed, return the specific error instead of trying with an expired token
+        if (refreshError && token === accessToken) {
+          return { success: false, message: `GA4 connection failed: ${refreshError}` };
         }
 
         // Test with GA4 Data API metadata endpoint
