@@ -24,6 +24,7 @@ import { suggestionsRoutes } from './routes/suggestions.js';
 import { growthModelRoutes } from './routes/growth-model.js';
 import { clerkWebhookRoutes } from './routes/clerk-webhooks.js';
 import { autopilotRoutes } from './routes/autopilot.js';
+import { billingRoutes } from './routes/billing.js';
 import { runFullSync } from './lib/run-connector-sync.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
@@ -72,6 +73,7 @@ async function main() {
         { name: 'suggestions', description: 'AI-powered experiment suggestions' },
         { name: 'growth-model', description: 'Growth model scenario planning and projections' },
         { name: 'autopilot', description: 'Meta Ads autopilot — ad-level creative data, syncing, and diagnosis' },
+        { name: 'billing', description: 'Stripe billing — checkout, portal, webhook, and plan management' },
       ],
     },
   });
@@ -99,6 +101,7 @@ async function main() {
   await app.register(growthModelRoutes, { prefix: '/api' });
   await app.register(clerkWebhookRoutes, { prefix: '/api' });
   await app.register(autopilotRoutes, { prefix: '/api' });
+  await app.register(billingRoutes, { prefix: '/api' });
 
   // Auto-sync: periodic full sync (replaces BullMQ scheduler, no Redis needed)
   let syncRunning = false;
