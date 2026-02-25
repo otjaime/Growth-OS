@@ -6,29 +6,31 @@ import { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
 import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, validateData, computeGrowthModel, DEMO_SCENARIOS, seedDemoExperiments } from '@growth-os/etl';
 import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
+import { orgWhere, orgData } from '../lib/tenant.js';
 
-async function clearAllData() {
+async function clearAllData(organizationId?: string) {
+  const org = organizationId ? { organizationId } : {};
   return prisma.$transaction([
-    prisma.suggestionFeedback.deleteMany(),
-    prisma.suggestion.deleteMany(),
-    prisma.opportunity.deleteMany(),
-    prisma.experimentMetric.deleteMany(),
-    prisma.experiment.deleteMany(),
-    prisma.growthScenario.deleteMany(),
-    prisma.rawEvent.deleteMany(),
-    prisma.factEmail.deleteMany(),
-    prisma.factOrder.deleteMany(),
-    prisma.factSpend.deleteMany(),
-    prisma.factTraffic.deleteMany(),
-    prisma.cohort.deleteMany(),
-    prisma.dimCustomer.deleteMany(),
-    prisma.dimCampaign.deleteMany(),
-    prisma.stgEmail.deleteMany(),
-    prisma.stgOrder.deleteMany(),
-    prisma.stgCustomer.deleteMany(),
-    prisma.stgSpend.deleteMany(),
-    prisma.stgTraffic.deleteMany(),
-    prisma.jobRun.deleteMany(),
+    prisma.suggestionFeedback.deleteMany(organizationId ? { where: { suggestion: { opportunity: { organizationId } } } } : undefined),
+    prisma.suggestion.deleteMany(organizationId ? { where: { opportunity: { organizationId } } } : undefined),
+    prisma.opportunity.deleteMany({ where: { ...org } }),
+    prisma.experimentMetric.deleteMany(organizationId ? { where: { experiment: { organizationId } } } : undefined),
+    prisma.experiment.deleteMany({ where: { ...org } }),
+    prisma.growthScenario.deleteMany({ where: { ...org } }),
+    prisma.rawEvent.deleteMany({ where: { ...org } }),
+    prisma.factEmail.deleteMany({ where: { ...org } }),
+    prisma.factOrder.deleteMany({ where: { ...org } }),
+    prisma.factSpend.deleteMany({ where: { ...org } }),
+    prisma.factTraffic.deleteMany({ where: { ...org } }),
+    prisma.cohort.deleteMany({ where: { ...org } }),
+    prisma.dimCustomer.deleteMany({ where: { ...org } }),
+    prisma.dimCampaign.deleteMany({ where: { ...org } }),
+    prisma.stgEmail.deleteMany({ where: { ...org } }),
+    prisma.stgOrder.deleteMany({ where: { ...org } }),
+    prisma.stgCustomer.deleteMany({ where: { ...org } }),
+    prisma.stgSpend.deleteMany({ where: { ...org } }),
+    prisma.stgTraffic.deleteMany({ where: { ...org } }),
+    prisma.jobRun.deleteMany({ where: { ...org } }),
   ]);
 }
 
@@ -85,20 +87,20 @@ async function seedDimensions(): Promise<void> {
 
 export async function settingsRoutes(app: FastifyInstance) {
   // ── GET /settings/mode — current mode + data overview ──────
-  app.get('/settings/mode', async () => {
+  app.get('/settings/mode', async (request) => {
     const demoMode = await isDemoMode();
 
     // Demo data comes from job_name='demo_ingest' job runs
     const demoJob = await prisma.jobRun.findFirst({
-      where: { jobName: 'demo_ingest' },
+      where: { jobName: 'demo_ingest', ...orgWhere(request) },
       orderBy: { startedAt: 'desc' },
     });
 
     const [totalEvents, orders, spend, traffic] = await Promise.all([
-      prisma.rawEvent.count(),
-      prisma.factOrder.count(),
-      prisma.factSpend.count(),
-      prisma.factTraffic.count(),
+      prisma.rawEvent.count({ where: { ...orgWhere(request) } }),
+      prisma.factOrder.count({ where: { ...orgWhere(request) } }),
+      prisma.factSpend.count({ where: { ...orgWhere(request) } }),
+      prisma.factTraffic.count({ where: { ...orgWhere(request) } }),
     ]);
 
     const hasData = orders > 0;
@@ -134,7 +136,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
       if (wasDemoMode) {
         // Clear demo data to prevent mixing with real data
-        const [rawDeleted] = await clearAllData();
+        const [rawDeleted] = await clearAllData(req.organizationId);
         return {
           success: true,
           mode: 'live',
@@ -155,8 +157,8 @@ export async function settingsRoutes(app: FastifyInstance) {
   });
 
   // ── POST /settings/clear-data — purge ALL data (demo + real) ──
-  app.post('/settings/clear-data', async () => {
-    const [rawDeleted] = await clearAllData();
+  app.post('/settings/clear-data', async (request) => {
+    const [rawDeleted] = await clearAllData(request.organizationId);
     return {
       success: true,
       message: `Cleared all data (${rawDeleted.count} raw events + all marts). Ready for fresh sync.`,
@@ -165,13 +167,13 @@ export async function settingsRoutes(app: FastifyInstance) {
   });
 
   // ── POST /settings/seed-demo — run demo pipeline ──────────
-  app.post('/settings/seed-demo', async () => {
+  app.post('/settings/seed-demo', async (request) => {
     const startTime = Date.now();
     let jobRun: { id: string } | null = null;
 
     try {
       await setMode('demo');
-      await clearAllData();
+      await clearAllData(request.organizationId);
 
       // Seed dimensions (channels + dates) — required before pipeline
       await seedDimensions();
@@ -193,7 +195,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
       // Create job run so Jobs page shows this execution
       jobRun = await prisma.jobRun.create({
-        data: { jobName: 'demo_ingest', status: 'RUNNING' },
+        data: { jobName: 'demo_ingest', status: 'RUNNING', ...orgData(request) },
       });
 
       // Run the 3-step ETL pipeline
@@ -210,6 +212,7 @@ export async function settingsRoutes(app: FastifyInstance) {
         const modelOutput = computeGrowthModel(scenario.input);
         await prisma.growthScenario.create({
           data: {
+            ...orgData(request),
             name: scenario.name,
             description: scenario.description,
             isBaseline: scenario.isBaseline,

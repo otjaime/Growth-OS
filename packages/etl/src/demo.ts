@@ -10,6 +10,7 @@ import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
 import { validateData } from './pipeline/validate.js';
 import { seedDemoExperiments } from './demo-experiments.js';
+import { seedDemoOpportunities } from './demo-opportunities.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('demo');
@@ -79,6 +80,15 @@ async function runDemo() {
     const experimentsSeeded = await seedDemoExperiments();
     log.info({ experimentsSeeded }, 'Demo experiments seeded');
 
+    // Step 7: Seed demo opportunities & suggestions
+    log.info('Step 7: Seeding demo opportunities...');
+    const opportunitiesSeeded = await seedDemoOpportunities();
+    log.info({ opportunitiesSeeded }, 'Demo opportunities seeded');
+
+    // Step 8: Seed historical job runs for demo
+    log.info('Step 8: Seeding demo job history...');
+    await seedDemoJobRuns();
+
     // Update job run
     const durationMs = Date.now() - startTime;
     await prisma.jobRun.update({
@@ -112,6 +122,61 @@ async function runDemo() {
     process.exit(1);
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+async function seedDemoJobRuns() {
+  const now = new Date();
+
+  const jobs = [
+    {
+      jobName: 'daily_sync',
+      status: 'SUCCESS' as const,
+      daysAgo: 1,
+      durationMs: 34200,
+      rowsLoaded: 1842,
+    },
+    {
+      jobName: 'daily_sync',
+      status: 'SUCCESS' as const,
+      daysAgo: 2,
+      durationMs: 31800,
+      rowsLoaded: 1756,
+    },
+    {
+      jobName: 'daily_sync',
+      status: 'FAILED' as const,
+      daysAgo: 5,
+      durationMs: 8400,
+      rowsLoaded: 0,
+      error: 'Meta API rate limit exceeded — retry in 15 minutes',
+    },
+    {
+      jobName: 'weekly_marts_rebuild',
+      status: 'SUCCESS' as const,
+      daysAgo: 3,
+      durationMs: 92500,
+      rowsLoaded: 14200,
+    },
+  ];
+
+  for (const job of jobs) {
+    const startedAt = new Date(now);
+    startedAt.setUTCDate(startedAt.getUTCDate() - job.daysAgo);
+    startedAt.setUTCHours(6, 0, 0, 0);
+    const finishedAt = new Date(startedAt.getTime() + job.durationMs);
+
+    await prisma.jobRun.create({
+      data: {
+        jobName: job.jobName,
+        status: job.status,
+        startedAt,
+        finishedAt,
+        durationMs: job.durationMs,
+        rowsLoaded: job.rowsLoaded,
+        errorJson: job.error ?? undefined,
+      },
+    });
   }
 }
 

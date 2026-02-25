@@ -11,6 +11,7 @@ const mockPrisma = vi.hoisted(() => ({
   growthScenario: {
     findMany: vi.fn().mockResolvedValue([]),
     findUnique: vi.fn().mockResolvedValue(null),
+    findFirst: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
       Promise.resolve({ id: 'gs-1', ...args.data, createdAt: new Date(), updatedAt: new Date() })
     ),
@@ -112,13 +113,13 @@ describe('POST /api/growth-model/scenarios', () => {
 // ── GET single scenario ──────────────────────────────────────
 describe('GET /api/growth-model/scenarios/:id', () => {
   it('returns 404 for non-existent scenario', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'GET', url: '/api/growth-model/scenarios/nonexistent' });
     expect(res.statusCode).toBe(404);
   });
 
   it('returns scenario with monthly breakdown', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce({
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce({
       id: 'gs-1',
       name: 'Test',
       monthlyBudget: 10000,
@@ -142,7 +143,7 @@ describe('GET /api/growth-model/scenarios/:id', () => {
 // ── UPDATE scenario ──────────────────────────────────────────
 describe('PUT /api/growth-model/scenarios/:id', () => {
   it('returns 404 for non-existent scenario', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({
       method: 'PUT',
       url: '/api/growth-model/scenarios/nonexistent',
@@ -152,7 +153,7 @@ describe('PUT /api/growth-model/scenarios/:id', () => {
   });
 
   it('updates and recomputes outputs', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce({
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce({
       id: 'gs-1',
       name: 'Old',
       monthlyBudget: 10000,
@@ -182,13 +183,13 @@ describe('PUT /api/growth-model/scenarios/:id', () => {
 // ── DELETE scenario ──────────────────────────────────────────
 describe('DELETE /api/growth-model/scenarios/:id', () => {
   it('returns 404 for non-existent scenario', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'DELETE', url: '/api/growth-model/scenarios/nonexistent' });
     expect(res.statusCode).toBe(404);
   });
 
   it('deletes existing scenario', async () => {
-    mockPrisma.growthScenario.findUnique.mockResolvedValueOnce({ id: 'gs-1' });
+    mockPrisma.growthScenario.findFirst.mockResolvedValueOnce({ id: 'gs-1' });
     const res = await app.inject({ method: 'DELETE', url: '/api/growth-model/scenarios/gs-1' });
     expect(res.statusCode).toBe(204);
     expect(mockPrisma.growthScenario.delete).toHaveBeenCalledWith({ where: { id: 'gs-1' } });

@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
 import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
+import { orgWhere, orgData, orgSqlWhere } from '../lib/tenant.js';
 
 // ── Connector Catalog (served to frontend) ──────────────────
 
@@ -360,8 +361,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
   });
 
   // ── List all saved connections ─────────────────────────────
-  app.get('/connections', async () => {
+  app.get('/connections', async (request) => {
     const credentials = await prisma.connectorCredential.findMany({
+      where: { ...orgWhere(request) },
       select: {
         id: true,
         connectorType: true,
@@ -415,7 +417,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const metadata: Record<string, unknown> = { label: fields.label ?? def.name };
 
     // Load existing credentials and metadata so we don't lose them when updating
-    const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
+    const existing = await prisma.connectorCredential.findFirst({ where: { connectorType, ...orgWhere(request) } });
     let existingCreds: Record<string, string> = {};
     let existingMeta: Record<string, unknown> = {};
     if (existing) {
@@ -451,24 +453,29 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
     const { encrypted, iv, authTag } = encrypt(JSON.stringify(credentials));
 
-    const result = await prisma.connectorCredential.upsert({
-      where: { connectorType },
-      create: {
-        connectorType,
-        encryptedData: encrypted,
-        iv,
-        authTag,
-        metadata: metadata as Record<string, string>,
-        lastSyncStatus: 'pending',
-      },
-      update: {
-        encryptedData: encrypted,
-        iv,
-        authTag,
-        metadata: metadata as Record<string, string>,
-        lastSyncStatus: 'pending',
-      },
-    });
+    const existingForUpsert = await prisma.connectorCredential.findFirst({ where: { connectorType, ...orgWhere(request) } });
+    const result = existingForUpsert
+      ? await prisma.connectorCredential.update({
+          where: { id: existingForUpsert.id },
+          data: {
+            encryptedData: encrypted,
+            iv,
+            authTag,
+            metadata: metadata as Record<string, string>,
+            lastSyncStatus: 'pending',
+          },
+        })
+      : await prisma.connectorCredential.create({
+          data: {
+            connectorType,
+            ...orgData(request),
+            encryptedData: encrypted,
+            iv,
+            authTag,
+            metadata: metadata as Record<string, string>,
+            lastSyncStatus: 'pending',
+          },
+        });
 
     // Return the webhook URL for webhook connectors
     const extra: Record<string, string> = {};
@@ -494,8 +501,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       };
     }
 
-    const credential = await prisma.connectorCredential.findUnique({
-      where: { connectorType: type },
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: type, ...orgWhere(request) },
     });
 
     if (!credential) {
@@ -612,7 +619,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
               const updatedCreds = { ...creds, accessToken: token };
               const enc = encrypt(JSON.stringify(updatedCreds));
               await prisma.connectorCredential.update({
-                where: { connectorType: 'ga4' },
+                where: { id: credential.id },
                 data: { encryptedData: enc.encrypted, iv: enc.iv, authTag: enc.authTag },
               });
             } else {
@@ -692,7 +699,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return { success: true, message: 'Connection saved', latencyMs: Date.now() - start };
     } catch (error) {
       await prisma.connectorCredential.update({
-        where: { connectorType: type },
+        where: { id: credential.id },
         data: { lastSyncStatus: 'error' },
       });
       return { success: false, message: `Connection failed: ${(error as Error).message}` };
@@ -703,8 +710,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post('/connections/:type/sync', async (request) => {
     const { type } = request.params as { type: string };
 
-    const credential = await prisma.connectorCredential.findUnique({
-      where: { connectorType: type },
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: type, ...orgWhere(request) },
     });
 
     if (!credential) {
@@ -713,7 +720,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
     // Mark as syncing
     await prisma.connectorCredential.update({
-      where: { connectorType: type },
+      where: { id: credential.id },
       data: { lastSyncStatus: 'syncing' },
     });
 
@@ -721,7 +728,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       // Simulate a sync in demo mode
       setTimeout(async () => {
         await prisma.connectorCredential.update({
-          where: { connectorType: type },
+          where: { id: credential.id },
           data: { lastSyncAt: new Date(), lastSyncStatus: 'success' },
         });
       }, 3000);
@@ -732,7 +739,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     runConnectorSync(type)
       .then(async (result) => {
         await prisma.connectorCredential.update({
-          where: { connectorType: type },
+          where: { id: credential.id },
           data: {
             lastSyncAt: new Date(),
             lastSyncStatus: 'success',
@@ -745,7 +752,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         const errMsg = (error as Error).message ?? String(error);
         try {
           await prisma.connectorCredential.update({
-            where: { connectorType: type },
+            where: { id: credential.id },
             data: { lastSyncStatus: 'error', metadata: { ...(credential.metadata as Record<string, unknown>), lastSyncError: errMsg } },
           });
         } catch (updateErr) {
@@ -758,15 +765,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
   });
 
   // ── Pipeline diagnostic ──────────────────────────────────────
-  app.get('/connections/debug/pipeline', async () => {
+  app.get('/connections/debug/pipeline', async (request) => {
+    const orgSql = orgSqlWhere(request);
     const rawCounts = await prisma.$queryRawUnsafe<Array<{ source: string; entity: string; cnt: number }>>(
-      `SELECT source, entity, COUNT(*)::int as cnt FROM raw_events GROUP BY source, entity ORDER BY source, entity`
+      `SELECT source, entity, COUNT(*)::int as cnt FROM raw_events WHERE 1=1${orgSql} GROUP BY source, entity ORDER BY source, entity`
     );
     const stgSpendCounts = await prisma.$queryRawUnsafe<Array<{ source: string; cnt: number; total_spend: number }>>(
-      `SELECT source, COUNT(*)::int as cnt, SUM(spend)::float as total_spend FROM stg_spend GROUP BY source ORDER BY source`
+      `SELECT source, COUNT(*)::int as cnt, SUM(spend)::float as total_spend FROM stg_spend WHERE 1=1${orgSql} GROUP BY source ORDER BY source`
     );
     const factSpendCounts = await prisma.$queryRawUnsafe<Array<{ slug: string; cnt: number; total_spend: number }>>(
-      `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id GROUP BY c.slug ORDER BY c.slug`
+      `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id WHERE 1=1${orgSql} GROUP BY c.slug ORDER BY c.slug`
     );
 
     // Extra diagnostics: dim_channel, channelRaw distribution, isNewCustomer, null channelIds
@@ -774,16 +782,17 @@ export async function connectionsRoutes(app: FastifyInstance) {
       `SELECT slug, name FROM dim_channel ORDER BY slug`
     );
     const stgChannelRaw = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number }>>(
-      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt FROM stg_orders GROUP BY channel_raw ORDER BY cnt DESC`
+      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt FROM stg_orders WHERE 1=1${orgSql} GROUP BY channel_raw ORDER BY cnt DESC`
     );
     const factOrderChannels = await prisma.$queryRawUnsafe<Array<{ channel: string; cnt: number; new_customers: number }>>(
       `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
               SUM(CASE WHEN fo.is_new_customer THEN 1 ELSE 0 END)::int as new_customers
        FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
+       WHERE 1=1${orgSql}
        GROUP BY c.slug ORDER BY cnt DESC`
     );
     const cohortCount = await prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
-      `SELECT COUNT(*)::int as cnt FROM cohorts`
+      `SELECT COUNT(*)::int as cnt FROM cohorts WHERE 1=1${orgSql}`
     );
 
     return {
@@ -794,7 +803,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
   });
 
   // ── Raw attribution sample (debug) ─────────────────────────
-  app.get('/connections/debug/attribution', async () => {
+  app.get('/connections/debug/attribution', async (request) => {
+    const orgSql = orgSqlWhere(request);
     // Check if customerJourneySummary exists in raw payloads
     const journeyCheck = await prisma.$queryRawUnsafe<Array<{
       has_journey: number;
@@ -810,7 +820,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
              THEN 1 ELSE 0 END)::int as no_journey,
         COUNT(*)::int as total
        FROM raw_events
-       WHERE source = 'shopify' AND entity = 'orders'`
+       WHERE source = 'shopify' AND entity = 'orders'${orgSql}`
     );
 
     // Sample raw payloads showing attribution fields (supports both REST + GraphQL formats)
@@ -828,7 +838,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         COALESCE(payload_json->>'landing_site', payload_json->>'landingPageUrl') as landing_site,
         COALESCE(payload_json->>'referring_site', payload_json->>'referrerUrl') as referring_site
        FROM raw_events
-       WHERE source = 'shopify' AND entity = 'orders'
+       WHERE source = 'shopify' AND entity = 'orders'${orgSql}
        ORDER BY fetched_at DESC
        LIMIT 20`
     );
@@ -837,7 +847,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const stgChannels = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number; rev: number }>>(
       `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt,
               COALESCE(SUM(revenue_net), 0)::float as rev
-       FROM stg_orders GROUP BY channel_raw ORDER BY cnt DESC`
+       FROM stg_orders WHERE 1=1${orgSql} GROUP BY channel_raw ORDER BY cnt DESC`
     );
 
     // Channel distribution in fact_orders (final)
@@ -845,12 +855,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
       `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
               COALESCE(SUM(fo.revenue_net), 0)::float as rev
        FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
+       WHERE 1=1${orgSql}
        GROUP BY c.slug ORDER BY cnt DESC`
     );
 
     // Shopify connector sync status
-    const syncStatus = await prisma.connectorCredential.findUnique({
-      where: { connectorType: 'shopify' },
+    const syncStatus = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'shopify', ...orgWhere(request) },
       select: { lastSyncAt: true, lastSyncStatus: true, metadata: true },
     });
 
@@ -915,6 +926,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       externalId: String(row.order_id ?? row.id ?? row.external_id ?? `csv_${Date.now()}_${i}`),
       cursor: new Date().toISOString(),
       payloadJson: row as Prisma.InputJsonValue,
+      ...orgData(request),
     }));
 
     const created = await prisma.rawEvent.createMany({
@@ -934,7 +946,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
     // Update csv_upload connector freshness
     await prisma.connectorCredential.updateMany({
-      where: { connectorType: 'csv_upload' },
+      where: { connectorType: 'csv_upload', ...orgWhere(request) },
       data: { lastSyncAt: new Date(), lastSyncStatus: 'success' },
     }).catch(() => {});
 
@@ -951,7 +963,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   // ── Delete a connection ─────────────────────────────────────
   app.delete('/connections/:type', async (request) => {
     const { type } = request.params as { type: string };
-    await prisma.connectorCredential.deleteMany({ where: { connectorType: type } });
+    await prisma.connectorCredential.deleteMany({ where: { connectorType: type, ...orgWhere(request) } });
     return { success: true };
   });
 
@@ -1020,7 +1032,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       // Merge with existing credentials so we don't lose fields like developerToken
-      const existing = await prisma.connectorCredential.findUnique({ where: { connectorType } });
+      const existing = await prisma.connectorCredential.findFirst({ where: { connectorType, ...orgWhere(request) } });
       let existingCreds: Record<string, string> = {};
       let existingMeta: Record<string, unknown> = {};
       if (existing) {
@@ -1040,18 +1052,25 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       const { encrypted, iv, authTag } = encrypt(JSON.stringify(mergedCreds));
 
-      await prisma.connectorCredential.upsert({
-        where: { connectorType },
-        create: {
-          connectorType,
-          encryptedData: encrypted,
-          iv,
-          authTag,
-          metadata: mergedMeta as Record<string, string>,
-          lastSyncStatus: 'pending',
-        },
-        update: { encryptedData: encrypted, iv, authTag, metadata: mergedMeta as Record<string, string>, lastSyncStatus: 'pending' },
-      });
+      const existingForOAuth = await prisma.connectorCredential.findFirst({ where: { connectorType, ...orgWhere(request) } });
+      if (existingForOAuth) {
+        await prisma.connectorCredential.update({
+          where: { id: existingForOAuth.id },
+          data: { encryptedData: encrypted, iv, authTag, metadata: mergedMeta as Record<string, string>, lastSyncStatus: 'pending' },
+        });
+      } else {
+        await prisma.connectorCredential.create({
+          data: {
+            connectorType,
+            ...orgData(request),
+            encryptedData: encrypted,
+            iv,
+            authTag,
+            metadata: mergedMeta as Record<string, string>,
+            lastSyncStatus: 'pending',
+          },
+        });
+      }
 
       return reply.redirect(`${frontendUrl}/connections?connected=${connectorType}`);
     } catch (error) {
@@ -1064,7 +1083,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
     // Read saved credentials to get shopDomain and clientId
-    const credential = await prisma.connectorCredential.findUnique({ where: { connectorType: 'shopify' } });
+    const credential = await prisma.connectorCredential.findFirst({ where: { connectorType: 'shopify', ...orgWhere(request) } });
     if (!credential) {
       return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Save your Shopify credentials first')}`);
     }
@@ -1104,7 +1123,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
 
     // Get saved client credentials
-    const credential = await prisma.connectorCredential.findUnique({ where: { connectorType: 'shopify' } });
+    const credential = await prisma.connectorCredential.findFirst({ where: { connectorType: 'shopify', ...orgWhere(request) } });
     if (!credential) {
       return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('No Shopify credentials found')}`);
     }
@@ -1155,24 +1174,31 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       const { encrypted, iv, authTag } = encrypt(JSON.stringify(mergedCreds));
 
-      await prisma.connectorCredential.upsert({
-        where: { connectorType: 'shopify' },
-        create: {
-          connectorType: 'shopify',
-          encryptedData: encrypted,
-          iv,
-          authTag,
-          metadata: mergedMeta as Record<string, string>,
-          lastSyncStatus: 'pending',
-        },
-        update: {
-          encryptedData: encrypted,
-          iv,
-          authTag,
-          metadata: mergedMeta as Record<string, string>,
-          lastSyncStatus: 'pending',
-        },
-      });
+      const existingForShopify = await prisma.connectorCredential.findFirst({ where: { connectorType: 'shopify', ...orgWhere(request) } });
+      if (existingForShopify) {
+        await prisma.connectorCredential.update({
+          where: { id: existingForShopify.id },
+          data: {
+            encryptedData: encrypted,
+            iv,
+            authTag,
+            metadata: mergedMeta as Record<string, string>,
+            lastSyncStatus: 'pending',
+          },
+        });
+      } else {
+        await prisma.connectorCredential.create({
+          data: {
+            connectorType: 'shopify',
+            ...orgData(request),
+            encryptedData: encrypted,
+            iv,
+            authTag,
+            metadata: mergedMeta as Record<string, string>,
+            lastSyncStatus: 'pending',
+          },
+        });
+      }
 
       return reply.redirect(`${frontendUrl}/connections?connected=shopify`);
     } catch (error) {

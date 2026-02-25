@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
 import { computeABTestResults, isValidABInput } from '../lib/ab-stats.js';
+import { orgWhere, orgData } from '../lib/tenant.js';
 
 // Valid status transitions
 const TRANSITIONS: Record<string, string[]> = {
@@ -32,7 +33,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
   }, async (req) => {
     const { status, channel } = req.query as { status?: string; channel?: string };
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { ...orgWhere(req) };
     if (status) where.status = status;
     if (channel) where.channel = channel;
 
@@ -66,6 +67,10 @@ export async function experimentsRoutes(app: FastifyInstance) {
       confidence?: number;
       ease?: number;
       status?: string;
+      experimentType?: string;
+      expectedImpactUsd?: number;
+      guardrailMetrics?: string[];
+      targetSegment?: string;
     };
 
     if (!body.name || !body.hypothesis || !body.primaryMetric) {
@@ -77,6 +82,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
 
     const experiment = await prisma.experiment.create({
       data: {
+        ...orgData(req),
         name: body.name,
         hypothesis: body.hypothesis,
         primaryMetric: body.primaryMetric,
@@ -87,6 +93,10 @@ export async function experimentsRoutes(app: FastifyInstance) {
         ease: body.ease ?? null,
         iceScore,
         status: (body.status as 'IDEA' | 'BACKLOG') ?? 'IDEA',
+        experimentType: (body.experimentType as 'CRO' | 'CREATIVE' | 'PRICING' | 'LIFECYCLE' | 'LANDING' | 'OTHER') ?? null,
+        expectedImpactUsd: body.expectedImpactUsd ?? null,
+        guardrailMetrics: body.guardrailMetrics ?? undefined,
+        targetSegment: body.targetSegment ?? null,
       },
     });
 
@@ -103,8 +113,8 @@ export async function experimentsRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const experiment = await prisma.experiment.findUnique({
-      where: { id },
+    const experiment = await prisma.experiment.findFirst({
+      where: { id, ...orgWhere(req) },
       include: { metrics: { orderBy: { date: 'desc' } } },
     });
 
@@ -127,7 +137,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = req.body as Record<string, unknown>;
 
-    const existing = await prisma.experiment.findUnique({ where: { id } });
+    const existing = await prisma.experiment.findFirst({ where: { id, ...orgWhere(req) } });
     if (!existing) {
       reply.status(404);
       return { error: 'Experiment not found' };
@@ -147,6 +157,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
       'controlName', 'variantName',
       'controlSampleSize', 'variantSampleSize',
       'controlConversions', 'variantConversions',
+      'experimentType', 'expectedImpactUsd', 'guardrailMetrics', 'targetSegment',
     ];
     const data: Record<string, unknown> = { iceScore };
     for (const field of allowedFields) {
@@ -200,7 +211,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { id } = req.params as { id: string };
 
-    const existing = await prisma.experiment.findUnique({ where: { id } });
+    const existing = await prisma.experiment.findFirst({ where: { id, ...orgWhere(req) } });
     if (!existing) {
       reply.status(404);
       return { error: 'Experiment not found' };
@@ -227,7 +238,7 @@ export async function experimentsRoutes(app: FastifyInstance) {
       return { error: 'status is required' };
     }
 
-    const existing = await prisma.experiment.findUnique({ where: { id } });
+    const existing = await prisma.experiment.findFirst({ where: { id, ...orgWhere(req) } });
     if (!existing) {
       reply.status(404);
       return { error: 'Experiment not found' };
@@ -240,6 +251,20 @@ export async function experimentsRoutes(app: FastifyInstance) {
         error: `Cannot transition from ${existing.status} to ${status}`,
         allowedTransitions: allowed,
       };
+    }
+
+    // Mandatory closure: COMPLETED → ARCHIVED requires result and learnings
+    if (existing.status === 'COMPLETED' && status === 'ARCHIVED') {
+      if (!existing.result || !existing.learnings) {
+        reply.status(400);
+        return {
+          error: 'Cannot archive without documenting result and learnings',
+          missing: [
+            ...(!existing.result ? ['result'] : []),
+            ...(!existing.learnings ? ['learnings'] : []),
+          ],
+        };
+      }
     }
 
     const data: Record<string, unknown> = { status };

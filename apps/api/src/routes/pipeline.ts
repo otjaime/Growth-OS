@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
 import { validateData } from '@growth-os/etl';
+import { orgWhere } from '../lib/tenant.js';
 
 export async function pipelineRoutes(app: FastifyInstance) {
   // ── Pipeline overview: runs, freshness, row counts ──────────
@@ -15,10 +16,11 @@ export async function pipelineRoutes(app: FastifyInstance) {
       summary: 'Pipeline health overview',
       description: 'Returns recent pipeline runs, data freshness per connector, and row counts across all layers',
     },
-  }, async (_req, reply) => {
+  }, async (request, reply) => {
     try {
     // Recent pipeline runs (last 20)
     const runs = await prisma.jobRun.findMany({
+      where: { ...orgWhere(request) },
       orderBy: { startedAt: 'desc' },
       take: 20,
       select: {
@@ -34,6 +36,7 @@ export async function pipelineRoutes(app: FastifyInstance) {
 
     // Data freshness per connector
     const connectors = await prisma.connectorCredential.findMany({
+      where: { ...orgWhere(request) },
       select: {
         id: true,
         connectorType: true,
@@ -43,16 +46,16 @@ export async function pipelineRoutes(app: FastifyInstance) {
     });
 
     // Row counts across all layers (sequential to avoid OOM on small containers)
-    const rawEvents = await prisma.rawEvent.count();
-    const stgOrders = await prisma.stgOrder.count();
-    const stgSpend = await prisma.stgSpend.count();
-    const stgTraffic = await prisma.stgTraffic.count();
-    const factOrders = await prisma.factOrder.count();
-    const factSpend = await prisma.factSpend.count();
-    const factTraffic = await prisma.factTraffic.count();
-    const cohorts = await prisma.cohort.count();
-    const dimCustomers = await prisma.dimCustomer.count();
-    const dimCampaigns = await prisma.dimCampaign.count();
+    const rawEvents = await prisma.rawEvent.count({ where: { ...orgWhere(request) } });
+    const stgOrders = await prisma.stgOrder.count({ where: { ...orgWhere(request) } });
+    const stgSpend = await prisma.stgSpend.count({ where: { ...orgWhere(request) } });
+    const stgTraffic = await prisma.stgTraffic.count({ where: { ...orgWhere(request) } });
+    const factOrders = await prisma.factOrder.count({ where: { ...orgWhere(request) } });
+    const factSpend = await prisma.factSpend.count({ where: { ...orgWhere(request) } });
+    const factTraffic = await prisma.factTraffic.count({ where: { ...orgWhere(request) } });
+    const cohorts = await prisma.cohort.count({ where: { ...orgWhere(request) } });
+    const dimCustomers = await prisma.dimCustomer.count({ where: { ...orgWhere(request) } });
+    const dimCampaigns = await prisma.dimCampaign.count({ where: { ...orgWhere(request) } });
 
     // Compute avg duration of successful runs
     const successfulRuns = runs.filter((r) => r.status === 'SUCCESS' && r.durationMs);

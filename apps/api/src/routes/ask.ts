@@ -8,13 +8,15 @@ import { prisma } from '@growth-os/database';
 import { subDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import { isAIConfigured, answerDataQuestion } from '../lib/ai.js';
+import { getOrgId } from '../lib/tenant.js';
 
 /** Format a number with thousand separators: 150363 → "150,363" */
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('en-US');
 }
 
-async function buildDataContext(): Promise<string> {
+async function buildDataContext(organizationId?: string): Promise<string> {
+  const org = organizationId ? { organizationId } : {};
   const now = new Date();
   const start7 = subDays(now, 7);
   const start30 = subDays(now, 30);
@@ -22,39 +24,39 @@ async function buildDataContext(): Promise<string> {
 
   // Last 7 days orders
   const cur7Orders = await prisma.factOrder.findMany({
-    where: { orderDate: { gte: start7, lte: now } },
+    where: { orderDate: { gte: start7, lte: now }, ...org },
   });
   const prev7Orders = await prisma.factOrder.findMany({
-    where: { orderDate: { gte: prev7Start, lt: start7 } },
+    where: { orderDate: { gte: prev7Start, lt: start7 }, ...org },
   });
 
   // Last 30 days orders
   const cur30Orders = await prisma.factOrder.findMany({
-    where: { orderDate: { gte: start30, lte: now } },
+    where: { orderDate: { gte: start30, lte: now }, ...org },
   });
 
   // Spend
   const spend7 = await prisma.factSpend.aggregate({
     _sum: { spend: true },
-    where: { date: { gte: start7, lte: now } },
+    where: { date: { gte: start7, lte: now }, ...org },
   });
   const prevSpend7 = await prisma.factSpend.aggregate({
     _sum: { spend: true },
-    where: { date: { gte: prev7Start, lt: start7 } },
+    where: { date: { gte: prev7Start, lt: start7 }, ...org },
   });
   const spend30 = await prisma.factSpend.aggregate({
     _sum: { spend: true },
-    where: { date: { gte: start30, lte: now } },
+    where: { date: { gte: start30, lte: now }, ...org },
   });
 
   // Traffic
   const traffic7 = await prisma.factTraffic.aggregate({
     _sum: { sessions: true, purchases: true, addToCart: true, checkouts: true, pdpViews: true },
-    where: { date: { gte: start7, lte: now } },
+    where: { date: { gte: start7, lte: now }, ...org },
   });
   const traffic30 = await prisma.factTraffic.aggregate({
     _sum: { sessions: true, purchases: true },
-    where: { date: { gte: start30, lte: now } },
+    where: { date: { gte: start30, lte: now }, ...org },
   });
 
   // Channels (last 7 days)
@@ -64,7 +66,7 @@ async function buildDataContext(): Promise<string> {
     const chOrders = cur7Orders.filter((o) => o.channelId === ch.id);
     const chSpend = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { channelId: ch.id, date: { gte: start7, lte: now } },
+      where: { channelId: ch.id, date: { gte: start7, lte: now }, ...org },
     });
     const chRev = chOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
     const chNewCust = chOrders.filter((o) => o.isNewCustomer).length;
@@ -73,7 +75,7 @@ async function buildDataContext(): Promise<string> {
   }
 
   // Cohorts
-  const latestCohort = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+  const latestCohort = await prisma.cohort.findFirst({ where: { ...org }, orderBy: { cohortMonth: 'desc' } });
 
   // Compute KPIs
   const curRev7 = cur7Orders.reduce((s, o) => s + Number(o.revenueGross), 0);
@@ -153,7 +155,7 @@ export async function askRoutes(app: FastifyInstance) {
     }
 
     // Build data context from the database
-    const dataContext = await buildDataContext();
+    const dataContext = await buildDataContext(getOrgId(request));
 
     // Stream SSE
     reply.raw.writeHead(200, {

@@ -21,6 +21,9 @@ interface DemoExp {
   nextSteps: string | null;
   metricBaseline: number | null;
   metricTrend: number | null;
+  experimentType: 'CRO' | 'CREATIVE' | 'PRICING' | 'LIFECYCLE' | 'LANDING' | 'OTHER';
+  expectedImpactUsd: number | null;
+  guardrailMetrics: string[];
   // Optional A/B test data
   controlName?: string;
   variantName?: string;
@@ -57,6 +60,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'UGC video outperforms studio content for cold audiences on Meta. Key factors: authentic testimonials, vertical format, first 3 seconds hook. Worst performer was the unboxing format.',
     nextSteps: 'Scale UGC budget to $500/day. Test UGC on Google YouTube campaigns. Build a creator roster for ongoing content.',
     metricBaseline: 42, metricTrend: -0.52,
+    experimentType: 'CREATIVE', expectedImpactUsd: 15000, guardrailMetrics: ['conversion_rate', 'aov'],
     controlName: 'Studio Creative', variantName: 'UGC Video',
     controlSampleSize: 12000, variantSampleSize: 12000,
     controlConversions: 286, variantConversions: 389,
@@ -70,6 +74,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Single-page checkout with progress indicators and inline validation dramatically reduces abandonment. Guest checkout option drove 30% of the lift. Mobile saw 2x the improvement vs desktop.',
     nextSteps: 'A/B test express checkout options (Apple Pay, Shop Pay). Optimize mobile-specific layout. Add address autocomplete.',
     metricBaseline: 0.021, metricTrend: 0.00014,
+    experimentType: 'CRO', expectedImpactUsd: 25000, guardrailMetrics: ['aov', 'revenue'],
     controlName: '3-Step Checkout', variantName: 'Single Page Checkout',
     controlSampleSize: 8500, variantSampleSize: 8500,
     controlConversions: 5270, variantConversions: 6273,
@@ -83,6 +88,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Free shipping thresholds work best when set 10-15% above current AOV. Product recommendations at cart helped customers reach threshold. Margin impact must be monitored closely.',
     nextSteps: 'Keep threshold at $75. Add smart product recommendations in cart. Test dynamic threshold based on cart contents.',
     metricBaseline: 68, metricTrend: 0.36,
+    experimentType: 'PRICING', expectedImpactUsd: 8000, guardrailMetrics: ['conversion_rate', 'revenue'],
   },
   {
     name: 'TikTok Spark Ads Test',
@@ -93,6 +99,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'TikTok audience skews younger and browses with low purchase intent. Spark Ads drive awareness but not direct conversion. Attribution may undercount — will need holdout test. Best for top-of-funnel brand building.',
     nextSteps: 'Pause direct response campaigns. Test TikTok as awareness channel with Meta retargeting. Evaluate with 30-day attribution window.',
     metricBaseline: 50, metricTrend: 2.14,
+    experimentType: 'CREATIVE', expectedImpactUsd: 12000, guardrailMetrics: ['conversion_rate', 'mer'],
     controlName: 'Meta Prospecting', variantName: 'TikTok Spark Ads',
     controlSampleSize: 15000, variantSampleSize: 15000,
     controlConversions: 315, variantConversions: 120,
@@ -106,6 +113,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Personalized product recommendations drove most of the lift. The 15% discount tier has the best margin-adjusted ROI. Timing: 45-day lapse is optimal trigger point, not 30-day.',
     nextSteps: 'Roll out to all customer segments. Test SMS as additional win-back channel. Adjust trigger to 45-day lapse window.',
     metricBaseline: 0.18, metricTrend: 0.0014,
+    experimentType: 'LIFECYCLE', expectedImpactUsd: 10000, guardrailMetrics: ['revenue', 'ltv'],
     controlName: 'Original Win-Back', variantName: 'Personalized Tiered',
     controlSampleSize: 3200, variantSampleSize: 3200,
     controlConversions: 576, variantConversions: 672,
@@ -119,6 +127,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 20, impact: 8, confidence: 6, ease: 6, daysRunning: 14,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: 38, metricTrend: -0.21,
+    experimentType: 'CREATIVE', expectedImpactUsd: 18000, guardrailMetrics: ['conversion_rate', 'aov'],
   },
   {
     name: 'Homepage Personalization Test',
@@ -127,6 +136,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 12, impact: 8, confidence: 5, ease: 4, daysRunning: 10,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: 0.021, metricTrend: 0.00008,
+    experimentType: 'CRO', expectedImpactUsd: 20000, guardrailMetrics: ['aov', 'sessions'],
   },
   {
     name: 'SMS Cart Abandonment Recovery',
@@ -135,6 +145,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 30, impact: 7, confidence: 6, ease: 7, daysRunning: 7,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: 1200, metricTrend: 15,
+    experimentType: 'LIFECYCLE', expectedImpactUsd: 5000, guardrailMetrics: ['cac', 'conversion_rate'],
   },
 
   // ── BACKLOG (2) ────────────────────────────────────────────
@@ -145,6 +156,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 8, impact: 9, confidence: 5, ease: 3, daysRunning: null,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: null, metricTrend: null,
+    experimentType: 'LIFECYCLE', expectedImpactUsd: 30000, guardrailMetrics: ['aov', 'revenue'],
   },
   {
     name: 'Influencer Partnership Program',
@@ -153,6 +165,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 40, impact: 7, confidence: 4, ease: 4, daysRunning: null,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: null, metricTrend: null,
+    experimentType: 'CREATIVE', expectedImpactUsd: 20000, guardrailMetrics: ['cac', 'mer'],
   },
 
   // ── IDEA (3) ───────────────────────────────────────────────
@@ -163,6 +176,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 25, impact: 9, confidence: 4, ease: 3, daysRunning: null,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: null, metricTrend: null,
+    experimentType: 'PRICING', expectedImpactUsd: 50000, guardrailMetrics: ['aov', 'retention'],
   },
   {
     name: 'Referral Program',
@@ -171,6 +185,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 15, impact: 8, confidence: 5, ease: 4, daysRunning: null,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: null, metricTrend: null,
+    experimentType: 'OTHER', expectedImpactUsd: 15000, guardrailMetrics: ['cac'],
   },
   {
     name: 'AI-Powered Product Recommendations',
@@ -179,6 +194,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     targetLift: 8, impact: 7, confidence: 4, ease: 3, daysRunning: null,
     result: null, learnings: null, nextSteps: null,
     metricBaseline: null, metricTrend: null,
+    experimentType: 'CRO', expectedImpactUsd: 12000, guardrailMetrics: ['conversion_rate', 'revenue'],
   },
 
   // ── ARCHIVED (2) ───────────────────────────────────────────
@@ -191,6 +207,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Carousel ads drive higher CTR but don\'t necessarily improve downstream conversion. Single-image with strong CTA outperforms on CPA. Carousel works better for retargeting than prospecting.',
     nextSteps: 'Archived — learnings folded into UGC Video experiment which showed much stronger results. Use carousels only for retargeting catalog ads.',
     metricBaseline: 42, metricTrend: -0.05,
+    experimentType: 'CREATIVE', expectedImpactUsd: 8000, guardrailMetrics: ['conversion_rate', 'cac'],
     controlName: 'Single Image Ad', variantName: 'Carousel Ad',
     controlSampleSize: 10000, variantSampleSize: 10000,
     controlConversions: 160, variantConversions: 180,
@@ -204,6 +221,7 @@ const DEMO_EXPERIMENTS: readonly DemoExp[] = [
     learnings: 'Exit-intent popups erode brand perception for premium products. Discount cannibalization is real — most claimers were already in purchase flow. Better to invest in value messaging than panic discounts.',
     nextSteps: 'Archived — popup removed. Focus on improving the shopping experience rather than interrupting exits.',
     metricBaseline: 0.021, metricTrend: 0.0001,
+    experimentType: 'CRO', expectedImpactUsd: 5000, guardrailMetrics: ['aov', 'revenue'],
     controlName: 'No Popup', variantName: 'Exit-Intent 10% Off',
     controlSampleSize: 14000, variantSampleSize: 14000,
     controlConversions: 294, variantConversions: 287,
@@ -277,6 +295,9 @@ export async function seedDemoExperiments(): Promise<number> {
         result: exp.result,
         learnings: exp.learnings,
         nextSteps: exp.nextSteps,
+        experimentType: exp.experimentType,
+        expectedImpactUsd: exp.expectedImpactUsd,
+        guardrailMetrics: exp.guardrailMetrics.length > 0 ? exp.guardrailMetrics : undefined,
         // A/B test data (when present)
         ...(exp.controlSampleSize != null && exp.variantSampleSize != null &&
             exp.controlConversions != null && exp.variantConversions != null ? {

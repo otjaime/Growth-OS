@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info, Sparkles, Loader2, Download } from 'lucide-react';
+import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info, Sparkles, Loader2, Download, Send, Mail } from 'lucide-react';
 import { formatCurrency, formatPercent, formatPercentChange, changeColor, formatMultiplier } from '@/lib/format';
 import { apiFetch, API, getAuthToken } from '@/lib/api';
 
@@ -29,12 +29,23 @@ interface WbrAlert {
   recommendation: string;
 }
 
+interface WbrDrivers {
+  volumeEffect: number;
+  priceEffect: number;
+  mixEffect: number;
+  totalChange: number;
+}
+
 interface WbrData {
   weekLabel: string;
   narrative: string;
   summary: WbrSummary;
+  drivers: WbrDrivers;
   alerts: WbrAlert[];
+  actions: string[];
+  nextLaunches: Array<{ name: string; channel: string | null; hypothesis: string | null; iceScore: number | null }>;
   aiEnabled: boolean;
+  slackEnabled: boolean;
   generatedAt: string;
 }
 
@@ -43,12 +54,16 @@ export default function WbrPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
+  const [slackSending, setSlackSending] = useState(false);
+  const [slackSent, setSlackSent] = useState(false);
 
   // AI streaming state
   const [aiNarrative, setAiNarrative] = useState('');
   const [aiStreaming, setAiStreaming] = useState(false);
   const [aiDone, setAiDone] = useState(false);
   const aiRef = useRef<HTMLDivElement>(null);
+  const narrativeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     apiFetch(`/api/wbr`)
@@ -67,6 +82,41 @@ export default function WbrPage() {
     await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyEmail = async () => {
+    if (!narrativeRef.current) return;
+    const html = narrativeRef.current.innerHTML;
+    const text = narrativeRef.current.innerText;
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        }),
+      ]);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    } catch {
+      // Fallback to plain text
+      await navigator.clipboard.writeText(text);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    }
+  };
+
+  const handleSendSlack = async () => {
+    setSlackSending(true);
+    try {
+      const res = await apiFetch('/api/wbr/send-slack', { method: 'POST' });
+      if (res.ok) {
+        setSlackSent(true);
+        setTimeout(() => setSlackSent(false), 3000);
+      }
+    } catch {
+      // ignore
+    }
+    setSlackSending(false);
   };
 
   const handleGenerateAI = () => {
@@ -208,8 +258,14 @@ export default function WbrPage() {
 
   return (
     <div className="space-y-6">
+      {/* Print-Only Branded Header */}
+      <div className="hidden print-only print:block border-b-2 border-black pb-4 mb-6">
+        <h1 className="text-3xl font-bold">Growth OS — Weekly Business Review</h1>
+        <p className="text-lg text-gray-600 mt-1">{data.weekLabel}</p>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-3">
           <FileText className="h-6 w-6 text-apple-blue" />
           <div>
@@ -228,16 +284,33 @@ export default function WbrPage() {
               {aiStreaming ? 'Generating...' : aiDone ? 'Regenerate AI' : 'AI Analysis'}
             </button>
           )}
+          {data.slackEnabled && (
+            <button
+              onClick={handleSendSlack}
+              disabled={slackSending || slackSent}
+              className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] disabled:opacity-50 text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
+            >
+              {slackSending ? <Loader2 className="h-4 w-4 animate-spin" /> : slackSent ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+              {slackSending ? 'Sending...' : slackSent ? 'Sent!' : 'Send to Slack'}
+            </button>
+          )}
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring print:hidden"
+            className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
           >
             <Download className="h-4 w-4" />
             Export PDF
           </button>
           <button
+            onClick={handleCopyEmail}
+            className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
+          >
+            {emailCopied ? <Check className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+            {emailCopied ? 'Copied!' : 'Copy for Email'}
+          </button>
+          <button
             onClick={handleCopy}
-            className="flex items-center gap-2 px-4 py-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring print:hidden"
+            className="flex items-center gap-2 px-4 py-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] rounded-lg text-sm transition-all ease-spring"
           >
             {copied ? <Check className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
             {copied ? 'Copied!' : 'Copy Markdown'}
@@ -247,7 +320,7 @@ export default function WbrPage() {
 
       {/* AI Badge */}
       {(aiStreaming || aiDone) && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--tint-purple)] border border-apple-purple/20 rounded-lg w-fit">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--tint-purple)] border border-apple-purple/20 rounded-lg w-fit print:hidden">
           <Sparkles className="h-3.5 w-3.5 text-apple-purple" />
           <span className="text-xs text-apple-purple">
             {aiStreaming ? 'AI is analyzing your data...' : 'AI-generated analysis'}
@@ -280,6 +353,43 @@ export default function WbrPage() {
         </div>
       </div>
 
+      {/* Revenue Drivers Mini-Card */}
+      {data.drivers && (
+        <div className="card print:break-before">
+          <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue Drivers</h2>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-xs text-[var(--foreground-secondary)]">Volume Effect</p>
+              <p className={`text-lg font-bold ${data.drivers.volumeEffect >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
+                {data.drivers.volumeEffect >= 0 ? '+' : ''}{formatCurrency(data.drivers.volumeEffect)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[var(--foreground-secondary)]">Price / AOV</p>
+              <p className={`text-lg font-bold ${data.drivers.priceEffect >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
+                {data.drivers.priceEffect >= 0 ? '+' : ''}{formatCurrency(data.drivers.priceEffect)}
+              </p>
+            </div>
+            {Math.abs(data.drivers.mixEffect) > 10 && (
+              <div>
+                <p className="text-xs text-[var(--foreground-secondary)]">Channel Mix</p>
+                <p className={`text-lg font-bold ${data.drivers.mixEffect >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
+                  {data.drivers.mixEffect >= 0 ? '+' : ''}{formatCurrency(data.drivers.mixEffect)}
+                </p>
+              </div>
+            )}
+            {Math.abs(data.drivers.mixEffect) <= 10 && (
+              <div>
+                <p className="text-xs text-[var(--foreground-secondary)]">Total Change</p>
+                <p className={`text-lg font-bold ${data.drivers.totalChange >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
+                  {data.drivers.totalChange >= 0 ? '+' : ''}{formatCurrency(data.drivers.totalChange)}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Alerts Banner (if any) */}
       {data.alerts.length > 0 && (
         <div className="card border-l-4 border-l-apple-yellow space-y-3">
@@ -305,7 +415,7 @@ export default function WbrPage() {
       )}
 
       {/* Narrative Sections */}
-      <div ref={aiRef}>
+      <div ref={narrativeRef}>
         {rendered.length > 0 ? (
           <div className="space-y-4">
             {rendered.map((section, i) => {
@@ -337,7 +447,7 @@ export default function WbrPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-xs text-[var(--foreground-secondary)]/50 text-right">
+      <p className="text-xs text-[var(--foreground-secondary)]/50 text-right print:hidden">
         Generated {new Date(data.generatedAt).toLocaleString()}
         {aiDone && ' | AI-enhanced'}
       </p>

@@ -47,37 +47,38 @@ export interface WoWMetrics {
   kpiContext: string;
 }
 
-export async function gatherWeekOverWeekData(days: number = 7): Promise<WoWMetrics> {
+export async function gatherWeekOverWeekData(days: number = 7, organizationId?: string): Promise<WoWMetrics> {
   const now = new Date();
   const currentStart = subDays(now, days);
   const previousStart = subDays(currentStart, days);
+  const org = organizationId ? { organizationId } : {};
 
   // Orders
   const currentOrders = await prisma.factOrder.findMany({
-    where: { orderDate: { gte: currentStart, lte: now } },
+    where: { ...org, orderDate: { gte: currentStart, lte: now } },
   });
   const previousOrders = await prisma.factOrder.findMany({
-    where: { orderDate: { gte: previousStart, lt: currentStart } },
+    where: { ...org, orderDate: { gte: previousStart, lt: currentStart } },
   });
 
   // Spend
   const curSpendAgg = await prisma.factSpend.aggregate({
     _sum: { spend: true },
-    where: { date: { gte: currentStart, lte: now } },
+    where: { ...org, date: { gte: currentStart, lte: now } },
   });
   const prevSpendAgg = await prisma.factSpend.aggregate({
     _sum: { spend: true },
-    where: { date: { gte: previousStart, lt: currentStart } },
+    where: { ...org, date: { gte: previousStart, lt: currentStart } },
   });
 
   // Traffic (current + previous for funnel)
   const curTrafficAgg = await prisma.factTraffic.aggregate({
     _sum: { sessions: true, pdpViews: true, addToCart: true, checkouts: true, purchases: true },
-    where: { date: { gte: currentStart, lte: now } },
+    where: { ...org, date: { gte: currentStart, lte: now } },
   });
   const prevTrafficAgg = await prisma.factTraffic.aggregate({
     _sum: { sessions: true, pdpViews: true, addToCart: true, checkouts: true, purchases: true },
-    where: { date: { gte: previousStart, lt: currentStart } },
+    where: { ...org, date: { gte: previousStart, lt: currentStart } },
   });
 
   // Compute blended metrics
@@ -105,12 +106,12 @@ export async function gatherWeekOverWeekData(days: number = 7): Promise<WoWMetri
   const channelSpendCur = await prisma.factSpend.groupBy({
     by: ['channelId'],
     _sum: { spend: true },
-    where: { date: { gte: currentStart, lte: now } },
+    where: { ...org, date: { gte: currentStart, lte: now } },
   });
   const channelSpendPrev = await prisma.factSpend.groupBy({
     by: ['channelId'],
     _sum: { spend: true },
-    where: { date: { gte: previousStart, lt: currentStart } },
+    where: { ...org, date: { gte: previousStart, lt: currentStart } },
   });
   const dimChannels = await prisma.dimChannel.findMany();
   const channelMap = new Map(dimChannels.map((c) => [c.id, c.slug]));
@@ -158,7 +159,7 @@ export async function gatherWeekOverWeekData(days: number = 7): Promise<WoWMetri
   }
 
   // Cohort data
-  const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
+  const cohorts = await prisma.cohort.findMany({ where: { ...org }, orderBy: { cohortMonth: 'desc' } });
   const baselineD30 = cohorts.length > 0
     ? cohorts.reduce((s, c) => s + Number(c.d30Retention), 0) / cohorts.length
     : 0.15;

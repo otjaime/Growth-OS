@@ -5,6 +5,7 @@ import { formatPercent, formatCurrency, formatNumber, formatMultiplier } from '@
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, BarChart, Bar, Cell,
+  PieChart, Pie,
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
 import { exportToCSV } from '@/lib/export';
@@ -51,6 +52,29 @@ interface SegmentData {
   avgOrdersPerCustomer: number;
 }
 
+interface CustomerTypeEntry {
+  count: number;
+  totalRevenue: number;
+  avgAov: number;
+  percentOfRevenue: number;
+}
+
+interface MarginSegment {
+  segment: string;
+  count: number;
+  totalRevenue: number;
+  avgCmPercent: number;
+}
+
+interface SegmentsResponse {
+  segments: SegmentData[];
+  customerType?: {
+    new: CustomerTypeEntry;
+    returning: CustomerTypeEntry;
+  };
+  marginSegments?: MarginSegment[];
+}
+
 const SEGMENT_COLORS: Record<string, string> = {
   Champions: '#30d158',
   Loyal: '#0a84ff',
@@ -58,6 +82,16 @@ const SEGMENT_COLORS: Record<string, string> = {
   'At Risk': '#ff9f0a',
   Dormant: '#98989f',
   Lost: '#ff453a',
+};
+
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(30,30,36,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: '12px',
+  color: '#f5f5f7',
+  boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
 };
 
 function ProjectedCell({ value, projected, formatter }: { value: number; projected: boolean; formatter: (v: number) => string }) {
@@ -73,6 +107,8 @@ function ProjectedCell({ value, projected, formatter }: { value: number; project
 export default function CohortsPage() {
   const [data, setData] = useState<ProjectionData | null>(null);
   const [segments, setSegments] = useState<SegmentData[]>([]);
+  const [customerType, setCustomerType] = useState<{ new: CustomerTypeEntry; returning: CustomerTypeEntry } | null>(null);
+  const [marginSegments, setMarginSegments] = useState<MarginSegment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,9 +117,11 @@ export default function CohortsPage() {
         .then((r) => r.ok ? r.json() : null),
       apiFetch(`/api/metrics/segments`)
         .then((r) => r.ok ? r.json() : null),
-    ]).then(([projData, segData]: [ProjectionData | null, { segments: SegmentData[] } | null]) => {
+    ]).then(([projData, segData]: [ProjectionData | null, SegmentsResponse | null]) => {
       setData(projData);
       setSegments(segData?.segments ?? []);
+      setCustomerType(segData?.customerType ?? null);
+      setMarginSegments(segData?.marginSegments ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -122,6 +160,12 @@ export default function CohortsPage() {
     LTV180: c.ltv.ltv180.value || undefined,
   }));
 
+  // Donut chart data for new vs returning
+  const donutData = customerType ? [
+    { name: 'New', value: customerType.new.count, fill: '#0a84ff' },
+    { name: 'Returning', value: customerType.returning.count, fill: '#30d158' },
+  ] : [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -132,6 +176,158 @@ export default function CohortsPage() {
           </p>
         )}
       </div>
+
+      {/* New vs Returning Customers */}
+      {customerType && (customerType.new.count > 0 || customerType.returning.count > 0) && (
+        <>
+          <div>
+            <h2 className="text-xl font-bold text-[var(--foreground)]">New vs Returning Customers</h2>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
+              Breakdown by customer purchase history. New = first order only, Returning = 2+ orders.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Donut chart */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Customer Split</h3>
+              <div className="h-56 flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={donutData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      dataKey="value"
+                      nameKey="name"
+                      stroke="none"
+                    >
+                      {donutData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={TOOLTIP_STYLE}
+                      formatter={(value: number, name: string) => [formatNumber(value), name]}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Revenue split + metrics */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Revenue Split</h3>
+              {/* Revenue split bar */}
+              <div className="mb-4">
+                <div className="flex h-6 rounded-lg overflow-hidden">
+                  <div
+                    className="bg-[#0a84ff] transition-all"
+                    style={{ width: `${customerType.new.percentOfRevenue}%` }}
+                  />
+                  <div
+                    className="bg-[#30d158] transition-all"
+                    style={{ width: `${customerType.returning.percentOfRevenue}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1.5 text-xs text-[var(--foreground-secondary)]">
+                  <span className="text-apple-blue">New: {customerType.new.percentOfRevenue}%</span>
+                  <span className="text-apple-green">Returning: {customerType.returning.percentOfRevenue}%</span>
+                </div>
+              </div>
+
+              {/* Metrics comparison */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg p-3 bg-[#0a84ff]/10 border border-[#0a84ff]/20">
+                  <p className="text-xs text-apple-blue font-medium uppercase mb-2">New</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">Customers</span><span className="text-[var(--foreground)]">{formatNumber(customerType.new.count)}</span></div>
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">Revenue</span><span className="text-[var(--foreground)]">{formatCurrency(customerType.new.totalRevenue)}</span></div>
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">AOV</span><span className="text-[var(--foreground)]">{formatCurrency(customerType.new.avgAov)}</span></div>
+                  </div>
+                </div>
+                <div className="rounded-lg p-3 bg-[#30d158]/10 border border-[#30d158]/20">
+                  <p className="text-xs text-apple-green font-medium uppercase mb-2">Returning</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">Customers</span><span className="text-[var(--foreground)]">{formatNumber(customerType.returning.count)}</span></div>
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">Revenue</span><span className="text-[var(--foreground)]">{formatCurrency(customerType.returning.totalRevenue)}</span></div>
+                    <div className="flex justify-between"><span className="text-[var(--foreground-secondary)]">AOV</span><span className="text-[var(--foreground)]">{formatCurrency(customerType.returning.avgAov)}</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Margin Segments */}
+      {marginSegments.length > 0 && (
+        <>
+          <div>
+            <h2 className="text-xl font-bold text-[var(--foreground)]">Margin Segments</h2>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
+              Customers split by contribution margin percentage (above/below median CM%).
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {marginSegments.map((ms) => {
+              const isHigh = ms.segment === 'High Margin';
+              return (
+                <div
+                  key={ms.segment}
+                  className={`card border ${isHigh ? 'border-apple-green/20' : 'border-apple-yellow/20'}`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`w-3 h-3 rounded-full ${isHigh ? 'bg-apple-green' : 'bg-apple-yellow'}`} />
+                    <h3 className={`text-sm font-semibold ${isHigh ? 'text-apple-green' : 'text-apple-yellow'}`}>
+                      {ms.segment}
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-[10px] text-[var(--foreground-secondary)] uppercase">Customers</div>
+                      <div className="text-lg font-bold text-[var(--foreground)] mt-0.5">{formatNumber(ms.count)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[var(--foreground-secondary)] uppercase">Revenue</div>
+                      <div className="text-lg font-bold text-[var(--foreground)] mt-0.5">{formatCurrency(ms.totalRevenue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[var(--foreground-secondary)] uppercase">Avg CM%</div>
+                      <div className={`text-lg font-bold mt-0.5 ${ms.avgCmPercent >= 20 ? 'text-apple-green' : ms.avgCmPercent >= 15 ? 'text-apple-yellow' : 'text-apple-red'}`}>
+                        {ms.avgCmPercent.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Insight callout */}
+          {marginSegments.length === 2 && (() => {
+            const high = marginSegments.find((m) => m.segment === 'High Margin');
+            const low = marginSegments.find((m) => m.segment === 'Low Margin');
+            if (!high || !low) return null;
+            const totalRev = high.totalRevenue + low.totalRevenue;
+            const highPct = totalRev > 0 ? Math.round((high.totalRevenue / totalRev) * 100) : 0;
+            return (
+              <div className="card bg-[var(--tint-purple)] border border-apple-purple/20">
+                <p className="text-sm text-[var(--foreground)]">
+                  <strong className="text-apple-purple">Insight:</strong> High-margin customers represent{' '}
+                  <strong>{highPct}%</strong> of revenue with an average CM% of{' '}
+                  <strong>{high.avgCmPercent.toFixed(1)}%</strong> vs{' '}
+                  <strong>{low.avgCmPercent.toFixed(1)}%</strong> for low-margin.
+                  {high.avgCmPercent - low.avgCmPercent > 10 && (
+                    <> The {(high.avgCmPercent - low.avgCmPercent).toFixed(0)}pp spread suggests opportunity to shift acquisition toward higher-margin segments.</>
+                  )}
+                </p>
+              </div>
+            );
+          })()}
+        </>
+      )}
 
       {/* Retention Curves */}
       <div className="card">
@@ -145,15 +341,7 @@ export default function CohortsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
               <XAxis dataKey="cohort" stroke="rgba(255,255,255,0.35)" fontSize={11} />
               <YAxis stroke="rgba(255,255,255,0.35)" fontSize={11} tickFormatter={(v: number) => `${v}%`} />
-              <Tooltip contentStyle={{
-                backgroundColor: 'rgba(30,30,36,0.85)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '12px',
-                color: '#f5f5f7',
-                boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
-              }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
               <Legend />
               <Line type="monotone" dataKey="D7" stroke="#30d158" strokeWidth={2} dot={false} connectNulls={false} />
               <Line type="monotone" dataKey="D30" stroke="#0a84ff" strokeWidth={2} dot={false} connectNulls={false} />
@@ -176,15 +364,7 @@ export default function CohortsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
               <XAxis dataKey="cohort" stroke="rgba(255,255,255,0.35)" fontSize={11} />
               <YAxis stroke="rgba(255,255,255,0.35)" fontSize={11} tickFormatter={(v: number) => `$${v}`} />
-              <Tooltip contentStyle={{
-                backgroundColor: 'rgba(30,30,36,0.85)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '12px',
-                color: '#f5f5f7',
-                boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
-              }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
               <Legend />
               <Line type="monotone" dataKey="LTV30" stroke="#0a84ff" strokeWidth={2} dot={false} connectNulls={false} />
               <Line type="monotone" dataKey="LTV90" stroke="#30d158" strokeWidth={2} dot={false} connectNulls={false} />
@@ -317,15 +497,7 @@ export default function CohortsPage() {
                   <XAxis type="number" stroke="rgba(255,255,255,0.35)" fontSize={11} />
                   <YAxis type="category" dataKey="segment" stroke="rgba(255,255,255,0.35)" fontSize={12} width={80} />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(30,30,36,0.85)',
-                      backdropFilter: 'blur(20px) saturate(180%)',
-                      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '12px',
-                      color: '#f5f5f7',
-                      boxShadow: '0 2px 16px rgba(0,0,0,0.28)',
-                    }}
+                    contentStyle={TOOLTIP_STYLE}
                     formatter={(value: number) => [formatNumber(value), 'Customers']}
                   />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]}>

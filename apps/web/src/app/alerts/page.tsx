@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertTriangle, AlertCircle, Info, Sparkles, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, Sparkles, ChevronDown, ChevronUp, Loader2, CheckCircle, FlaskConical } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { CreateFromAlertModal } from '@/components/experiments';
 
 interface Alert {
   id: string;
@@ -15,7 +16,7 @@ interface Alert {
   threshold: number;
 }
 
-function AlertCard({ alert }: { alert: Alert }) {
+function AlertCard({ alert, onCreateExperiment }: { alert: Alert; onCreateExperiment: (alert: Alert) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -93,15 +94,24 @@ function AlertCard({ alert }: { alert: Alert }) {
             <p className="text-sm text-[var(--foreground)]">{alert.recommendation}</p>
           </div>
 
-          {/* AI Analysis toggle */}
-          <button
-            onClick={fetchExplanation}
-            className="mt-3 flex items-center gap-2 text-xs text-apple-purple hover:text-apple-purple transition-all ease-spring"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            AI Analysis
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
+          {/* Action buttons */}
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={() => onCreateExperiment(alert)}
+              className="flex items-center gap-1.5 text-xs text-apple-blue hover:text-apple-blue/80 transition-all ease-spring bg-[var(--tint-blue)] px-3 py-1.5 rounded-lg"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              Create Experiment
+            </button>
+            <button
+              onClick={fetchExplanation}
+              className="flex items-center gap-1.5 text-xs text-apple-purple hover:text-apple-purple/80 transition-all ease-spring"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              AI Analysis
+              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
 
           {expanded && (
             <div className="mt-2 p-3 bg-[var(--tint-purple)] border border-apple-purple/20 rounded-lg">
@@ -127,6 +137,7 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [experimentAlert, setExperimentAlert] = useState<Alert | null>(null);
 
   useEffect(() => {
     apiFetch(`/api/alerts`)
@@ -164,15 +175,26 @@ export default function AlertsPage() {
       </div>
 
       {alerts.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-[var(--foreground-secondary)] text-lg">No alerts — all metrics within thresholds</p>
+        <div className="card text-center py-16">
+          <CheckCircle className="h-12 w-12 text-apple-green mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">All Clear</h2>
+          <p className="text-sm text-[var(--foreground-secondary)]">No alerts this week &mdash; all metrics are within healthy thresholds.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {alerts.map((alert) => (
-            <AlertCard key={alert.id} alert={alert} />
+            <AlertCard key={alert.id} alert={alert} onCreateExperiment={setExperimentAlert} />
           ))}
         </div>
+      )}
+
+      {/* Create Experiment from Alert modal */}
+      {experimentAlert && (
+        <CreateFromAlertModal
+          alert={experimentAlert}
+          onClose={() => setExperimentAlert(null)}
+          onCreated={() => setExperimentAlert(null)}
+        />
       )}
     </div>
   );

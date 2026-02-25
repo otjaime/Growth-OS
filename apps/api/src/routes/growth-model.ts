@@ -5,8 +5,9 @@
 
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
-import { computeGrowthModel } from '@growth-os/etl';
+import { computeGrowthModel, computeSafeSpendRange } from '@growth-os/etl';
 import type { GrowthModelInput } from '@growth-os/etl';
+import { orgWhere, orgData } from '../lib/tenant.js';
 
 export async function growthModelRoutes(app: FastifyInstance) {
   // ── LIST scenarios ─────────────────────────────────────────
@@ -16,8 +17,9 @@ export async function growthModelRoutes(app: FastifyInstance) {
       summary: 'List saved scenarios',
       description: 'Returns all saved growth scenarios, newest first.',
     },
-  }, async () => {
+  }, async (request) => {
     const scenarios = await prisma.growthScenario.findMany({
+      where: { ...orgWhere(request) },
       orderBy: { updatedAt: 'desc' },
     });
     return { scenarios };
@@ -68,6 +70,7 @@ export async function growthModelRoutes(app: FastifyInstance) {
 
     const scenario = await prisma.growthScenario.create({
       data: {
+        ...orgData(req),
         name: body.name,
         description: body.description ?? null,
         isBaseline: body.isBaseline ?? false,
@@ -96,7 +99,7 @@ export async function growthModelRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scenario = await prisma.growthScenario.findUnique({ where: { id } });
+    const scenario = await prisma.growthScenario.findFirst({ where: { id, ...orgWhere(req) } });
 
     if (!scenario) {
       reply.status(404);
@@ -130,7 +133,7 @@ export async function growthModelRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = req.body as Record<string, unknown>;
 
-    const existing = await prisma.growthScenario.findUnique({ where: { id } });
+    const existing = await prisma.growthScenario.findFirst({ where: { id, ...orgWhere(req) } });
     if (!existing) {
       reply.status(404);
       return { error: 'Scenario not found' };
@@ -181,7 +184,7 @@ export async function growthModelRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { id } = req.params as { id: string };
 
-    const existing = await prisma.growthScenario.findUnique({ where: { id } });
+    const existing = await prisma.growthScenario.findFirst({ where: { id, ...orgWhere(req) } });
     if (!existing) {
       reply.status(404);
       return { error: 'Scenario not found' };
@@ -231,7 +234,8 @@ export async function growthModelRoutes(app: FastifyInstance) {
     };
 
     const output = computeGrowthModel(input);
-    return output;
+    const safeSpendRange = computeSafeSpendRange(input);
+    return { ...output, safeSpendRange };
   });
 
   // ── BASELINE from actual data ──────────────────────────────
@@ -241,7 +245,7 @@ export async function growthModelRoutes(app: FastifyInstance) {
       summary: 'Compute baseline from actual data',
       description: 'Derives input assumptions from the last 30 days of mart data (spend, orders, traffic, cohorts).',
     },
-  }, async () => {
+  }, async (request) => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -253,29 +257,29 @@ export async function growthModelRoutes(app: FastifyInstance) {
       // Last 90 days of spend for monthly average
       prisma.factSpend.aggregate({
         _sum: { spend: true },
-        where: { date: { gte: ninetyDaysAgo } },
+        where: { ...orgWhere(request), date: { gte: ninetyDaysAgo } },
       }),
       // Last 30 days of orders
       prisma.factOrder.aggregate({
         _sum: { revenueNet: true, cogs: true },
         _count: { _all: true },
-        where: { orderDate: { gte: thirtyDaysAgo } },
+        where: { ...orgWhere(request), orderDate: { gte: thirtyDaysAgo } },
       }),
       // Last 30 days of traffic
       prisma.factTraffic.aggregate({
         _sum: { sessions: true, purchases: true },
-        where: { date: { gte: thirtyDaysAgo } },
+        where: { ...orgWhere(request), date: { gte: thirtyDaysAgo } },
       }),
       // Latest cohort for retention
       prisma.cohort.findFirst({
         orderBy: { cohortMonth: 'desc' },
-        where: { cohortSize: { gt: 0 } },
+        where: { ...orgWhere(request), cohortSize: { gt: 0 } },
       }),
     ]);
 
     // New customers (last 30 days)
     const newCustomers = await prisma.dimCustomer.count({
-      where: { firstOrderDate: { gte: thirtyDaysAgo } },
+      where: { ...orgWhere(request), firstOrderDate: { gte: thirtyDaysAgo } },
     });
 
     const totalSpend90 = Number(spendAgg._sum?.spend ?? 0);

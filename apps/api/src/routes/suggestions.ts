@@ -12,6 +12,7 @@ import * as kpiCalcs from '@growth-os/etl';
 import { isAIConfigured } from '../lib/ai.js';
 import { generateSuggestionsForOpportunity, getDemoSuggestions } from '../lib/suggestions.js';
 import { gatherWeekOverWeekData } from '../lib/gather-metrics.js';
+import { orgWhere, orgData, getOrgId } from '../lib/tenant.js';
 
 function computeIce(impact?: number | null, confidence?: number | null, ease?: number | null): number | null {
   if (impact == null || confidence == null || ease == null) return null;
@@ -26,8 +27,8 @@ export async function suggestionsRoutes(app: FastifyInstance) {
       summary: 'Detect signals',
       description: 'Run signal detection from current KPIs and alerts. Returns ephemeral signal list.',
     },
-  }, async () => {
-    const wow = await gatherWeekOverWeekData();
+  }, async (request) => {
+    const wow = await gatherWeekOverWeekData(undefined, getOrgId(request));
 
     const signalInput: SignalInput = {
       ...wow.alertInput,
@@ -56,7 +57,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     if (status) where.status = status;
 
     const opportunities = await prisma.opportunity.findMany({
-      where,
+      where: { ...where, ...orgWhere(req) },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       include: {
         suggestions: {
@@ -76,9 +77,9 @@ export async function suggestionsRoutes(app: FastifyInstance) {
       summary: 'Generate opportunities and suggestions',
       description: 'Detects signals, classifies into opportunities, and generates experiment suggestions via AI or demo fallback.',
     },
-  }, async () => {
+  }, async (request) => {
     // 1. Gather metrics
-    const wow = await gatherWeekOverWeekData();
+    const wow = await gatherWeekOverWeekData(undefined, getOrgId(request));
 
     // 2. Detect signals
     const signalInput: SignalInput = {
@@ -129,7 +130,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         for (const demo of demoOpportunities) {
           const cutoff = subDays(new Date(), 1);
           const existing = await prisma.opportunity.findFirst({
-            where: { type: demo.type as never, createdAt: { gte: cutoff } },
+            where: { type: demo.type as never, createdAt: { gte: cutoff }, ...orgWhere(request) },
             include: { suggestions: true },
           });
 
@@ -140,6 +141,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
 
           const opp = await prisma.opportunity.create({
             data: {
+              ...orgData(request),
               type: demo.type as never,
               title: demo.title,
               description: demo.description,
@@ -152,6 +154,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
           for (const sd of suggestions) {
             await prisma.suggestion.create({
               data: {
+                ...orgData(request),
                 opportunityId: opp.id,
                 type: 'RULE_BASED',
                 title: sd.title,
@@ -164,13 +167,15 @@ export async function suggestionsRoutes(app: FastifyInstance) {
                 effortScore: sd.effort,
                 riskScore: sd.risk,
                 reasoning: sd.reasoning,
+                driverAnalysis: sd.driverAnalysis || null,
+                actionsJson: sd.actions.length > 0 ? sd.actions : undefined,
               },
             });
             totalSuggestions++;
           }
 
-          const full = await prisma.opportunity.findUnique({
-            where: { id: opp.id },
+          const full = await prisma.opportunity.findFirst({
+            where: { id: opp.id, ...orgWhere(request) },
             include: { suggestions: { include: { feedback: true } } },
           });
           if (full) createdOpps.push(full);
@@ -197,7 +202,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
 
     // 4. Fetch playbook (completed experiments with learnings)
     const playbook = await prisma.experiment.findMany({
-      where: { status: 'COMPLETED', learnings: { not: null } },
+      where: { status: 'COMPLETED', learnings: { not: null }, ...orgWhere(request) },
       select: { name: true, channel: true, result: true, learnings: true, nextSteps: true },
       orderBy: { updatedAt: 'desc' },
       take: 10,
@@ -215,6 +220,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         where: {
           type: candidate.type as never,
           createdAt: { gte: cutoff },
+          ...orgWhere(request),
         },
         include: { suggestions: true },
       });
@@ -237,6 +243,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         // Create new opportunity
         opportunity = await prisma.opportunity.create({
           data: {
+            ...orgData(request),
             type: candidate.type as never,
             title: candidate.title,
             description: candidate.description,
@@ -269,6 +276,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         for (const sd of suggestionDataList) {
           await prisma.suggestion.create({
             data: {
+              ...orgData(request),
               opportunityId: opportunity.id,
               type: aiEnabled ? 'AI_GENERATED' : 'RULE_BASED',
               title: sd.title,
@@ -281,14 +289,16 @@ export async function suggestionsRoutes(app: FastifyInstance) {
               effortScore: sd.effort,
               riskScore: sd.risk,
               reasoning: sd.reasoning,
+              driverAnalysis: sd.driverAnalysis || null,
+              actionsJson: sd.actions.length > 0 ? sd.actions : undefined,
             },
           });
           totalSuggestions++;
         }
 
         // Re-fetch with suggestions
-        opportunity = await prisma.opportunity.findUnique({
-          where: { id: opportunity.id },
+        opportunity = await prisma.opportunity.findFirst({
+          where: { id: opportunity.id, ...orgWhere(request) },
           include: { suggestions: { include: { feedback: true } } },
         });
       }
@@ -319,7 +329,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     if (opportunityId) where.opportunityId = opportunityId;
 
     const suggestions = await prisma.suggestion.findMany({
-      where,
+      where: { ...where, ...(req.organizationId ? { opportunity: { organizationId: req.organizationId } } : {}) },
       orderBy: { createdAt: 'desc' },
       include: {
         opportunity: { select: { id: true, type: true, title: true } },
@@ -346,7 +356,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
       return { error: 'action must be one of: approve, reject, modify' };
     }
 
-    const suggestion = await prisma.suggestion.findUnique({ where: { id } });
+    const suggestion = await prisma.suggestion.findFirst({ where: { id, ...orgWhere(req) } });
     if (!suggestion) {
       reply.status(404);
       return { error: 'Suggestion not found' };
@@ -368,6 +378,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
       }),
       prisma.suggestionFeedback.create({
         data: {
+          ...orgData(req),
           suggestionId: id,
           action: action as never,
           notes: body.notes ?? null,
@@ -397,8 +408,8 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = (req.body as { notes?: string } | null) ?? {};
 
-    const suggestion = await prisma.suggestion.findUnique({
-      where: { id },
+    const suggestion = await prisma.suggestion.findFirst({
+      where: { id, ...orgWhere(req) },
       include: { opportunity: true },
     });
 
@@ -406,6 +417,20 @@ export async function suggestionsRoutes(app: FastifyInstance) {
       reply.status(404);
       return { error: 'Suggestion not found' };
     }
+
+    // Map opportunity type to experiment type
+    const OPP_TO_EXP_TYPE: Record<string, string> = {
+      CAC_SPIKE: 'CREATIVE',
+      EFFICIENCY_DROP: 'PRICING',
+      RETENTION_DECLINE: 'LIFECYCLE',
+      FUNNEL_LEAK: 'CRO',
+      GROWTH_PLATEAU: 'CRO',
+      CHANNEL_IMBALANCE: 'CREATIVE',
+      QUICK_WIN: 'OTHER',
+    };
+
+    const oppType = suggestion.opportunity?.type ?? '';
+    const experimentType = OPP_TO_EXP_TYPE[oppType] ?? null;
 
     // Create experiment from suggestion
     // Invert effortScore to ease: suggestion stores effort (1=easy, 10=hard),
@@ -415,10 +440,17 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     const ease = suggestion.effortScore != null ? (11 - suggestion.effortScore) : null;
     const iceScore = computeIce(impact, confidence, ease);
 
+    // Build enriched hypothesis: original + reasoning context
+    let enrichedHypothesis = suggestion.hypothesis;
+    if (suggestion.reasoning) {
+      enrichedHypothesis += `\n\nContext: ${suggestion.reasoning}`;
+    }
+
     const experiment = await prisma.experiment.create({
       data: {
+        ...orgData(req),
         name: suggestion.title,
-        hypothesis: suggestion.hypothesis,
+        hypothesis: enrichedHypothesis,
         status: 'IDEA',
         channel: suggestion.suggestedChannel,
         primaryMetric: suggestion.suggestedMetric ?? 'conversion_rate',
@@ -427,6 +459,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
         confidence,
         ease,
         iceScore,
+        experimentType: experimentType as never,
       },
     });
 
@@ -439,6 +472,7 @@ export async function suggestionsRoutes(app: FastifyInstance) {
     // Create feedback record
     const feedback = await prisma.suggestionFeedback.create({
       data: {
+        ...orgData(req),
         suggestionId: id,
         action: 'PROMOTE',
         notes: body.notes ?? null,

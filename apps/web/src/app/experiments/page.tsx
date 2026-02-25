@@ -117,6 +117,7 @@ export default function ExperimentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('iceScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [segmentFilter, setSegmentFilter] = useState<string>('ALL');
 
   const fetchExperiments = useCallback(() => {
     setLoading(true);
@@ -144,11 +145,15 @@ export default function ExperimentsPage() {
     return counts;
   }, [allExperiments]);
 
-  // Data pipeline: status filter → search → sort
+  // Data pipeline: status filter → segment filter → search → sort
   const displayedExperiments = useMemo(() => {
     let list = statusFilter === 'ALL'
       ? allExperiments
       : allExperiments.filter((e) => e.status === statusFilter);
+
+    if (segmentFilter !== 'ALL') {
+      list = list.filter((e) => e.targetSegment === segmentFilter);
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -161,7 +166,16 @@ export default function ExperimentsPage() {
     }
 
     return sortExperiments(list, sortKey, sortDir);
-  }, [allExperiments, statusFilter, searchQuery, sortKey, sortDir]);
+  }, [allExperiments, statusFilter, segmentFilter, searchQuery, sortKey, sortDir]);
+
+  // Compute unique segments from experiments
+  const availableSegments = useMemo(() => {
+    const segs = new Set<string>();
+    for (const e of allExperiments) {
+      if (e.targetSegment) segs.add(e.targetSegment);
+    }
+    return Array.from(segs).sort();
+  }, [allExperiments]);
 
   const toggleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -206,6 +220,18 @@ export default function ExperimentsPage() {
         </div>
         <div className="flex items-center gap-2">
           <SearchBar value={searchQuery} onChange={setSearchQuery} />
+          {availableSegments.length > 0 && (
+            <select
+              value={segmentFilter}
+              onChange={(e) => setSegmentFilter(e.target.value)}
+              className="bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
+            >
+              <option value="ALL">All Segments</option>
+              {availableSegments.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleExportCSV}
             disabled={loading || displayedExperiments.length === 0}

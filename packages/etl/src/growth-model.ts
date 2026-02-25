@@ -159,6 +159,71 @@ export function computeGrowthModel(input: GrowthModelInput): GrowthModelOutput {
   };
 }
 
+// ── Safe Spend Range ─────────────────────────────────────────
+
+export interface SafeSpendConstraints {
+  maxBreakEvenMonths: number;
+  minCmPercent: number;
+}
+
+export interface SafeSpendRange {
+  minSpend: number;
+  maxSpend: number;
+  optimalSpend: number;
+}
+
+const DEFAULT_CONSTRAINTS: SafeSpendConstraints = {
+  maxBreakEvenMonths: 6,
+  minCmPercent: 0.15,
+};
+
+/**
+ * Find the safe spend range for a given growth model input.
+ * Iterates budget from current to 5x, finds max where:
+ *   - breakEvenMonth <= maxBreakEvenMonths
+ *   - CM% >= minCmPercent (at month 6)
+ */
+export function computeSafeSpendRange(
+  input: GrowthModelInput,
+  constraints?: Partial<SafeSpendConstraints>,
+): SafeSpendRange {
+  const { maxBreakEvenMonths, minCmPercent } = { ...DEFAULT_CONSTRAINTS, ...constraints };
+  const baseBudget = input.monthlyBudget;
+  const step = Math.max(Math.round(baseBudget * 0.1), 500);
+  const maxBudget = baseBudget * 5;
+
+  let optimalSpend = baseBudget;
+  let maxSafeSpend = baseBudget;
+
+  // Find the highest budget that still meets constraints
+  for (let budget = baseBudget; budget <= maxBudget; budget += step) {
+    const result = computeGrowthModel({ ...input, monthlyBudget: budget });
+    const lastMonth = result.monthlyBreakdown[result.monthlyBreakdown.length - 1];
+    if (!lastMonth) break;
+
+    const cmPercent = lastMonth.revenue > 0
+      ? (lastMonth.revenue - lastMonth.cogs - budget) / lastMonth.revenue
+      : 0;
+
+    const meetsBreakEven = result.breakEvenMonth !== null && result.breakEvenMonth <= maxBreakEvenMonths;
+    const meetsCmPercent = cmPercent >= minCmPercent;
+
+    if (meetsBreakEven && meetsCmPercent) {
+      maxSafeSpend = budget;
+      // Optimal = highest ROAS within safe range
+      if (result.projectedRoas >= computeGrowthModel({ ...input, monthlyBudget: optimalSpend }).projectedRoas) {
+        optimalSpend = budget;
+      }
+    }
+  }
+
+  return {
+    minSpend: Math.round(baseBudget * 0.5),
+    maxSpend: maxSafeSpend,
+    optimalSpend,
+  };
+}
+
 // ── Demo Scenarios ────────────────────────────────────────────
 
 export interface DemoScenario {

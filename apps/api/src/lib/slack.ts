@@ -72,6 +72,104 @@ export async function sendAlertToSlack(
   }
 }
 
+// ── WBR Slack Message ──────────────────────────────────────
+
+export interface WBRSlackPayload {
+  weekLabel: string;
+  revenue: number;
+  revenueChange: number;
+  orders: number;
+  ordersChange: number;
+  cac: number;
+  mer: number;
+  cmPct: number;
+  alertCount: number;
+  criticalAlerts: string[];
+  pendingSuggestions: number;
+  runningExperiments: number;
+  dashboardUrl: string;
+}
+
+function arrow(change: number): string {
+  return change >= 0 ? ':chart_with_upwards_trend:' : ':chart_with_downwards_trend:';
+}
+
+function pctStr(change: number): string {
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${(change * 100).toFixed(1)}%`;
+}
+
+export async function sendWBRToSlack(payload: WBRSlackPayload): Promise<boolean> {
+  if (!isSlackConfigured()) return false;
+
+  const kpiLine = [
+    `*Revenue*: $${(payload.revenue / 1000).toFixed(1)}K ${arrow(payload.revenueChange)} ${pctStr(payload.revenueChange)} WoW`,
+    `*Orders*: ${payload.orders} ${arrow(payload.ordersChange)} ${pctStr(payload.ordersChange)} WoW`,
+    `*CAC*: $${payload.cac.toFixed(0)}`,
+    `*MER*: ${payload.mer.toFixed(2)}x`,
+    `*CM%*: ${(payload.cmPct * 100).toFixed(1)}%`,
+  ].join('\n');
+
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `:bar_chart: Weekly Business Review — ${payload.weekLabel}`, emoji: true },
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: kpiLine },
+    },
+  ];
+
+  if (payload.criticalAlerts.length > 0) {
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:rotating_light: *${payload.criticalAlerts.length} Critical Alert${payload.criticalAlerts.length !== 1 ? 's' : ''}*\n${payload.criticalAlerts.map((a) => `• ${a}`).join('\n')}`,
+      },
+    });
+  } else if (payload.alertCount > 0) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `:warning: ${payload.alertCount} alert${payload.alertCount !== 1 ? 's' : ''} this week` }],
+    });
+  }
+
+  const statusParts: string[] = [];
+  if (payload.runningExperiments > 0) {
+    statusParts.push(`:test_tube: ${payload.runningExperiments} experiment${payload.runningExperiments !== 1 ? 's' : ''} running`);
+  }
+  if (payload.pendingSuggestions > 0) {
+    statusParts.push(`:bulb: ${payload.pendingSuggestions} suggestion${payload.pendingSuggestions !== 1 ? 's' : ''} pending`);
+  }
+  if (statusParts.length > 0) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: statusParts.join('  •  ') }],
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+  blocks.push({
+    type: 'section',
+    text: { type: 'mrkdwn', text: `<${payload.dashboardUrl}/wbr|:arrow_right: View full WBR in Growth OS>` },
+  });
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocks }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendTestSlackMessage(): Promise<boolean> {
   if (!isSlackConfigured()) return false;
 

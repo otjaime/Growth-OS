@@ -4,18 +4,35 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { CHANNELS, METRICS } from './types';
+import type { ExperimentType } from './types';
+import { EXPERIMENT_TEMPLATES } from './templates';
+
+const TARGET_SEGMENTS = ['All Customers', 'New Customers', 'Returning Customers', 'High Margin', 'Low Margin', 'Champions', 'Loyal', 'At Risk', 'Dormant'] as const;
 
 interface CreateModalProps {
   onClose: () => void;
   onCreated: () => void;
+  prefill?: {
+    name?: string;
+    hypothesis?: string;
+    primaryMetric?: string;
+    channel?: string;
+    experimentType?: ExperimentType;
+    expectedImpactUsd?: number;
+    targetSegment?: string;
+  };
 }
 
-export function CreateModal({ onClose, onCreated }: CreateModalProps): React.ReactElement {
-  const [name, setName] = useState('');
-  const [hypothesis, setHypothesis] = useState('');
-  const [primaryMetric, setPrimaryMetric] = useState('conversion_rate');
-  const [channel, setChannel] = useState('');
+export function CreateModal({ onClose, onCreated, prefill }: CreateModalProps): React.ReactElement {
+  const [selectedType, setSelectedType] = useState<ExperimentType | null>(prefill?.experimentType ?? null);
+  const [name, setName] = useState(prefill?.name ?? '');
+  const [hypothesis, setHypothesis] = useState(prefill?.hypothesis ?? '');
+  const [primaryMetric, setPrimaryMetric] = useState(prefill?.primaryMetric ?? 'conversion_rate');
+  const [channel, setChannel] = useState(prefill?.channel ?? '');
   const [targetLift, setTargetLift] = useState('');
+  const [expectedImpactUsd, setExpectedImpactUsd] = useState(prefill?.expectedImpactUsd?.toString() ?? '');
+  const [guardrailMetrics, setGuardrailMetrics] = useState<string[]>([]);
+  const [targetSegment, setTargetSegment] = useState(prefill?.targetSegment ?? '');
   const [impact, setImpact] = useState(5);
   const [confidence, setConfidence] = useState(5);
   const [ease, setEase] = useState(5);
@@ -29,6 +46,22 @@ export function CreateModal({ onClose, onCreated }: CreateModalProps): React.Rea
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
+
+  const selectTemplate = (type: ExperimentType) => {
+    const tmpl = EXPERIMENT_TEMPLATES.find((t) => t.type === type);
+    if (!tmpl) return;
+    setSelectedType(type);
+    if (!hypothesis) setHypothesis(tmpl.defaultHypothesis);
+    setPrimaryMetric(tmpl.defaultMetric);
+    setGuardrailMetrics(tmpl.defaultGuardrails);
+    if (tmpl.suggestedChannels.length === 1) setChannel(tmpl.suggestedChannels[0]);
+  };
+
+  const toggleGuardrail = (metric: string) => {
+    setGuardrailMetrics((prev) =>
+      prev.includes(metric) ? prev.filter((m) => m !== metric) : [...prev, metric],
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +79,10 @@ export function CreateModal({ onClose, onCreated }: CreateModalProps): React.Rea
           channel: channel || null,
           targetLift: targetLift ? parseFloat(targetLift) : null,
           impact, confidence, ease,
+          experimentType: selectedType ?? null,
+          expectedImpactUsd: expectedImpactUsd ? parseFloat(expectedImpactUsd) : null,
+          guardrailMetrics: guardrailMetrics.length > 0 ? guardrailMetrics : null,
+          targetSegment: targetSegment || null,
         }),
       });
       if (!res.ok) {
@@ -70,6 +107,28 @@ export function CreateModal({ onClose, onCreated }: CreateModalProps): React.Rea
           <button onClick={onClose} aria-label="Close" className="text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Template Selector */}
+          <div>
+            <label className="block text-xs text-[var(--foreground-secondary)] mb-2">Experiment Type</label>
+            <div className="grid grid-cols-3 gap-2">
+              {EXPERIMENT_TEMPLATES.map((tmpl) => (
+                <button
+                  key={tmpl.type}
+                  type="button"
+                  onClick={() => selectTemplate(tmpl.type)}
+                  className={`text-left p-2.5 rounded-lg border transition-all ease-spring ${
+                    selectedType === tmpl.type
+                      ? 'border-apple-blue bg-[var(--tint-blue)]'
+                      : 'border-[var(--glass-border)] bg-white/[0.04] hover:bg-white/[0.06]'
+                  }`}
+                >
+                  <div className="text-xs font-medium text-[var(--foreground)]">{tmpl.label}</div>
+                  <div className="text-[10px] text-[var(--foreground-secondary)] mt-0.5 line-clamp-2">{tmpl.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Name *</label>
             <input
@@ -119,15 +178,62 @@ export function CreateModal({ onClose, onCreated }: CreateModalProps): React.Rea
             </div>
           </div>
           <div>
-            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Target Lift (%)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={targetLift}
-              onChange={(e) => setTargetLift(e.target.value)}
+            <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Target Segment</label>
+            <select
+              value={targetSegment}
+              onChange={(e) => setTargetSegment(e.target.value)}
               className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-              placeholder="e.g., 15"
-            />
+            >
+              <option value="">All Customers</option>
+              {TARGET_SEGMENTS.filter((s) => s !== 'All Customers').map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Target Lift (%)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={targetLift}
+                onChange={(e) => setTargetLift(e.target.value)}
+                className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
+                placeholder="e.g., 15"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--foreground-secondary)] mb-1">Expected Impact ($)</label>
+              <input
+                type="number"
+                step="100"
+                value={expectedImpactUsd}
+                onChange={(e) => setExpectedImpactUsd(e.target.value)}
+                className="w-full bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
+                placeholder="e.g., 15000"
+              />
+            </div>
+          </div>
+
+          {/* Guardrail Metrics */}
+          <div>
+            <label className="block text-xs text-[var(--foreground-secondary)] mb-1.5">Guardrail Metrics</label>
+            <div className="flex flex-wrap gap-1.5">
+              {METRICS.filter((m) => m !== primaryMetric).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleGuardrail(m)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-all ease-spring ${
+                    guardrailMetrics.includes(m)
+                      ? 'border-apple-blue bg-[var(--tint-blue)] text-apple-blue'
+                      : 'border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:border-[var(--glass-border-hover)]'
+                  }`}
+                >
+                  {m.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* ICE Scoring */}

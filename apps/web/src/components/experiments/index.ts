@@ -2,6 +2,7 @@ export type {
   Experiment,
   ExperimentMetric,
   ExperimentStatus,
+  ExperimentType,
   SortKey,
   SortDir,
   ViewMode,
@@ -29,3 +30,7 @@ export { SearchBar } from './search-bar';
 export { ViewToggle } from './view-toggle';
 export { KanbanCard } from './kanban-card';
 export { KanbanBoard } from './kanban-board';
+export { Scorecard } from './scorecard';
+export { CreateFromAlertModal } from './create-from-alert-modal';
+export { EXPERIMENT_TEMPLATES, getTemplate } from './templates';
+export type { ExperimentTemplate } from './templates';

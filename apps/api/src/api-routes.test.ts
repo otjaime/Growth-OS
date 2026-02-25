@@ -10,6 +10,7 @@ import Fastify from 'fastify';
 // ── Mock Prisma (hoisted so vi.mock can access it) ───────────
 const mockPrisma = vi.hoisted(() => ({
   $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
+  $queryRawUnsafe: vi.fn().mockResolvedValue([]),
   factOrder: {
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
@@ -18,6 +19,7 @@ const mockPrisma = vi.hoisted(() => ({
   factSpend: {
     aggregate: vi.fn().mockResolvedValue({ _sum: { spend: 0, impressions: 0, clicks: 0 } }),
     groupBy: vi.fn().mockResolvedValue([]),
+    findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
   },
   factTraffic: {
@@ -36,6 +38,7 @@ const mockPrisma = vi.hoisted(() => ({
   jobRun: {
     findMany: vi.fn().mockResolvedValue([]),
     findUnique: vi.fn().mockResolvedValue(null),
+    findFirst: vi.fn().mockResolvedValue(null),
   },
   connectorCredential: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -230,10 +233,11 @@ describe('Metrics Routes', () => {
   // ── /metrics/timeseries ───────────────────────────────────
   describe('GET /api/metrics/timeseries', () => {
     it('returns 200 with timeseries structure', async () => {
-      mockPrisma.$queryRaw
+      mockPrisma.$queryRawUnsafe
         .mockResolvedValueOnce([])  // dailyRevenue
         .mockResolvedValueOnce([])  // dailySpend
-        .mockResolvedValueOnce([]); // dailyTraffic
+        .mockResolvedValueOnce([])  // dailyTraffic
+        .mockResolvedValueOnce([]); // dailyMargin
 
       const res = await app.inject({ method: 'GET', url: '/api/metrics/timeseries?days=30' });
       expect(res.statusCode).toBe(200);
@@ -493,7 +497,7 @@ describe('Jobs Routes', () => {
 
   it('GET /api/jobs/:id returns 200 for existing job', async () => {
     const job = { id: 'job-1', stepName: 'ingest', status: 'SUCCESS', startedAt: new Date() };
-    mockPrisma.jobRun.findUnique.mockResolvedValueOnce(job);
+    mockPrisma.jobRun.findFirst.mockResolvedValueOnce(job);
     const res = await app.inject({ method: 'GET', url: '/api/jobs/job-1' });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
@@ -501,7 +505,7 @@ describe('Jobs Routes', () => {
   });
 
   it('GET /api/jobs/:id returns error for non-existent job', async () => {
-    mockPrisma.jobRun.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.jobRun.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'GET', url: '/api/jobs/non-existent' });
     const body = JSON.parse(res.payload);
     expect(body).toHaveProperty('error');
@@ -555,11 +559,14 @@ describe('API Edge Cases', () => {
 // ═════════════════════════════════════════════════════════════
 describe('Segments Route', () => {
   it('GET /api/metrics/segments returns 200 with segments array', async () => {
-    mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { segment: 'Champions', count: 50, total_revenue: 25000, total_orders: 200 },
-      { segment: 'Loyal', count: 120, total_revenue: 36000, total_orders: 480 },
-      { segment: 'At Risk', count: 30, total_revenue: 9000, total_orders: 90 },
-    ]);
+    mockPrisma.$queryRawUnsafe
+      .mockResolvedValueOnce([
+        { segment: 'Champions', count: 50, total_revenue: 25000, total_orders: 200 },
+        { segment: 'Loyal', count: 120, total_revenue: 36000, total_orders: 480 },
+        { segment: 'At Risk', count: 30, total_revenue: 9000, total_orders: 90 },
+      ])
+      .mockResolvedValueOnce([]) // customerTypeRaw
+      .mockResolvedValueOnce([]); // marginRaw
 
     const app = Fastify();
     await app.register(metricsRoutes, { prefix: '/api' });
@@ -578,7 +585,10 @@ describe('Segments Route', () => {
   });
 
   it('GET /api/metrics/segments returns empty array for no data', async () => {
-    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+    mockPrisma.$queryRawUnsafe
+      .mockResolvedValueOnce([])  // segments
+      .mockResolvedValueOnce([])  // customerTypeRaw
+      .mockResolvedValueOnce([]); // marginRaw
 
     const app = Fastify();
     await app.register(metricsRoutes, { prefix: '/api' });

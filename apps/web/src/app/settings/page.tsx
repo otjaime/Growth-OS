@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Database, Beaker, Trash2,
   AlertTriangle, CheckCircle, Loader2, BarChart3,
-  ArrowRight, Shield, Radio, Key, Eye, EyeOff, Save,
+  ArrowRight, Shield, Radio, Key, Eye, EyeOff, Save, RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [switching, setSwitching] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [resetting, setResetting] = useState<'idle' | 'clearing' | 'seeding' | 'done'>('idle');
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   // Google OAuth state
@@ -113,6 +114,38 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: 'Failed to seed demo data' });
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const resetDemo = async () => {
+    if (!confirm('This will clear all data and re-seed fresh demo data. Continue?')) return;
+    setMessage(null);
+    try {
+      setResetting('clearing');
+      const clearRes = await apiFetch('/api/settings/clear-data', { method: 'POST' });
+      const clearData = await clearRes.json();
+      if (!clearData.success) {
+        setMessage({ type: 'error', text: clearData.message ?? 'Failed to clear data' });
+        setResetting('idle');
+        return;
+      }
+
+      setResetting('seeding');
+      const seedRes = await apiFetch('/api/settings/seed-demo', { method: 'POST' });
+      const seedData = await seedRes.json();
+      if (!seedData.success) {
+        setMessage({ type: 'error', text: seedData.message ?? 'Failed to seed demo data' });
+        setResetting('idle');
+        return;
+      }
+
+      setResetting('done');
+      setMessage({ type: 'success', text: 'Demo data reset successfully.' });
+      await fetchMode();
+      setTimeout(() => setResetting('idle'), 2000);
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to reset demo data' });
+      setResetting('idle');
     }
   };
 
@@ -393,6 +426,34 @@ export default function SettingsPage() {
             >
               {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Beaker className="h-4 w-4" />}
               {seeding ? 'Seeding…' : 'Seed Demo'}
+            </button>
+          </div>
+
+          {/* Reset Demo Data */}
+          <div className="flex items-center justify-between p-4 bg-white/[0.04] rounded-lg">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-apple-blue" /> Reset Demo Data
+              </h3>
+              <p className="text-sm text-[var(--foreground-secondary)] mt-1">
+                Clear everything and re-seed fresh demo data in one step.
+              </p>
+              {resetting !== 'idle' && (
+                <p className="text-xs text-apple-blue mt-1 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {resetting === 'clearing' && 'Clearing old data…'}
+                  {resetting === 'seeding' && 'Seeding fresh demo data…'}
+                  {resetting === 'done' && 'Done!'}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={resetDemo}
+              disabled={resetting !== 'idle'}
+              className="px-4 py-2 bg-[var(--tint-blue)] text-apple-blue hover:bg-apple-blue/30 border border-apple-blue/30 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ease-spring disabled:opacity-50"
+            >
+              {resetting !== 'idle' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {resetting !== 'idle' ? 'Resetting…' : 'Reset Demo'}
             </button>
           </div>
 

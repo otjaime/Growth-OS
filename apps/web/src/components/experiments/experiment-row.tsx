@@ -7,6 +7,7 @@ import type { Experiment, ExperimentStatus } from './types';
 import { STATUS_COLORS, TRANSITIONS, formatDuration } from './types';
 import { VerdictBadge, ABResultsCard } from './ab-results';
 import { ExperimentMetricChart } from './experiment-metric-chart';
+import { Scorecard } from './scorecard';
 
 interface ExperimentRowProps {
   exp: Experiment;
@@ -47,6 +48,7 @@ export function ExperimentRow({ exp, onRefresh, onEdit }: ExperimentRowProps): R
   const allowed = TRANSITIONS[exp.status] ?? [];
   const duration = formatDuration(exp.startDate, exp.endDate);
   const hasMetrics = (exp._count?.metrics ?? 0) > 0;
+  const needsClosure = exp.status === 'COMPLETED' && (!exp.result || !exp.learnings);
 
   return (
     <>
@@ -134,6 +136,10 @@ export function ExperimentRow({ exp, onRefresh, onEdit }: ExperimentRowProps): R
                 </div>
               )}
               <ABResultsCard exp={exp} />
+              {/* Scorecard for COMPLETED/ARCHIVED experiments */}
+              {(exp.status === 'COMPLETED' || exp.status === 'ARCHIVED') && exp.controlRate != null && (
+                <Scorecard exp={exp} />
+              )}
               {exp.learnings && (
                 <div className="p-3 bg-white/[0.04] rounded-lg">
                   <span className="text-xs text-[var(--foreground-secondary)] uppercase">Learnings</span>
@@ -147,16 +153,20 @@ export function ExperimentRow({ exp, onRefresh, onEdit }: ExperimentRowProps): R
                 </div>
               )}
               <div className="flex items-center gap-2 pt-2">
-                {allowed.map((s) => (
-                  <button
-                    key={s}
-                    onClick={(e) => { e.stopPropagation(); transitionStatus(s); }}
-                    disabled={transitioning}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-[var(--foreground)]/80 hover:bg-white/[0.1] hover:text-[var(--foreground)] transition-all ease-spring disabled:opacity-50"
-                  >
-                    Move to {s}
-                  </button>
-                ))}
+                {allowed.map((s) => {
+                  const blocked = s === 'ARCHIVED' && needsClosure;
+                  return (
+                    <button
+                      key={s}
+                      onClick={(e) => { e.stopPropagation(); if (!blocked) transitionStatus(s); }}
+                      disabled={transitioning || blocked}
+                      title={blocked ? 'Add result and learnings before archiving' : `Move to ${s}`}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-[var(--foreground)]/80 hover:bg-white/[0.1] hover:text-[var(--foreground)] transition-all ease-spring disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Move to {s}
+                    </button>
+                  );
+                })}
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit(exp); }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-[var(--foreground)]/80 hover:bg-white/[0.1] hover:text-[var(--foreground)] transition-all ease-spring flex items-center gap-1"

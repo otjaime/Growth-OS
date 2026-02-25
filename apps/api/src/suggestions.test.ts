@@ -16,6 +16,7 @@ const mockPrisma = vi.hoisted(() => ({
   suggestion: {
     findMany: vi.fn().mockResolvedValue([]),
     findUnique: vi.fn().mockResolvedValue(null),
+    findFirst: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({}),
   },
@@ -164,7 +165,7 @@ describe('Suggestions Routes', () => {
 
   // ── POST /suggestions/:id/feedback ──────────────────────────
   it('POST /api/suggestions/:id/feedback approves suggestion', async () => {
-    mockPrisma.suggestion.findUnique.mockResolvedValueOnce(mockSuggestion());
+    mockPrisma.suggestion.findFirst.mockResolvedValueOnce(mockSuggestion());
     mockPrisma.suggestion.update.mockResolvedValueOnce(mockSuggestion({ status: 'APPROVED' }));
     mockPrisma.suggestionFeedback.create.mockResolvedValueOnce({
       id: 'fb-1',
@@ -185,7 +186,7 @@ describe('Suggestions Routes', () => {
   });
 
   it('POST /api/suggestions/:id/feedback rejects suggestion', async () => {
-    mockPrisma.suggestion.findUnique.mockResolvedValueOnce(mockSuggestion());
+    mockPrisma.suggestion.findFirst.mockResolvedValueOnce(mockSuggestion());
     mockPrisma.suggestion.update.mockResolvedValueOnce(mockSuggestion({ status: 'REJECTED' }));
     mockPrisma.suggestionFeedback.create.mockResolvedValueOnce({
       id: 'fb-2',
@@ -212,7 +213,7 @@ describe('Suggestions Routes', () => {
   });
 
   it('POST /api/suggestions/:id/feedback returns 404 for missing suggestion', async () => {
-    mockPrisma.suggestion.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.suggestion.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({
       method: 'POST',
       url: '/api/suggestions/nonexistent/feedback',
@@ -224,7 +225,7 @@ describe('Suggestions Routes', () => {
   // ── POST /suggestions/:id/promote ───────────────────────────
   it('POST /api/suggestions/:id/promote creates experiment', async () => {
     const sug = mockSuggestion({ opportunity: mockOpportunity() });
-    mockPrisma.suggestion.findUnique.mockResolvedValueOnce(sug);
+    mockPrisma.suggestion.findFirst.mockResolvedValueOnce(sug);
     mockPrisma.experiment.create.mockResolvedValueOnce({
       id: 'exp-promoted',
       name: sug.title,
@@ -251,7 +252,7 @@ describe('Suggestions Routes', () => {
   });
 
   it('POST /api/suggestions/:id/promote returns 404 for missing', async () => {
-    mockPrisma.suggestion.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.suggestion.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({
       method: 'POST',
       url: '/api/suggestions/nonexistent/promote',

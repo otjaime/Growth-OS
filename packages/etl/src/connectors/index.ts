@@ -1,5 +1,8 @@
 export { fetchShopifyOrders, fetchShopifyCustomers } from './shopify.js';
 export { fetchMetaInsights } from './meta.js';
+export { fetchMetaAdCreatives } from './meta-ads-creative.js';
+export type { MetaAdCreativeConfig, MetaAdCreativeResult, MetaCampaignData, MetaAdSetData, MetaAdData, MetaAdInsight } from './meta-ads-creative.js';
+export { generateDemoMetaAds } from './demo-meta-ads.js';
 export { fetchGoogleAdsInsights } from './google-ads.js';
 export { fetchGA4Traffic } from './ga4.js';
 export { fetchTikTokInsights } from './tiktok.js';

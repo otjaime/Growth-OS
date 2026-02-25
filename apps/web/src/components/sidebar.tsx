@@ -23,11 +23,13 @@ import {
   Menu,
   X,
   Mail,
+  Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
 import { LogoutButton } from '@/components/auth-gate';
 import { useFilters } from '@/contexts/filters';
+import { useDemoMode } from '@/contexts/demo-mode';
 
 const CHANNELS = [
   { slug: 'meta', label: 'Meta Ads' },
@@ -60,6 +62,7 @@ const NAV_ITEMS = [
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
   { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
+  { href: '/autopilot', label: 'Meta Autopilot', icon: Zap },
   { href: '/experiments', label: 'Experiments', icon: FlaskConical },
   { href: '/suggestions', label: 'AI Suggestions', icon: Lightbulb },
   { href: '/growth-model', label: 'Growth Model', icon: TrendingUp },
@@ -72,7 +75,7 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const { channelFilter, setChannelFilter } = useFilters();
-  const [demoMode, setDemoMode] = useState<boolean | null>(null);
+  const { isDemoMode } = useDemoMode();
   const [apiOk, setApiOk] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,7 +85,6 @@ export function Sidebar() {
       apiFetch(`/api/health`)
         .then((r) => r.json())
         .then((d) => {
-          setDemoMode(d.demoMode ?? null);
           setApiOk(d.status === 'healthy');
           setLastSyncAt(d.lastSyncAt ?? null);
         })
@@ -169,10 +171,10 @@ export function Sidebar() {
         <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className={clsx(
             'w-2 h-2 rounded-full animate-pulse',
-            !apiOk ? 'bg-apple-red' : demoMode ? 'bg-apple-purple' : 'bg-apple-green',
+            !apiOk ? 'bg-apple-red' : isDemoMode ? 'bg-apple-purple' : 'bg-apple-green',
           )} />
           <span className="text-xs text-[var(--foreground-secondary)]">
-            {!apiOk ? 'API Disconnected' : demoMode ? 'Demo Mode' : 'Live Mode'}
+            {!apiOk ? 'API Disconnected' : isDemoMode ? 'Demo Mode' : 'Live Mode'}
           </span>
         </Link>
         {apiOk && (

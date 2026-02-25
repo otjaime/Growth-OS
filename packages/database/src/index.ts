@@ -2,6 +2,8 @@ export { prisma } from './client.js';
 export { encrypt, decrypt } from './crypto.js';
 export { isDemoMode, setMode, getAppSetting, setAppSetting } from './mode.js';
 export type {
+  Organization,
+  User,
   RawEvent,
   JobRun,
   JobStatus,
@@ -21,5 +23,16 @@ export type {
   FactEmail,
   Cohort,
   GrowthScenario,
+  Experiment,
+  ExperimentMetric,
+  Opportunity,
+  Suggestion,
+  SuggestionFeedback,
+  MetaAdAccount,
+  MetaCampaign,
+  MetaAdSet,
+  MetaAd,
+  Diagnosis,
+  AdVariant,
 } from '@prisma/client';
-export { Prisma } from '@prisma/client';
+export { Prisma, Plan, UserRole, ExperimentStatus, ExperimentType, OpportunityType, OpportunityStatus, SuggestionType, SuggestionStatus, FeedbackAction, MetaAdStatus, DiagnosisAction, DiagnosisStatus, DiagnosisSeverity, VariantStatus } from '@prisma/client';

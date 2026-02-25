@@ -9,6 +9,7 @@ const mockPrisma = vi.hoisted(() => ({
   experiment: {
     findMany: vi.fn().mockResolvedValue([]),
     findUnique: vi.fn().mockResolvedValue(null),
+    findFirst: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({}),
     delete: vi.fn().mockResolvedValue({}),
@@ -161,7 +162,7 @@ describe('Experiments Routes', () => {
 
   // ── GET single ────────────────────────────────────────────
   it('GET /api/experiments/:id returns experiment with metrics', async () => {
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce({
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce({
       ...mockExperiment(),
       metrics: [],
     });
@@ -172,14 +173,14 @@ describe('Experiments Routes', () => {
   });
 
   it('GET /api/experiments/:id returns 404 for missing', async () => {
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'GET', url: '/api/experiments/nonexistent' });
     expect(res.statusCode).toBe(404);
   });
 
   // ── STATUS transition ─────────────────────────────────────
   it('PATCH /api/experiments/:id/status transitions IDEA → BACKLOG', async () => {
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(mockExperiment({ status: 'IDEA' }));
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(mockExperiment({ status: 'IDEA' }));
     mockPrisma.experiment.update.mockResolvedValueOnce(mockExperiment({ status: 'BACKLOG' }));
 
     const res = await app.inject({
@@ -193,7 +194,7 @@ describe('Experiments Routes', () => {
   });
 
   it('PATCH /api/experiments/:id/status rejects invalid transition', async () => {
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(mockExperiment({ status: 'COMPLETED' }));
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(mockExperiment({ status: 'COMPLETED' }));
 
     const res = await app.inject({
       method: 'PATCH',
@@ -207,7 +208,7 @@ describe('Experiments Routes', () => {
 
   // ── DELETE ────────────────────────────────────────────────
   it('DELETE /api/experiments/:id deletes experiment', async () => {
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(mockExperiment());
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(mockExperiment());
     mockPrisma.experiment.delete.mockResolvedValueOnce({});
 
     const res = await app.inject({ method: 'DELETE', url: '/api/experiments/exp-1' });
@@ -217,7 +218,7 @@ describe('Experiments Routes', () => {
   // ── A/B Test auto-computation ──────────────────────────────
   it('PATCH /api/experiments/:id with A/B data auto-computes verdict', async () => {
     const existing = mockExperiment({ status: 'RUNNING' });
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(existing);
     mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
       return Promise.resolve({ ...existing, ...data });
     });
@@ -245,7 +246,7 @@ describe('Experiments Routes', () => {
 
   it('PATCH /api/experiments/:id with partial A/B data does NOT compute stats', async () => {
     const existing = mockExperiment({ status: 'RUNNING' });
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(existing);
     mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
       return Promise.resolve({ ...existing, ...data });
     });
@@ -271,7 +272,7 @@ describe('Experiments Routes', () => {
       variantSampleSize: 1000,
       controlConversions: 50,
     });
-    mockPrisma.experiment.findUnique.mockResolvedValueOnce(existing);
+    mockPrisma.experiment.findFirst.mockResolvedValueOnce(existing);
     mockPrisma.experiment.update.mockImplementationOnce(({ data }: { data: Record<string, unknown> }) => {
       return Promise.resolve({ ...existing, ...data });
     });

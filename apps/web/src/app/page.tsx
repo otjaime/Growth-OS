@@ -76,6 +76,20 @@ interface ChannelsData {
   channels: ChannelRow[];
 }
 
+interface CustomerTypeEntry {
+  count: number;
+  totalRevenue: number;
+  avgAov: number;
+  percentOfRevenue: number;
+}
+
+interface SegmentsData {
+  customerType?: {
+    new: CustomerTypeEntry;
+    returning: CustomerTypeEntry;
+  };
+}
+
 interface ForecastResponse {
   metric: string;
   horizon: number;
@@ -104,6 +118,7 @@ export default function DashboardPage() {
   const [forecastMetric, setForecastMetric] = useState<'revenue' | 'orders' | 'spend'>('revenue');
   const [forecastHorizon, setForecastHorizon] = useState(30);
   const [forecastLoading, setForecastLoading] = useState(false);
+  const [segmentsData, setSegmentsData] = useState<SegmentsData | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -114,12 +129,14 @@ export default function DashboardPage() {
       apiFetch(`/api/metrics/timeseries?days=${days}`).then((r) => r.ok ? r.json() : null),
       apiFetch(`/api/metrics/cohort-snapshot`).then((r) => r.ok ? r.json() : null),
       apiFetch(`/api/metrics/channels?days=${days}`).then((r) => r.ok ? r.json() : null),
+      apiFetch(`/api/metrics/segments`).then((r) => r.ok ? r.json() : null),
     ])
-      .then(([summaryData, tsData, cohortData, channelsData]) => {
+      .then(([summaryData, tsData, cohortData, channelsData, segData]) => {
         if (summaryData?.kpis) setSummary(summaryData as SummaryData);
         if (tsData?.dailyRevenue) setTimeseries(tsData as TimeseriesData);
         if (cohortData) setCohortSnap(cohortData as CohortSnapshot);
         if (channelsData?.channels) setChannels(channelsData as ChannelsData);
+        if (segData?.customerType) setSegmentsData(segData as SegmentsData);
         if (!summaryData?.kpis) setError('API returned no data');
         setLoading(false);
       })
@@ -341,6 +358,19 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+        {segmentsData?.customerType && (
+          <div className="mt-3 flex items-center gap-4 text-xs text-[var(--foreground-secondary)]">
+            <span>Customer mix:</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-apple-blue" />
+              New {formatNumber(segmentsData.customerType.new.count)} ({segmentsData.customerType.new.percentOfRevenue}% rev)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-apple-green" />
+              Returning {formatNumber(segmentsData.customerType.returning.count)} ({segmentsData.customerType.returning.percentOfRevenue}% rev)
+            </span>
+          </div>
+        )}
       </section>
 
       {/* SECTION 4: Retention & Acquisition */}

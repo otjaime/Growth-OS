@@ -22,7 +22,10 @@ export function KanbanBoard({ experiments, onStatusChange, onEdit }: KanbanBoard
   const isValidDrop = useCallback((targetStatus: ExperimentStatus): boolean => {
     if (!draggedExp) return false;
     if (draggedExp.status === targetStatus) return false;
-    return (TRANSITIONS[draggedExp.status] ?? []).includes(targetStatus);
+    if (!(TRANSITIONS[draggedExp.status] ?? []).includes(targetStatus)) return false;
+    // Block COMPLETED → ARCHIVED without result/learnings
+    if (draggedExp.status === 'COMPLETED' && targetStatus === 'ARCHIVED' && (!draggedExp.result || !draggedExp.learnings)) return false;
+    return true;
   }, [draggedExp]);
 
   const handleDragOver = useCallback((e: React.DragEvent, status: ExperimentStatus) => {

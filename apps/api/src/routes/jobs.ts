@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@growth-os/database';
+import { orgWhere } from '../lib/tenant.js';
 
 export async function jobsRoutes(app: FastifyInstance) {
   // List recent job runs
@@ -20,7 +21,10 @@ export async function jobsRoutes(app: FastifyInstance) {
     const query = request.query as { limit?: string; status?: string };
     const limit = parseInt(query.limit ?? '20', 10);
 
-    const where = query.status ? { status: query.status as 'SUCCESS' | 'FAILED' | 'RUNNING' } : {};
+    const where = {
+      ...orgWhere(request),
+      ...(query.status ? { status: query.status as 'SUCCESS' | 'FAILED' | 'RUNNING' } : {}),
+    };
 
     const jobs = await prisma.jobRun.findMany({
       where,
@@ -44,7 +48,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const { id } = request.params as { id: string };
-    const job = await prisma.jobRun.findUnique({ where: { id } });
+    const job = await prisma.jobRun.findFirst({ where: { id, ...orgWhere(request) } });
     if (!job) {
       return { error: 'Job not found' };
     }

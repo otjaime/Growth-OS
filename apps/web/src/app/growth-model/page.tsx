@@ -45,6 +45,11 @@ interface GrowthModelOutput {
   projectedContributionMargin: number;
   breakEvenMonth: number | null;
   monthlyBreakdown: MonthlyProjection[];
+  safeSpendRange?: {
+    minSpend: number;
+    maxSpend: number;
+    optimalSpend: number;
+  };
 }
 
 interface SavedScenario {
@@ -92,6 +97,7 @@ function SliderInput({
   step,
   format,
   onChange,
+  safeRange,
 }: {
   label: string;
   value: number;
@@ -100,13 +106,37 @@ function SliderInput({
   step: number;
   format: (v: number) => string;
   onChange: (v: number) => void;
+  safeRange?: { minSpend: number; maxSpend: number; optimalSpend: number };
 }) {
+  const budgetZoneColor = safeRange
+    ? value <= safeRange.maxSpend
+      ? value >= safeRange.optimalSpend * 0.8
+        ? 'text-apple-green'
+        : 'text-apple-yellow'
+      : 'text-apple-red'
+    : undefined;
+
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <label className="text-xs text-[var(--foreground-secondary)]">{label}</label>
-        <span className="text-sm font-medium text-[var(--foreground)]">{format(value)}</span>
+        <span className={`text-sm font-medium ${budgetZoneColor ?? 'text-[var(--foreground)]'}`}>{format(value)}</span>
       </div>
+      {safeRange && (
+        <div className="relative h-1.5 rounded-full overflow-hidden bg-white/[0.06]">
+          <div
+            className="absolute h-full bg-apple-red/30 rounded-full"
+            style={{ left: `${((safeRange.maxSpend - min) / (max - min)) * 100}%`, right: 0 }}
+          />
+          <div
+            className="absolute h-full bg-apple-green/30 rounded-full"
+            style={{
+              left: `${((safeRange.minSpend - min) / (max - min)) * 100}%`,
+              width: `${(((safeRange.maxSpend - safeRange.minSpend)) / (max - min)) * 100}%`,
+            }}
+          />
+        </div>
+      )}
       <input
         type="range"
         min={min}
@@ -116,6 +146,11 @@ function SliderInput({
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-white/[0.06] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
       />
+      {safeRange && (
+        <p className="text-[10px] text-[var(--foreground-secondary)]/70">
+          Safe range: {format(safeRange.minSpend)} — {format(safeRange.maxSpend)}/mo
+        </p>
+      )}
     </div>
   );
 }
@@ -294,6 +329,7 @@ export default function GrowthModelPage() {
             step={1000}
             format={(v) => formatCurrency(v)}
             onChange={(v) => updateInput('monthlyBudget', v)}
+            safeRange={output?.safeSpendRange}
           />
 
           <SliderInput

@@ -6,6 +6,7 @@ import type { AlertInput } from '@growth-os/etl';
 import * as kpiCalcs from '@growth-os/etl';
 import { sendAlertToSlack, isSlackConfigured } from '../lib/slack.js';
 import { isAIConfigured, generateAlertExplanation } from '../lib/ai.js';
+import { orgWhere } from '../lib/tenant.js';
 
 export async function alertsRoutes(app: FastifyInstance) {
   app.get('/alerts', {
@@ -35,38 +36,38 @@ export async function alertsRoutes(app: FastifyInstance) {
         },
       },
     },
-  }, async () => {
+  }, async (request) => {
     const now = new Date();
     const currentStart = subDays(now, 7);
     const previousStart = subDays(currentStart, 7);
 
     // Current period
     const currentOrders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), orderDate: { gte: currentStart, lte: now } },
     });
     const previousOrders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), orderDate: { gte: previousStart, lt: currentStart } },
     });
 
     const curSpend = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { date: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), date: { gte: currentStart, lte: now } },
     });
     const prevSpend = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { date: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), date: { gte: previousStart, lt: currentStart } },
     });
 
     // Per-channel breakdowns
     const channelSpendCur = await prisma.factSpend.groupBy({
       by: ['channelId'],
       _sum: { spend: true },
-      where: { date: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), date: { gte: currentStart, lte: now } },
     });
     const channelSpendPrev = await prisma.factSpend.groupBy({
       by: ['channelId'],
       _sum: { spend: true },
-      where: { date: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), date: { gte: previousStart, lt: currentStart } },
     });
     const dimChannels = await prisma.dimChannel.findMany();
     const channelMap = new Map(dimChannels.map((c) => [c.id, c.slug]));
@@ -114,7 +115,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
 
     // Get baseline retention (average of all cohorts)
-    const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
+    const cohorts = await prisma.cohort.findMany({ where: { ...orgWhere(request) }, orderBy: { cohortMonth: 'desc' } });
     const baselineD30 = cohorts.length > 0
       ? cohorts.reduce((s, c) => s + Number(c.d30Retention), 0) / cohorts.length
       : 0.15;
@@ -181,8 +182,8 @@ export async function alertsRoutes(app: FastifyInstance) {
     const start = subDays(now, 7);
 
     const [orderCount, spendAgg] = await Promise.all([
-      prisma.factOrder.count({ where: { orderDate: { gte: start, lte: now } } }),
-      prisma.factSpend.aggregate({ _sum: { spend: true }, where: { date: { gte: start, lte: now } } }),
+      prisma.factOrder.count({ where: { ...orgWhere(request), orderDate: { gte: start, lte: now } } }),
+      prisma.factSpend.aggregate({ _sum: { spend: true }, where: { ...orgWhere(request), date: { gte: start, lte: now } } }),
     ]);
 
     const metricsContext = `7-day snapshot: ${orderCount} orders, $${Number(spendAgg._sum.spend ?? 0).toFixed(0)} ad spend. The alert rule-based recommendation was: "${body.alert.recommendation}"`;

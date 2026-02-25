@@ -9,8 +9,10 @@ export interface ConnectorConfigs {
   ga4?: GA4Config;
 }
 
-export async function buildConnectorConfigsFromDB(demoMode: boolean): Promise<ConnectorConfigs> {
-  const credentials = await prisma.connectorCredential.findMany();
+export async function buildConnectorConfigsFromDB(demoMode: boolean, organizationId?: string): Promise<ConnectorConfigs> {
+  const credentials = await prisma.connectorCredential.findMany({
+    ...(organizationId ? { where: { organizationId } } : {}),
+  });
   const configs: ConnectorConfigs = {};
   const googleOAuth = await getGoogleOAuthConfig();
 

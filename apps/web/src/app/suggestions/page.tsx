@@ -49,6 +49,8 @@ interface Suggestion {
   effortScore: number | null;
   riskScore: number | null;
   reasoning: string | null;
+  driverAnalysis: string | null;
+  actionsJson: string[] | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROMOTED';
   feedback: Feedback[];
   createdAt: string;
@@ -147,10 +149,12 @@ function DemoBanner() {
 
 function PromoteModal({
   suggestion,
+  opportunityType,
   onClose,
   onPromoted,
 }: {
   suggestion: Suggestion;
+  opportunityType?: string;
   onClose: () => void;
   onPromoted: () => void;
 }) {
@@ -164,8 +168,17 @@ function PromoteModal({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  // No reach score on suggestions — RICE will be computed after user sets reach
-  const riceScore = null;
+  // Map opportunity type to experiment type for preview
+  const OPP_TO_EXP_TYPE: Record<string, string> = {
+    CAC_SPIKE: 'CREATIVE',
+    EFFICIENCY_DROP: 'PRICING',
+    RETENTION_DECLINE: 'LIFECYCLE',
+    FUNNEL_LEAK: 'CRO',
+    GROWTH_PLATEAU: 'CRO',
+    CHANNEL_IMBALANCE: 'CREATIVE',
+    QUICK_WIN: 'OTHER',
+  };
+  const inferredType = opportunityType ? OPP_TO_EXP_TYPE[opportunityType] ?? null : null;
 
   const handlePromote = async () => {
     setSubmitting(true);
@@ -218,8 +231,16 @@ function PromoteModal({
             <div>
               <span className="text-xs text-[var(--foreground-secondary)] uppercase">Hypothesis</span>
               <p className="text-sm text-[var(--foreground)] mt-0.5">{suggestion.hypothesis}</p>
+              {suggestion.reasoning && (
+                <p className="text-xs text-[var(--foreground-secondary)] mt-1 italic">Context: {suggestion.reasoning}</p>
+              )}
             </div>
-            <div className="flex gap-4 text-xs">
+            <div className="flex gap-4 text-xs flex-wrap">
+              {inferredType && (
+                <span className="text-[var(--foreground-secondary)]">
+                  Type: <strong className="text-apple-purple">{inferredType}</strong>
+                </span>
+              )}
               {suggestion.suggestedChannel && (
                 <span className="text-[var(--foreground-secondary)]">
                   Channel: <strong className="text-[var(--foreground)]">{suggestion.suggestedChannel.replace(/_/g, ' ')}</strong>
@@ -236,9 +257,8 @@ function PromoteModal({
                 </span>
               )}
             </div>
-            {/* RICE preview */}
+            {/* ICE preview */}
             <div className="flex gap-4 text-xs text-[var(--foreground-secondary)]">
-              <span>Reach: <strong className="text-[var(--foreground-secondary)]/70">set after promote</strong></span>
               {suggestion.impactScore != null && <span>Impact: <strong className="text-[var(--foreground)]">{suggestion.impactScore}</strong></span>}
               {suggestion.confidenceScore != null && <span>Confidence: <strong className="text-[var(--foreground)]">{suggestion.confidenceScore}</strong></span>}
               {suggestion.effortScore != null && <span>Effort: <strong className="text-[var(--foreground)]">{suggestion.effortScore}</strong></span>}
@@ -294,6 +314,7 @@ function SuggestionRow({
   suggestion: Suggestion;
   onRefresh: () => void;
   onPromote: (s: Suggestion) => void;
+  opportunityType?: string;
 }) {
   const [acting, setActing] = useState(false);
 
@@ -314,57 +335,85 @@ function SuggestionRow({
   };
 
   const isPending = suggestion.status === 'PENDING';
+  const actions = (suggestion.actionsJson ?? []) as string[];
 
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-white/[0.04] last:border-b-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--foreground)] font-medium">{suggestion.title}</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${SUGGESTION_STATUS_COLORS[suggestion.status]}`}>
-            {suggestion.status}
-          </span>
+    <div className="py-3 border-b border-white/[0.04] last:border-b-0">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[var(--foreground)] font-medium">{suggestion.title}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${SUGGESTION_STATUS_COLORS[suggestion.status]}`}>
+              {suggestion.status}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--foreground-secondary)] mt-1 line-clamp-2">{suggestion.hypothesis}</p>
+          <div className="flex gap-3 mt-1.5 text-xs text-[var(--foreground-secondary)]/70">
+            {suggestion.suggestedChannel && <span>{suggestion.suggestedChannel.replace(/_/g, ' ')}</span>}
+            {suggestion.suggestedMetric && <span>{suggestion.suggestedMetric.replace(/_/g, ' ')}</span>}
+            {suggestion.suggestedTargetLift != null && <span>+{suggestion.suggestedTargetLift}%</span>}
+            {suggestion.impactScore != null && <span>Impact: {suggestion.impactScore}</span>}
+            {suggestion.effortScore != null && <span>Effort: {suggestion.effortScore}</span>}
+          </div>
         </div>
-        <p className="text-xs text-[var(--foreground-secondary)] mt-1 line-clamp-2">{suggestion.hypothesis}</p>
-        <div className="flex gap-3 mt-1.5 text-xs text-[var(--foreground-secondary)]/70">
-          {suggestion.suggestedChannel && <span>{suggestion.suggestedChannel.replace(/_/g, ' ')}</span>}
-          {suggestion.suggestedMetric && <span>{suggestion.suggestedMetric.replace(/_/g, ' ')}</span>}
-          {suggestion.suggestedTargetLift != null && <span>+{suggestion.suggestedTargetLift}%</span>}
-          {suggestion.impactScore != null && <span>Impact: {suggestion.impactScore}</span>}
-          {suggestion.effortScore != null && <span>Effort: {suggestion.effortScore}</span>}
-        </div>
-        {suggestion.reasoning && (
-          <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1.5 italic">{suggestion.reasoning}</p>
+
+        {/* Actions */}
+        {isPending && (
+          <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5">
+            <button
+              onClick={() => sendFeedback('approve')}
+              disabled={acting}
+              title="Approve"
+              className="p-1.5 rounded-lg bg-green-900/30 text-apple-green hover:bg-green-900/50 transition-all ease-spring disabled:opacity-50"
+            >
+              <ThumbsUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => sendFeedback('reject')}
+              disabled={acting}
+              title="Reject"
+              className="p-1.5 rounded-lg bg-red-900/30 text-apple-red hover:bg-red-900/50 transition-all ease-spring disabled:opacity-50"
+            >
+              <ThumbsDown className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onPromote(suggestion)}
+              disabled={acting}
+              title="Promote to Experiment"
+              className="p-1.5 rounded-lg bg-blue-900/30 text-apple-blue hover:bg-blue-900/50 transition-all ease-spring disabled:opacity-50"
+            >
+              <Rocket className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Actions */}
-      {isPending && (
-        <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5">
-          <button
-            onClick={() => sendFeedback('approve')}
-            disabled={acting}
-            title="Approve"
-            className="p-1.5 rounded-lg bg-green-900/30 text-apple-green hover:bg-green-900/50 transition-all ease-spring disabled:opacity-50"
-          >
-            <ThumbsUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => sendFeedback('reject')}
-            disabled={acting}
-            title="Reject"
-            className="p-1.5 rounded-lg bg-red-900/30 text-apple-red hover:bg-red-900/50 transition-all ease-spring disabled:opacity-50"
-          >
-            <ThumbsDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onPromote(suggestion)}
-            disabled={acting}
-            title="Promote to Experiment"
-            className="p-1.5 rounded-lg bg-blue-900/30 text-apple-blue hover:bg-blue-900/50 transition-all ease-spring disabled:opacity-50"
-          >
-            <Rocket className="h-3.5 w-3.5" />
-          </button>
+      {/* Driver Analysis — WHY */}
+      {suggestion.driverAnalysis && (
+        <div className="mt-2 p-2.5 bg-apple-orange/[0.08] border border-apple-orange/20 rounded-lg">
+          <span className="text-[10px] text-apple-orange uppercase font-medium tracking-wide">Why</span>
+          <p className="text-xs text-[var(--foreground)]/80 mt-0.5">{suggestion.driverAnalysis}</p>
         </div>
+      )}
+
+      {/* Actions — WHAT TO DO */}
+      {actions.length > 0 && (
+        <div className="mt-2 p-2.5 bg-[var(--tint-blue)] border border-apple-blue/20 rounded-lg">
+          <span className="text-[10px] text-apple-blue uppercase font-medium tracking-wide">What to do</span>
+          <ol className="mt-1 space-y-1">
+            {actions.map((action, i) => (
+              <li key={i} className="text-xs text-[var(--foreground)]/80 flex gap-2">
+                <span className="text-apple-blue font-semibold flex-shrink-0">{i + 1}.</span>
+                <span>{action}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Reasoning (if no driver analysis, show as fallback) */}
+      {suggestion.reasoning && !suggestion.driverAnalysis && (
+        <p className="text-xs text-[var(--foreground-secondary)]/70 mt-1.5 italic">{suggestion.reasoning}</p>
       )}
     </div>
   );
@@ -379,7 +428,7 @@ function OpportunityCard({
 }: {
   opportunity: Opportunity;
   onRefresh: () => void;
-  onPromote: (s: Suggestion) => void;
+  onPromote: (s: Suggestion, oppType: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const signals = (opportunity.signalsJson ?? []) as Signal[];
@@ -427,7 +476,50 @@ function OpportunityCard({
             <p className="text-sm text-[var(--foreground)]/80">{opportunity.description}</p>
           </div>
 
-          {/* Signals */}
+          {/* What Changed — metric deltas from signals */}
+          {signals.length > 0 && (
+            <div className="px-4 py-3 border-b border-white/[0.04]">
+              <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">What Changed</span>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {signals.map((signal) => {
+                  const sigData = signal as Signal & { metric?: string; change?: number; currentValue?: number; previousValue?: number };
+                  const hasMetricData = sigData.change != null || sigData.currentValue != null;
+                  const changeVal = sigData.change ?? 0;
+                  const isNegative = changeVal < 0;
+                  return (
+                    <div key={signal.id} className="flex items-center gap-2 bg-white/[0.04] rounded-lg px-3 py-2">
+                      {hasMetricData ? (
+                        <>
+                          <span className="text-xs text-[var(--foreground-secondary)]">
+                            {(sigData.metric ?? signal.id ?? '').replace(/_/g, ' ')}
+                          </span>
+                          {sigData.previousValue != null && sigData.currentValue != null && (
+                            <>
+                              <span className="text-xs text-[var(--foreground)]/70">{typeof sigData.previousValue === 'number' && sigData.previousValue < 1 ? `${(sigData.previousValue * 100).toFixed(1)}%` : sigData.previousValue?.toLocaleString()}</span>
+                              <span className="text-[var(--foreground-secondary)]">&rarr;</span>
+                              <span className="text-xs text-[var(--foreground)]">{typeof sigData.currentValue === 'number' && sigData.currentValue < 1 ? `${(sigData.currentValue * 100).toFixed(1)}%` : sigData.currentValue?.toLocaleString()}</span>
+                            </>
+                          )}
+                          {sigData.change != null && (
+                            <span className={clsx(
+                              'text-xs font-semibold px-1.5 py-0.5 rounded',
+                              isNegative ? 'bg-[var(--tint-red)] text-apple-red' : 'bg-[var(--tint-green)] text-apple-green',
+                            )}>
+                              {isNegative ? '' : '+'}{typeof changeVal === 'number' && Math.abs(changeVal) < 1 ? `${(changeVal * 100).toFixed(1)}pp` : `${changeVal.toFixed(0)}%`}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-[var(--foreground)]/80">{signal.title}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Detected Signals */}
           {signals.length > 0 && (
             <div className="px-4 py-3 border-b border-white/[0.04]">
               <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">Detected Signals</span>
@@ -455,7 +547,7 @@ function OpportunityCard({
             {opportunity.suggestions.length > 0 ? (
               <div className="mt-2">
                 {opportunity.suggestions.map((s) => (
-                  <SuggestionRow key={s.id} suggestion={s} onRefresh={onRefresh} onPromote={onPromote} />
+                  <SuggestionRow key={s.id} suggestion={s} onRefresh={onRefresh} onPromote={(sug) => onPromote(sug, opportunity.type)} />
                 ))}
               </div>
             ) : (
@@ -477,7 +569,7 @@ export default function SuggestionsPage() {
   const [generating, setGenerating] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [promotingSuggestion, setPromotingSuggestion] = useState<Suggestion | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<{ suggestion: Suggestion; opportunityType: string } | null>(null);
 
   const fetchOpportunities = useCallback(() => {
     setLoading(true);
@@ -638,17 +730,18 @@ export default function SuggestionsPage() {
               key={opp.id}
               opportunity={opp}
               onRefresh={fetchOpportunities}
-              onPromote={setPromotingSuggestion}
+              onPromote={(s, oppType) => setPromoteTarget({ suggestion: s, opportunityType: oppType })}
             />
           ))}
         </div>
       )}
 
       {/* Promote modal */}
-      {promotingSuggestion && (
+      {promoteTarget && (
         <PromoteModal
-          suggestion={promotingSuggestion}
-          onClose={() => setPromotingSuggestion(null)}
+          suggestion={promoteTarget.suggestion}
+          opportunityType={promoteTarget.opportunityType}
+          onClose={() => setPromoteTarget(null)}
           onPromoted={fetchOpportunities}
         />
       )}

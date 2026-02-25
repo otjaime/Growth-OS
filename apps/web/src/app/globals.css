@@ -190,10 +190,14 @@ body {
    PRINT STYLES — WBR Export PDF
    ========================================================== */
 @media print {
+  /* ── Layout Reset ──────────────────────── */
   aside { display: none !important; }
+  nav { display: none !important; }
   button[aria-label="Open menu"] { display: none !important; }
   main { margin-left: 0 !important; padding: 0 !important; }
-  body { background: white !important; color: black !important; }
+  body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── Glass → White ─────────────────────── */
   .card {
     background: white !important;
     backdrop-filter: none !important;
@@ -202,6 +206,7 @@ body {
     box-shadow: none !important;
     color: black !important;
     break-inside: avoid;
+    page-break-inside: avoid;
   }
   .glass-thick, .glass-thin, .glass-elevated {
     background: white !important;
@@ -210,11 +215,29 @@ body {
     box-shadow: none !important;
   }
   .glass-specular::before { display: none !important; }
+
+  /* ── Typography Reset ──────────────────── */
   h1, h2, h3, p, span, div { color: black !important; }
   .text-white, .text-\[var\(--foreground\)\] { color: black !important; }
   .text-\[var\(--foreground-secondary\)\] { color: #374151 !important; }
+  strong { color: black !important; }
+
+  /* ── Preserve KPI colors in print ──────── */
+  .text-apple-green { color: #059669 !important; }
+  .text-apple-red { color: #dc2626 !important; }
+  .text-apple-yellow { color: #d97706 !important; }
+  .text-apple-blue { color: #2563eb !important; }
+
+  /* ── Print utility classes ─────────────── */
   .print\:hidden { display: none !important; }
   .print\:block { display: block !important; }
   .print\:break-before { break-before: page !important; }
-  @page { size: A4; margin: 1cm; }
+
+  /* ── Print-only branded header ─────────── */
+  .print-only {
+    display: block !important;
+  }
+
+  /* ── Page setup ────────────────────────── */
+  @page { size: A4; margin: 1in; }
 }

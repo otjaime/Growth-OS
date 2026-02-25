@@ -98,8 +98,16 @@ export default function JobsPage() {
 
       {/* Table */}
       {jobs.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-[var(--foreground-secondary)]">No job runs found.</p>
+        <div className="card text-center py-16">
+          <Clock className="h-12 w-12 text-[var(--foreground-secondary)]/50 mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">No pipeline jobs yet</h2>
+          <p className="text-sm text-[var(--foreground-secondary)]">
+            Jobs appear here after a data sync or demo seed. Go to{' '}
+            <a href="/connections" className="text-apple-blue hover:underline">Data Connections</a>{' '}
+            or{' '}
+            <a href="/settings" className="text-apple-blue hover:underline">Settings</a>{' '}
+            to get started.
+          </p>
         </div>
       ) : (
         <div className="card overflow-x-auto">

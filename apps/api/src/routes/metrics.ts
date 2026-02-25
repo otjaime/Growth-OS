@@ -8,6 +8,7 @@ import { prisma, Prisma } from '@growth-os/database';
 import { subDays, addDays, differenceInDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import { forecast, forecastSeasonal } from '@growth-os/etl';
+import { orgWhere, orgSqlWhere } from '../lib/tenant.js';
 
 export async function metricsRoutes(app: FastifyInstance) {
   // ── Executive Summary KPIs ────────────────────────────────
@@ -30,28 +31,28 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     // Current period
     const currentOrders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), orderDate: { gte: currentStart, lte: now } },
     });
     const previousOrders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), orderDate: { gte: previousStart, lt: currentStart } },
     });
 
     const currentSpendAgg = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { date: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), date: { gte: currentStart, lte: now } },
     });
     const previousSpendAgg = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { date: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), date: { gte: previousStart, lt: currentStart } },
     });
 
     const currentTrafficAgg = await prisma.factTraffic.aggregate({
       _sum: { sessions: true, purchases: true },
-      where: { date: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), date: { gte: currentStart, lte: now } },
     });
     const previousTrafficAgg = await prisma.factTraffic.aggregate({
       _sum: { sessions: true, purchases: true },
-      where: { date: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), date: { gte: previousStart, lt: currentStart } },
     });
 
     const cur = {
@@ -80,10 +81,10 @@ export async function metricsRoutes(app: FastifyInstance) {
     // A cohort month like "2026-01" includes customers acquired up to Jan 31,
     // who need until Mar 2 for 30 days of history. So we subtract 2 months
     // to ensure the entire cohort has had at least 30 days to accumulate repeats.
-    const latestCohort = await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+    const latestCohort = await prisma.cohort.findFirst({ where: { ...orgWhere(request) }, orderBy: { cohortMonth: 'desc' } });
     const matureMonth = format(subDays(now, 60), 'yyyy-MM');
     const matureCohort = await prisma.cohort.findFirst({
-      where: { cohortMonth: { lte: matureMonth } },
+      where: { ...orgWhere(request), cohortMonth: { lte: matureMonth } },
       orderBy: { cohortMonth: 'desc' },
     });
     const cohortForRetention = matureCohort ?? latestCohort;
@@ -145,47 +146,53 @@ export async function metricsRoutes(app: FastifyInstance) {
     const now = new Date();
     const start = subDays(now, days);
 
-    const dailyRevenue = await prisma.$queryRaw<
+    const orgSql = orgSqlWhere(request);
+
+    const dailyRevenue = await prisma.$queryRawUnsafe<
       Array<{ date: Date; revenue: number; orders: number; new_customers: number }>
-    >`
-      SELECT order_date as date, 
+    >(
+      `SELECT order_date as date,
              SUM(revenue_net)::float as revenue,
              COUNT(*)::int as orders,
              SUM(CASE WHEN is_new_customer THEN 1 ELSE 0 END)::int as new_customers
       FROM fact_orders
-      WHERE order_date >= ${start} AND order_date <= ${now}
+      WHERE order_date >= $1 AND order_date <= $2${orgSql}
       GROUP BY order_date
-      ORDER BY order_date
-    `;
+      ORDER BY order_date`,
+      start, now
+    );
 
-    const dailySpend = await prisma.$queryRaw<
+    const dailySpend = await prisma.$queryRawUnsafe<
       Array<{ date: Date; spend: number }>
-    >`
-      SELECT date, SUM(spend)::float as spend
+    >(
+      `SELECT date, SUM(spend)::float as spend
       FROM fact_spend
-      WHERE date >= ${start} AND date <= ${now}
-      GROUP BY date ORDER BY date
-    `;
+      WHERE date >= $1 AND date <= $2${orgSql}
+      GROUP BY date ORDER BY date`,
+      start, now
+    );
 
-    const dailyTraffic = await prisma.$queryRaw<
+    const dailyTraffic = await prisma.$queryRawUnsafe<
       Array<{ date: Date; sessions: number }>
-    >`
-      SELECT date, SUM(sessions)::int as sessions
+    >(
+      `SELECT date, SUM(sessions)::int as sessions
       FROM fact_traffic
-      WHERE date >= ${start} AND date <= ${now}
-      GROUP BY date ORDER BY date
-    `;
+      WHERE date >= $1 AND date <= $2${orgSql}
+      GROUP BY date ORDER BY date`,
+      start, now
+    );
 
-    const dailyMargin = await prisma.$queryRaw<
+    const dailyMargin = await prisma.$queryRawUnsafe<
       Array<{ date: Date; cm: number; revenue_net: number }>
-    >`
-      SELECT order_date as date,
+    >(
+      `SELECT order_date as date,
              SUM(contribution_margin)::float as cm,
              SUM(revenue_net)::float as revenue_net
       FROM fact_orders
-      WHERE order_date >= ${start} AND order_date <= ${now}
-      GROUP BY order_date ORDER BY order_date
-    `;
+      WHERE order_date >= $1 AND order_date <= $2${orgSql}
+      GROUP BY order_date ORDER BY order_date`,
+      start, now
+    );
 
     return { dailyRevenue, dailySpend, dailyTraffic, dailyMargin };
   });
@@ -214,20 +221,20 @@ export async function metricsRoutes(app: FastifyInstance) {
     for (const channel of channels) {
       // Current period
       const curOrders = await prisma.factOrder.findMany({
-        where: { channelId: channel.id, orderDate: { gte: currentStart, lte: now } },
+        where: { ...orgWhere(request), channelId: channel.id, orderDate: { gte: currentStart, lte: now } },
       });
       const curSpendAgg = await prisma.factSpend.aggregate({
         _sum: { spend: true, impressions: true, clicks: true },
-        where: { channelId: channel.id, date: { gte: currentStart, lte: now } },
+        where: { ...orgWhere(request), channelId: channel.id, date: { gte: currentStart, lte: now } },
       });
 
       // Previous period
       const prevOrders = await prisma.factOrder.findMany({
-        where: { channelId: channel.id, orderDate: { gte: previousStart, lt: currentStart } },
+        where: { ...orgWhere(request), channelId: channel.id, orderDate: { gte: previousStart, lt: currentStart } },
       });
       const prevSpendAgg = await prisma.factSpend.aggregate({
         _sum: { spend: true },
-        where: { channelId: channel.id, date: { gte: previousStart, lt: currentStart } },
+        where: { ...orgWhere(request), channelId: channel.id, date: { gte: previousStart, lt: currentStart } },
       });
 
       const curRevenue = curOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
@@ -262,10 +269,10 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     // Include unattributed orders (null channelId) so channel totals match executive summary
     const curUnattributed = await prisma.factOrder.findMany({
-      where: { channelId: null, orderDate: { gte: currentStart, lte: now } },
+      where: { ...orgWhere(request), channelId: null, orderDate: { gte: currentStart, lte: now } },
     });
     const prevUnattributed = await prisma.factOrder.findMany({
-      where: { channelId: null, orderDate: { gte: previousStart, lt: currentStart } },
+      where: { ...orgWhere(request), channelId: null, orderDate: { gte: previousStart, lt: currentStart } },
     });
 
     if (curUnattributed.length > 0 || prevUnattributed.length > 0) {
@@ -325,7 +332,7 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     // Always available: Shopify order-based funnel
     const orders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: start, lte: now } },
+      where: { ...orgWhere(request), orderDate: { gte: start, lte: now } },
     });
 
     const totalOrders = orders.length;
@@ -356,7 +363,7 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     // Optional: GA4 web traffic funnel (only if data exists)
     const trafficCount = await prisma.factTraffic.count({
-      where: { date: { gte: start, lte: now } },
+      where: { ...orgWhere(request), date: { gte: start, lte: now } },
     });
 
     let traffic = null;
@@ -369,7 +376,7 @@ export async function metricsRoutes(app: FastifyInstance) {
           checkouts: true,
           purchases: true,
         },
-        where: { date: { gte: start, lte: now } },
+        where: { ...orgWhere(request), date: { gte: start, lte: now } },
       });
 
       const t = {
@@ -392,8 +399,9 @@ export async function metricsRoutes(app: FastifyInstance) {
       summary: 'Cohort retention data',
       description: 'Returns all cohorts with retention rates (D7, D30, D60, D90), LTV, and CAC',
     },
-  }, async () => {
+  }, async (request) => {
     const cohorts = await prisma.cohort.findMany({
+      where: { ...orgWhere(request) },
       orderBy: { cohortMonth: 'desc' },
     });
 
@@ -432,7 +440,7 @@ export async function metricsRoutes(app: FastifyInstance) {
       summary: 'Latest cohort snapshot',
       description: 'Returns the latest cohort with LTV/CAC ratio and recent cohort trends',
     },
-  }, async () => {
+  }, async (request) => {
     // Use the most recent mature cohort (age >= 30d) so D30 retention
     // isn't 0% for a cohort that hasn't had time to accumulate repeats.
     // Subtract 60 days (not 30) because a cohort month's last customers
@@ -440,10 +448,10 @@ export async function metricsRoutes(app: FastifyInstance) {
     const now = new Date();
     const matureMonth = format(subDays(now, 60), 'yyyy-MM');
     const matureCohort = await prisma.cohort.findFirst({
-      where: { cohortMonth: { lte: matureMonth } },
+      where: { ...orgWhere(request), cohortMonth: { lte: matureMonth } },
       orderBy: { cohortMonth: 'desc' },
     });
-    const latest = matureCohort ?? await prisma.cohort.findFirst({ orderBy: { cohortMonth: 'desc' } });
+    const latest = matureCohort ?? await prisma.cohort.findFirst({ where: { ...orgWhere(request) }, orderBy: { cohortMonth: 'desc' } });
 
     if (!latest) {
       return { latest: null, recentCohorts: [] };
@@ -462,10 +470,10 @@ export async function metricsRoutes(app: FastifyInstance) {
       const periodStart = subDays(now2, 30);
       const spendAgg = await prisma.factSpend.aggregate({
         _sum: { spend: true },
-        where: { date: { gte: periodStart, lte: now2 } },
+        where: { ...orgWhere(request), date: { gte: periodStart, lte: now2 } },
       });
       const newCustCount = await prisma.factOrder.count({
-        where: { orderDate: { gte: periodStart, lte: now2 }, isNewCustomer: true },
+        where: { ...orgWhere(request), orderDate: { gte: periodStart, lte: now2 }, isNewCustomer: true },
       });
       effectiveCac = newCustCount > 0 ? Number(spendAgg._sum.spend ?? 0) / newCustCount : 0;
     }
@@ -476,7 +484,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     let effectivePayback = latest.paybackDays;
     if (effectivePayback === null && effectiveCac > 0 && ltv30 > 0) {
       const currentOrders = await prisma.factOrder.findMany({
-        where: { orderDate: { gte: subDays(now, 30), lte: now } },
+        where: { ...orgWhere(request), orderDate: { gte: subDays(now, 30), lte: now } },
       });
       const curCm = currentOrders.reduce((s, o) => s + Number(o.contributionMargin), 0);
       const curRevNet = currentOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
@@ -485,6 +493,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     }
 
     const recentCohorts = await prisma.cohort.findMany({
+      where: { ...orgWhere(request) },
       orderBy: { cohortMonth: 'desc' },
       take: 3,
       select: {
@@ -537,7 +546,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     const start = subDays(now, days);
 
     const orders = await prisma.factOrder.findMany({
-      where: { orderDate: { gte: start, lte: now } },
+      where: { ...orgWhere(request), orderDate: { gte: start, lte: now } },
     });
 
     const totalRevNet = orders.reduce((s, o) => s + Number(o.revenueNet), 0);
@@ -550,10 +559,26 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     const spendAgg = await prisma.factSpend.aggregate({
       _sum: { spend: true },
-      where: { date: { gte: start, lte: now } },
+      where: { ...orgWhere(request), date: { gte: start, lte: now } },
     });
     const totalSpend = Number(spendAgg._sum.spend ?? 0);
     const newCust = orders.filter((o) => o.isNewCustomer).length;
+
+    // Customer segments: new vs returning
+    const newOrders = orders.filter((o) => o.isNewCustomer);
+    const retOrders = orders.filter((o) => !o.isNewCustomer);
+
+    function segmentStats(seg: typeof orders) {
+      const revNet = seg.reduce((s, o) => s + Number(o.revenueNet), 0);
+      const cm = seg.reduce((s, o) => s + Number(o.contributionMargin), 0);
+      return {
+        orderCount: seg.length,
+        revenueNet: Math.round(revNet * 100) / 100,
+        aov: seg.length > 0 ? Math.round((revNet / seg.length) * 100) / 100 : 0,
+        cm: Math.round(cm * 100) / 100,
+        cmPercent: revNet > 0 ? Math.round((cm / revNet) * 10000) / 10000 : 0,
+      };
+    }
 
     // Payment method breakdown
     const paymentMethods = new Map<string, { count: number; revenue: number; succeeded: number; failed: number }>();
@@ -588,6 +613,103 @@ export async function metricsRoutes(app: FastifyInstance) {
       }))
       .sort((a, b) => b.count - a.count);
 
+    // Channel unit economics
+    const dimChannels = await prisma.dimChannel.findMany({ select: { id: true, slug: true } });
+    const channelIdToSlug = new Map(dimChannels.map((c) => [c.id, c.slug]));
+
+    const channelMap = new Map<string, typeof orders>();
+    for (const o of orders) {
+      const ch = o.channelId ? (channelIdToSlug.get(o.channelId) ?? 'unknown') : 'unknown';
+      const existing = channelMap.get(ch);
+      if (existing) existing.push(o);
+      else channelMap.set(ch, [o]);
+    }
+
+    const channelSpends = await prisma.factSpend.groupBy({
+      by: ['channelId'],
+      _sum: { spend: true },
+      where: { ...orgWhere(request), date: { gte: start, lte: now } },
+    });
+    const spendByChannel = new Map(channelSpends.map((cs) => [channelIdToSlug.get(cs.channelId) ?? 'unknown', Number(cs._sum.spend ?? 0)]));
+
+    const channelUnitEconomics = Array.from(channelMap.entries())
+      .map(([channel, chOrders]) => {
+        const chRevNet = chOrders.reduce((s, o) => s + Number(o.revenueNet), 0);
+        const chCogs = chOrders.reduce((s, o) => s + Number(o.cogs), 0);
+        const chCM = chOrders.reduce((s, o) => s + Number(o.contributionMargin), 0);
+        const chSpend = spendByChannel.get(channel) ?? 0;
+        const chNew = chOrders.filter((o) => o.isNewCustomer).length;
+        return {
+          channel,
+          spend: Math.round(chSpend * 100) / 100,
+          revenueNet: Math.round(chRevNet * 100) / 100,
+          cogs: Math.round(chCogs * 100) / 100,
+          cm: Math.round(chCM * 100) / 100,
+          cmPercent: chRevNet > 0 ? Math.round((chCM / chRevNet) * 10000) / 10000 : 0,
+          cac: chNew > 0 ? Math.round((chSpend / chNew) * 100) / 100 : null,
+          roas: chSpend > 0 ? Math.round((chRevNet / chSpend) * 100) / 100 : null,
+          orderCount: chOrders.length,
+        };
+      })
+      .sort((a, b) => b.revenueNet - a.revenueNet);
+
+    // Weekly trends (last 4 weeks)
+    const fourWeeksAgo = subDays(now, 28);
+    const trendOrders = orders.filter((o) => o.orderDate >= fourWeeksAgo);
+
+    function isoWeek(d: Date): string {
+      const dt = new Date(d);
+      dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+      const weekNum = Math.ceil(((dt.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+      return `W${weekNum}`;
+    }
+
+    const weeklyMap = new Map<string, { revNet: number; cm: number; orders: number; newCust: number }>();
+    for (const o of trendOrders) {
+      const w = isoWeek(o.orderDate);
+      const existing = weeklyMap.get(w);
+      const rev = Number(o.revenueNet);
+      const cmVal = Number(o.contributionMargin);
+      const isNew = o.isNewCustomer ? 1 : 0;
+      if (existing) {
+        existing.revNet += rev;
+        existing.cm += cmVal;
+        existing.orders++;
+        existing.newCust += isNew;
+      } else {
+        weeklyMap.set(w, { revNet: rev, cm: cmVal, orders: 1, newCust: isNew });
+      }
+    }
+
+    const weeklySpends = await prisma.factSpend.findMany({
+      where: { ...orgWhere(request), date: { gte: fourWeeksAgo, lte: now } },
+      select: { date: true, spend: true },
+    });
+    const weeklySpendMap = new Map<string, number>();
+    for (const ws of weeklySpends) {
+      const w = isoWeek(ws.date);
+      weeklySpendMap.set(w, (weeklySpendMap.get(w) ?? 0) + Number(ws.spend));
+    }
+
+    const sortedWeeks = Array.from(weeklyMap.keys()).sort();
+    const trends = {
+      weeks: sortedWeeks,
+      cmPercent: sortedWeeks.map((w) => {
+        const d = weeklyMap.get(w)!;
+        return d.revNet > 0 ? Math.round((d.cm / d.revNet) * 10000) / 10000 : 0;
+      }),
+      cac: sortedWeeks.map((w) => {
+        const d = weeklyMap.get(w)!;
+        const spend = weeklySpendMap.get(w) ?? 0;
+        return d.newCust > 0 ? Math.round((spend / d.newCust) * 100) / 100 : 0;
+      }),
+      aov: sortedWeeks.map((w) => {
+        const d = weeklyMap.get(w)!;
+        return d.orders > 0 ? Math.round((d.revNet / d.orders) * 100) / 100 : 0;
+      }),
+    };
+
     return {
       breakdown: {
         revenueNet: totalRevNet,
@@ -607,6 +729,12 @@ export async function metricsRoutes(app: FastifyInstance) {
         avgOrderValue: kpiCalcs.kpis.aov(totalRevNet, orders.length),
       },
       paymentBreakdown,
+      customerSegments: {
+        new: { ...segmentStats(newOrders), cac: kpiCalcs.kpis.blendedCac(totalSpend, newCust) },
+        returning: segmentStats(retOrders),
+      },
+      channelUnitEconomics,
+      trends,
     };
   });
 
@@ -637,30 +765,34 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     const yesterday = subDays(new Date(), 1);
     const start = subDays(yesterday, 180);
+    const orgSql = orgSqlWhere(request);
 
     let dailyData: Array<{ date: Date; value: number }>;
 
     if (metric === 'revenue') {
-      dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
-        SELECT order_date as date, SUM(revenue_net)::float as value
+      dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
+        `SELECT order_date as date, SUM(revenue_net)::float as value
         FROM fact_orders
-        WHERE order_date >= ${start} AND order_date <= ${yesterday}
-        GROUP BY order_date ORDER BY order_date
-      `;
+        WHERE order_date >= $1 AND order_date <= $2${orgSql}
+        GROUP BY order_date ORDER BY order_date`,
+        start, yesterday
+      );
     } else if (metric === 'orders') {
-      dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
-        SELECT order_date as date, COUNT(*)::float as value
+      dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
+        `SELECT order_date as date, COUNT(*)::float as value
         FROM fact_orders
-        WHERE order_date >= ${start} AND order_date <= ${yesterday}
-        GROUP BY order_date ORDER BY order_date
-      `;
+        WHERE order_date >= $1 AND order_date <= $2${orgSql}
+        GROUP BY order_date ORDER BY order_date`,
+        start, yesterday
+      );
     } else {
-      dailyData = await prisma.$queryRaw<Array<{ date: Date; value: number }>>`
-        SELECT date, SUM(spend)::float as value
+      dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
+        `SELECT date, SUM(spend)::float as value
         FROM fact_spend
-        WHERE date >= ${start} AND date <= ${yesterday}
-        GROUP BY date ORDER BY date
-      `;
+        WHERE date >= $1 AND date <= $2${orgSql}
+        GROUP BY date ORDER BY date`,
+        start, yesterday
+      );
     }
 
     const filled = fillDateGaps(dailyData, start, yesterday);
@@ -722,8 +854,8 @@ export async function metricsRoutes(app: FastifyInstance) {
       summary: 'Cohort LTV projections',
       description: 'Projects retention and LTV for immature cohorts using decay ratios from mature cohorts',
     },
-  }, async () => {
-    const cohorts = await prisma.cohort.findMany({ orderBy: { cohortMonth: 'desc' } });
+  }, async (request) => {
+    const cohorts = await prisma.cohort.findMany({ where: { ...orgWhere(request) }, orderBy: { cohortMonth: 'desc' } });
     if (cohorts.length === 0) return { projections: [] };
 
     // Compute age of each cohort in days
@@ -817,31 +949,106 @@ export async function metricsRoutes(app: FastifyInstance) {
     };
   });
 
-  // ── Customer Segments (RFM) ─────────────────────────────────
+  // ── Customer Segments (RFM + New/Returning + Margin) ────────
   app.get('/metrics/segments', {
     schema: {
       tags: ['metrics'],
       summary: 'Customer segment distribution',
-      description: 'Returns RFM-based customer segments with counts, revenue, and averages',
+      description: 'Returns RFM-based customer segments, new vs returning breakdown, and margin segments',
     },
-  }, async () => {
-    const segments = await prisma.$queryRaw<
+  }, async (request) => {
+    const orgSql = orgSqlWhere(request);
+    // RFM segments
+    const segments = await prisma.$queryRawUnsafe<
       Array<{
         segment: string;
         count: number;
         total_revenue: number;
         total_orders: number;
       }>
-    >`
-      SELECT segment,
+    >(
+      `SELECT segment,
              COUNT(*)::int as count,
              COALESCE(SUM(total_revenue), 0)::float as total_revenue,
              COALESCE(SUM(total_orders), 0)::int as total_orders
       FROM dim_customer
-      WHERE segment IS NOT NULL
+      WHERE segment IS NOT NULL${orgSql}
       GROUP BY segment
-      ORDER BY total_revenue DESC
-    `;
+      ORDER BY total_revenue DESC`
+    );
+
+    // New vs Returning customers
+    const customerTypeRaw = await prisma.$queryRawUnsafe<
+      Array<{
+        customer_type: string;
+        count: number;
+        total_revenue: number;
+        total_orders: number;
+      }>
+    >(
+      `SELECT
+        CASE WHEN total_orders = 1 THEN 'new' ELSE 'returning' END as customer_type,
+        COUNT(*)::int as count,
+        COALESCE(SUM(total_revenue), 0)::float as total_revenue,
+        COALESCE(SUM(total_orders), 0)::int as total_orders
+      FROM dim_customer
+      WHERE total_orders > 0${orgSql}
+      GROUP BY CASE WHEN total_orders = 1 THEN 'new' ELSE 'returning' END`
+    );
+
+    const totalRevenue = customerTypeRaw.reduce((s, r) => s + r.total_revenue, 0);
+    const buildTypeEntry = (type: string) => {
+      const row = customerTypeRaw.find((r) => r.customer_type === type);
+      if (!row) return { count: 0, totalRevenue: 0, avgAov: 0, percentOfRevenue: 0 };
+      return {
+        count: row.count,
+        totalRevenue: Math.round(row.total_revenue * 100) / 100,
+        avgAov: row.total_orders > 0
+          ? Math.round((row.total_revenue / row.total_orders) * 100) / 100
+          : 0,
+        percentOfRevenue: totalRevenue > 0
+          ? Math.round((row.total_revenue / totalRevenue) * 10000) / 100
+          : 0,
+      };
+    };
+
+    // Margin-based segments: classify customers by CM%
+    const marginRaw = await prisma.$queryRawUnsafe<
+      Array<{
+        margin_segment: string;
+        count: number;
+        total_revenue: number;
+        avg_cm_percent: number;
+      }>
+    >(
+      `WITH customer_margins AS (
+        SELECT
+          dc.id,
+          dc.total_revenue,
+          CASE
+            WHEN dc.total_revenue > 0 THEN
+              COALESCE(SUM(fo.contribution_margin), 0) / dc.total_revenue
+            ELSE 0
+          END as cm_percent
+        FROM dim_customer dc
+        LEFT JOIN fact_orders fo ON fo.customer_id = dc.id
+        WHERE dc.total_orders > 0${orgSql}
+        GROUP BY dc.id, dc.total_revenue
+      ),
+      median_cm AS (
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cm_percent) as median
+        FROM customer_margins
+      )
+      SELECT
+        CASE WHEN cm.cm_percent >= md.median THEN 'High Margin' ELSE 'Low Margin' END as margin_segment,
+        COUNT(*)::int as count,
+        COALESCE(SUM(cm.total_revenue), 0)::float as total_revenue,
+        AVG(cm.cm_percent)::float as avg_cm_percent
+      FROM customer_margins cm
+      CROSS JOIN median_cm md
+      GROUP BY CASE WHEN cm.cm_percent >= md.median THEN 'High Margin' ELSE 'Low Margin' END
+      ORDER BY avg_cm_percent DESC`
+    );
 
     return {
       segments: segments.map((s) => ({
@@ -854,6 +1061,16 @@ export async function metricsRoutes(app: FastifyInstance) {
         avgOrdersPerCustomer: s.count > 0
           ? Math.round((s.total_orders / s.count) * 100) / 100
           : 0,
+      })),
+      customerType: {
+        new: buildTypeEntry('new'),
+        returning: buildTypeEntry('returning'),
+      },
+      marginSegments: marginRaw.map((m) => ({
+        segment: m.margin_segment,
+        count: m.count,
+        totalRevenue: Math.round(m.total_revenue * 100) / 100,
+        avgCmPercent: m.avg_cm_percent != null ? Math.round(m.avg_cm_percent * 10000) / 100 : 0,
       })),
     };
   });
@@ -878,6 +1095,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     // Get campaigns (joined with dim_campaign for names)
     const campaignData = await prisma.factEmail.findMany({
       where: {
+        ...orgWhere(request),
         date: { gte: start, lte: now },
         campaignId: { not: null },
       },
@@ -932,6 +1150,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     // Flow data (records without a campaign)
     const flowData = await prisma.factEmail.findMany({
       where: {
+        ...orgWhere(request),
         date: { gte: start, lte: now },
         campaignId: null,
       },

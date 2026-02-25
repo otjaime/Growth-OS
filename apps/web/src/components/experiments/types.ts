@@ -33,6 +33,11 @@ export interface Experiment {
   isSignificant: boolean | null;
   confidenceInterval: { lower: number; upper: number } | null;
   verdict: string | null;
+  // Scorecard fields
+  experimentType: string | null;
+  expectedImpactUsd: number | null;
+  guardrailMetrics: string[] | null;
+  targetSegment: string | null;
 }
 
 export interface ExperimentMetric {
@@ -44,6 +49,7 @@ export interface ExperimentMetric {
 }
 
 export type ExperimentStatus = 'IDEA' | 'BACKLOG' | 'RUNNING' | 'COMPLETED' | 'ARCHIVED';
+export type ExperimentType = 'CRO' | 'CREATIVE' | 'PRICING' | 'LIFECYCLE' | 'LANDING' | 'OTHER';
 export type SortKey = 'name' | 'channel' | 'primaryMetric' | 'iceScore' | 'status' | 'duration';
 export type SortDir = 'asc' | 'desc';
 export type ViewMode = 'table' | 'kanban';
