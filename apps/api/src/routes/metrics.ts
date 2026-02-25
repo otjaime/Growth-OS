@@ -8,7 +8,7 @@ import { prisma, Prisma } from '@growth-os/database';
 import { subDays, addDays, differenceInDays, format } from 'date-fns';
 import * as kpiCalcs from '@growth-os/etl';
 import { forecast, forecastSeasonal } from '@growth-os/etl';
-import { orgWhere, orgSqlWhere } from '../lib/tenant.js';
+import { orgWhere, orgSqlParam } from '../lib/tenant.js';
 
 export async function metricsRoutes(app: FastifyInstance) {
   // ── Executive Summary KPIs ────────────────────────────────
@@ -146,7 +146,7 @@ export async function metricsRoutes(app: FastifyInstance) {
     const now = new Date();
     const start = subDays(now, days);
 
-    const orgSql = orgSqlWhere(request);
+    const org = orgSqlParam(request, 3);
 
     const dailyRevenue = await prisma.$queryRawUnsafe<
       Array<{ date: Date; revenue: number; orders: number; new_customers: number }>
@@ -156,10 +156,10 @@ export async function metricsRoutes(app: FastifyInstance) {
              COUNT(*)::int as orders,
              SUM(CASE WHEN is_new_customer THEN 1 ELSE 0 END)::int as new_customers
       FROM fact_orders
-      WHERE order_date >= $1 AND order_date <= $2${orgSql}
+      WHERE order_date >= $1 AND order_date <= $2${org.clause}
       GROUP BY order_date
       ORDER BY order_date`,
-      start, now
+      start, now, ...org.params
     );
 
     const dailySpend = await prisma.$queryRawUnsafe<
@@ -167,9 +167,9 @@ export async function metricsRoutes(app: FastifyInstance) {
     >(
       `SELECT date, SUM(spend)::float as spend
       FROM fact_spend
-      WHERE date >= $1 AND date <= $2${orgSql}
+      WHERE date >= $1 AND date <= $2${org.clause}
       GROUP BY date ORDER BY date`,
-      start, now
+      start, now, ...org.params
     );
 
     const dailyTraffic = await prisma.$queryRawUnsafe<
@@ -177,9 +177,9 @@ export async function metricsRoutes(app: FastifyInstance) {
     >(
       `SELECT date, SUM(sessions)::int as sessions
       FROM fact_traffic
-      WHERE date >= $1 AND date <= $2${orgSql}
+      WHERE date >= $1 AND date <= $2${org.clause}
       GROUP BY date ORDER BY date`,
-      start, now
+      start, now, ...org.params
     );
 
     const dailyMargin = await prisma.$queryRawUnsafe<
@@ -189,9 +189,9 @@ export async function metricsRoutes(app: FastifyInstance) {
              SUM(contribution_margin)::float as cm,
              SUM(revenue_net)::float as revenue_net
       FROM fact_orders
-      WHERE order_date >= $1 AND order_date <= $2${orgSql}
+      WHERE order_date >= $1 AND order_date <= $2${org.clause}
       GROUP BY order_date ORDER BY order_date`,
-      start, now
+      start, now, ...org.params
     );
 
     return { dailyRevenue, dailySpend, dailyTraffic, dailyMargin };
@@ -765,7 +765,7 @@ export async function metricsRoutes(app: FastifyInstance) {
 
     const yesterday = subDays(new Date(), 1);
     const start = subDays(yesterday, 180);
-    const orgSql = orgSqlWhere(request);
+    const org = orgSqlParam(request, 3);
 
     let dailyData: Array<{ date: Date; value: number }>;
 
@@ -773,25 +773,25 @@ export async function metricsRoutes(app: FastifyInstance) {
       dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
         `SELECT order_date as date, SUM(revenue_net)::float as value
         FROM fact_orders
-        WHERE order_date >= $1 AND order_date <= $2${orgSql}
+        WHERE order_date >= $1 AND order_date <= $2${org.clause}
         GROUP BY order_date ORDER BY order_date`,
-        start, yesterday
+        start, yesterday, ...org.params
       );
     } else if (metric === 'orders') {
       dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
         `SELECT order_date as date, COUNT(*)::float as value
         FROM fact_orders
-        WHERE order_date >= $1 AND order_date <= $2${orgSql}
+        WHERE order_date >= $1 AND order_date <= $2${org.clause}
         GROUP BY order_date ORDER BY order_date`,
-        start, yesterday
+        start, yesterday, ...org.params
       );
     } else {
       dailyData = await prisma.$queryRawUnsafe<Array<{ date: Date; value: number }>>(
         `SELECT date, SUM(spend)::float as value
         FROM fact_spend
-        WHERE date >= $1 AND date <= $2${orgSql}
+        WHERE date >= $1 AND date <= $2${org.clause}
         GROUP BY date ORDER BY date`,
-        start, yesterday
+        start, yesterday, ...org.params
       );
     }
 
@@ -957,7 +957,7 @@ export async function metricsRoutes(app: FastifyInstance) {
       description: 'Returns RFM-based customer segments, new vs returning breakdown, and margin segments',
     },
   }, async (request) => {
-    const orgSql = orgSqlWhere(request);
+    const org = orgSqlParam(request, 1);
     // RFM segments
     const segments = await prisma.$queryRawUnsafe<
       Array<{
@@ -972,9 +972,10 @@ export async function metricsRoutes(app: FastifyInstance) {
              COALESCE(SUM(total_revenue), 0)::float as total_revenue,
              COALESCE(SUM(total_orders), 0)::int as total_orders
       FROM dim_customer
-      WHERE segment IS NOT NULL${orgSql}
+      WHERE segment IS NOT NULL${org.clause}
       GROUP BY segment
-      ORDER BY total_revenue DESC`
+      ORDER BY total_revenue DESC`,
+      ...org.params
     );
 
     // New vs Returning customers
@@ -992,8 +993,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         COALESCE(SUM(total_revenue), 0)::float as total_revenue,
         COALESCE(SUM(total_orders), 0)::int as total_orders
       FROM dim_customer
-      WHERE total_orders > 0${orgSql}
-      GROUP BY CASE WHEN total_orders = 1 THEN 'new' ELSE 'returning' END`
+      WHERE total_orders > 0${org.clause}
+      GROUP BY CASE WHEN total_orders = 1 THEN 'new' ELSE 'returning' END`,
+      ...org.params
     );
 
     const totalRevenue = customerTypeRaw.reduce((s, r) => s + r.total_revenue, 0);
@@ -1032,7 +1034,7 @@ export async function metricsRoutes(app: FastifyInstance) {
           END as cm_percent
         FROM dim_customer dc
         LEFT JOIN fact_orders fo ON fo.customer_id = dc.id
-        WHERE dc.total_orders > 0${orgSql}
+        WHERE dc.total_orders > 0${org.clause}
         GROUP BY dc.id, dc.total_revenue
       ),
       median_cm AS (
@@ -1047,7 +1049,8 @@ export async function metricsRoutes(app: FastifyInstance) {
       FROM customer_margins cm
       CROSS JOIN median_cm md
       GROUP BY CASE WHEN cm.cm_percent >= md.median THEN 'High Margin' ELSE 'Low Margin' END
-      ORDER BY avg_cm_percent DESC`
+      ORDER BY avg_cm_percent DESC`,
+      ...org.params
     );
 
     return {

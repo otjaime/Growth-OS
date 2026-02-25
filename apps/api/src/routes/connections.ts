@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
 import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
-import { orgWhere, orgData, orgSqlWhere } from '../lib/tenant.js';
+import { orgWhere, orgData, orgSqlParam } from '../lib/tenant.js';
 
 // ── Connector Catalog (served to frontend) ──────────────────
 
@@ -766,15 +766,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   // ── Pipeline diagnostic ──────────────────────────────────────
   app.get('/connections/debug/pipeline', async (request) => {
-    const orgSql = orgSqlWhere(request);
+    const org = orgSqlParam(request, 1);
     const rawCounts = await prisma.$queryRawUnsafe<Array<{ source: string; entity: string; cnt: number }>>(
-      `SELECT source, entity, COUNT(*)::int as cnt FROM raw_events WHERE 1=1${orgSql} GROUP BY source, entity ORDER BY source, entity`
+      `SELECT source, entity, COUNT(*)::int as cnt FROM raw_events WHERE 1=1${org.clause} GROUP BY source, entity ORDER BY source, entity`,
+      ...org.params
     );
     const stgSpendCounts = await prisma.$queryRawUnsafe<Array<{ source: string; cnt: number; total_spend: number }>>(
-      `SELECT source, COUNT(*)::int as cnt, SUM(spend)::float as total_spend FROM stg_spend WHERE 1=1${orgSql} GROUP BY source ORDER BY source`
+      `SELECT source, COUNT(*)::int as cnt, SUM(spend)::float as total_spend FROM stg_spend WHERE 1=1${org.clause} GROUP BY source ORDER BY source`,
+      ...org.params
     );
     const factSpendCounts = await prisma.$queryRawUnsafe<Array<{ slug: string; cnt: number; total_spend: number }>>(
-      `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id WHERE 1=1${orgSql} GROUP BY c.slug ORDER BY c.slug`
+      `SELECT c.slug, COUNT(*)::int as cnt, SUM(fs.spend)::float as total_spend FROM fact_spend fs JOIN dim_channel c ON fs.channel_id = c.id WHERE 1=1${org.clause} GROUP BY c.slug ORDER BY c.slug`,
+      ...org.params
     );
 
     // Extra diagnostics: dim_channel, channelRaw distribution, isNewCustomer, null channelIds
@@ -782,17 +785,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
       `SELECT slug, name FROM dim_channel ORDER BY slug`
     );
     const stgChannelRaw = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number }>>(
-      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt FROM stg_orders WHERE 1=1${orgSql} GROUP BY channel_raw ORDER BY cnt DESC`
+      `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt FROM stg_orders WHERE 1=1${org.clause} GROUP BY channel_raw ORDER BY cnt DESC`,
+      ...org.params
     );
     const factOrderChannels = await prisma.$queryRawUnsafe<Array<{ channel: string; cnt: number; new_customers: number }>>(
       `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
               SUM(CASE WHEN fo.is_new_customer THEN 1 ELSE 0 END)::int as new_customers
        FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
-       WHERE 1=1${orgSql}
-       GROUP BY c.slug ORDER BY cnt DESC`
+       WHERE 1=1${org.clause}
+       GROUP BY c.slug ORDER BY cnt DESC`,
+      ...org.params
     );
     const cohortCount = await prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
-      `SELECT COUNT(*)::int as cnt FROM cohorts WHERE 1=1${orgSql}`
+      `SELECT COUNT(*)::int as cnt FROM cohorts WHERE 1=1${org.clause}`,
+      ...org.params
     );
 
     return {
@@ -804,7 +810,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   // ── Raw attribution sample (debug) ─────────────────────────
   app.get('/connections/debug/attribution', async (request) => {
-    const orgSql = orgSqlWhere(request);
+    const org = orgSqlParam(request, 1);
     // Check if customerJourneySummary exists in raw payloads
     const journeyCheck = await prisma.$queryRawUnsafe<Array<{
       has_journey: number;
@@ -820,7 +826,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
              THEN 1 ELSE 0 END)::int as no_journey,
         COUNT(*)::int as total
        FROM raw_events
-       WHERE source = 'shopify' AND entity = 'orders'${orgSql}`
+       WHERE source = 'shopify' AND entity = 'orders'${org.clause}`,
+      ...org.params
     );
 
     // Sample raw payloads showing attribution fields (supports both REST + GraphQL formats)
@@ -838,16 +845,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
         COALESCE(payload_json->>'landing_site', payload_json->>'landingPageUrl') as landing_site,
         COALESCE(payload_json->>'referring_site', payload_json->>'referrerUrl') as referring_site
        FROM raw_events
-       WHERE source = 'shopify' AND entity = 'orders'${orgSql}
+       WHERE source = 'shopify' AND entity = 'orders'${org.clause}
        ORDER BY fetched_at DESC
-       LIMIT 20`
+       LIMIT 20`,
+      ...org.params
     );
 
     // Channel distribution in stg_orders
     const stgChannels = await prisma.$queryRawUnsafe<Array<{ channel_raw: string; cnt: number; rev: number }>>(
       `SELECT COALESCE(channel_raw, 'NULL') as channel_raw, COUNT(*)::int as cnt,
               COALESCE(SUM(revenue_net), 0)::float as rev
-       FROM stg_orders WHERE 1=1${orgSql} GROUP BY channel_raw ORDER BY cnt DESC`
+       FROM stg_orders WHERE 1=1${org.clause} GROUP BY channel_raw ORDER BY cnt DESC`,
+      ...org.params
     );
 
     // Channel distribution in fact_orders (final)
@@ -855,8 +864,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       `SELECT COALESCE(c.slug, 'NULL') as channel, COUNT(*)::int as cnt,
               COALESCE(SUM(fo.revenue_net), 0)::float as rev
        FROM fact_orders fo LEFT JOIN dim_channel c ON fo.channel_id = c.id
-       WHERE 1=1${orgSql}
-       GROUP BY c.slug ORDER BY cnt DESC`
+       WHERE 1=1${org.clause}
+       GROUP BY c.slug ORDER BY cnt DESC`,
+      ...org.params
     );
 
     // Shopify connector sync status

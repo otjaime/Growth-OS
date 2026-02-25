@@ -28,18 +28,28 @@ export function orgData(request: FastifyRequest): { organizationId?: string } {
 }
 
 /**
- * SQL fragment for raw queries. Returns the clause + params array.
+ * Returns a parameterized SQL fragment and params for $queryRawUnsafe.
  *
  * Usage:
- *   const org = orgSqlClause(request);
- *   prisma.$queryRaw`SELECT ... WHERE 1=1 ${org.fragment}`
- *
- * For $queryRawUnsafe, use orgSqlWhere() instead.
+ *   const org = orgSqlParam(request, 3); // next positional param is $3
+ *   prisma.$queryRawUnsafe(
+ *     `SELECT ... WHERE x = $1 AND y = $2${org.clause}`,
+ *     a, b, ...org.params
+ *   )
  */
-export function orgSqlWhere(request: FastifyRequest): string {
-  return request.organizationId
-    ? ` AND organization_id = '${request.organizationId}'`
-    : '';
+export interface OrgSqlParam {
+  clause: string;
+  params: readonly string[];
+}
+
+export function orgSqlParam(request: FastifyRequest, nextIndex: number): OrgSqlParam {
+  if (request.organizationId) {
+    return {
+      clause: ` AND organization_id = $${nextIndex}`,
+      params: [request.organizationId],
+    };
+  }
+  return { clause: '', params: [] };
 }
 
 /**
