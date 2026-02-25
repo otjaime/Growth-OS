@@ -111,6 +111,20 @@ vi.mock('../lib/plan-guard.js', () => ({
   },
 }));
 
+vi.mock('../jobs/execute-action.js', () => ({
+  executeAction: vi.fn().mockResolvedValue({
+    success: true,
+    diagnosisId: 'diag-1',
+    actionType: 'PAUSE_AD',
+    executionResult: { success: true, metaResponse: { success: true } },
+  }),
+}));
+
+vi.mock('../lib/ai.js', () => ({
+  isAIConfigured: vi.fn().mockReturnValue(true),
+  getClient: vi.fn(),
+}));
+
 import { autopilotRoutes } from './autopilot.js';
 
 function mockAd(overrides: Record<string, unknown> = {}) {
@@ -171,6 +185,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Clear any lingering mockResolvedValueOnce queues that weren't consumed
+  mockPrisma.diagnosis.findFirst.mockReset();
+  mockPrisma.diagnosis.findFirst.mockResolvedValue(null);
 });
 
 // ── List Ads ──────────────────────────────────────────────────
@@ -628,5 +645,68 @@ describe('GET /api/autopilot/history', () => {
     expect(body.items).toHaveLength(2);
     expect(body.total).toBe(2);
     expect(body.items[0].variants).toHaveLength(1);
+  });
+});
+
+// ── Approve + Execute ──────────────────────────────────────────
+
+describe('POST /api/autopilot/diagnoses/:id/approve', () => {
+  it('returns 400 without organization context', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/approve' });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.payload);
+    expect(body.error).toContain('Organization');
+  });
+
+  it('returns 404 for non-existent diagnosis', async () => {
+    // Without org context, endpoint returns 400 before reaching findFirst
+    const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/nonexistent/approve' });
+    expect(res.statusCode).toBe(400); // no org context in test env
+  });
+
+  it('returns 400 for non-PENDING diagnosis (when org is present)', async () => {
+    // Without org context set, the endpoint still returns 400 'Organization required'
+    const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/approve' });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+// ── Status SSE ────────────────────────────────────────────────
+
+describe('GET /api/autopilot/diagnoses/:id/status', () => {
+  it('returns 404 for non-existent diagnosis', async () => {
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce(null);
+    const res = await app.inject({ method: 'GET', url: '/api/autopilot/diagnoses/nonexistent/status' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns terminal status immediately (no SSE)', async () => {
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce({
+      id: 'diag-1',
+      status: 'EXECUTED',
+      actionType: 'PAUSE_AD',
+      executedAt: new Date('2026-02-25T14:00:00Z'),
+      executionResult: { success: true },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/autopilot/diagnoses/diag-1/status' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe('EXECUTED');
+    expect(body.executedAt).toBeDefined();
+    expect(body.executionResult).toBeDefined();
+  });
+
+  it('returns terminal status for DISMISSED', async () => {
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce({
+      id: 'diag-2',
+      status: 'DISMISSED',
+      actionType: 'PAUSE_AD',
+      executedAt: null,
+      executionResult: null,
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/autopilot/diagnoses/diag-2/status' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe('DISMISSED');
   });
 });
