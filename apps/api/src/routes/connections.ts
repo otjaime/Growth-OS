@@ -541,10 +541,48 @@ export async function connectionsRoutes(app: FastifyInstance) {
       if (type === 'google_ads') {
         const devToken = (creds.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '').trim();
         const customerId = (meta.customerId ?? creds.customerId ?? '').toString().trim().replace(/-/g, '');
-        const accessToken = creds.accessToken ?? '';
+        const refreshToken = creds.refreshToken ?? '';
+        let accessToken = creds.accessToken ?? '';
 
         if (!devToken || !customerId) {
           return { success: false, message: 'Missing developer token or customer ID' };
+        }
+
+        // Refresh the OAuth token before testing (access tokens expire after ~1 hour)
+        if (refreshToken) {
+          const googleOAuth = await getGoogleOAuthConfig();
+          if (googleOAuth.clientId && googleOAuth.clientSecret) {
+            try {
+              const refreshResp = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  client_id: googleOAuth.clientId,
+                  client_secret: googleOAuth.clientSecret,
+                  refresh_token: refreshToken,
+                  grant_type: 'refresh_token',
+                }),
+              });
+              if (refreshResp.ok) {
+                const refreshData = await refreshResp.json() as { access_token: string };
+                accessToken = refreshData.access_token;
+                // Persist the refreshed access token
+                const updatedCreds = { ...creds, accessToken };
+                const enc = encrypt(JSON.stringify(updatedCreds));
+                await prisma.connectorCredential.update({
+                  where: { id: credential.id },
+                  data: { encryptedData: enc.encrypted, iv: enc.iv, authTag: enc.authTag },
+                });
+              } else {
+                const refreshErr = await refreshResp.text();
+                app.log.warn({ status: refreshResp.status, body: refreshErr.substring(0, 200) }, 'Google Ads token refresh failed');
+              }
+            } catch (refreshError) {
+              app.log.warn({ error: (refreshError as Error).message }, 'Google Ads token refresh error');
+            }
+          } else {
+            app.log.warn('Cannot refresh Google Ads token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured');
+          }
         }
 
         // If we have an OAuth access token, validate via the REST API
@@ -629,6 +667,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
           } catch (refreshError) {
             app.log.warn({ error: (refreshError as Error).message }, 'GA4 token refresh error');
           }
+        } else if (!refreshToken) {
+          app.log.warn('GA4: no refresh token stored — cannot refresh expired access token. Re-authorize via Google OAuth.');
+        } else {
+          app.log.warn('Cannot refresh GA4 token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured');
         }
 
         // Test with GA4 Data API metadata endpoint
