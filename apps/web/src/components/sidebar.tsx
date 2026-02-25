@@ -53,7 +53,7 @@ function formatRelativeTime(isoDate: string): string {
 }
 
 const NAV_ITEMS = [
-  { href: '/', label: 'Executive Summary', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Executive Summary', icon: LayoutDashboard },
   { href: '/channels', label: 'Channel Performance', icon: Megaphone },
   { href: '/funnel', label: 'Conversion Funnel', icon: Filter },
   { href: '/cohorts', label: 'Cohorts & Retention', icon: Users },

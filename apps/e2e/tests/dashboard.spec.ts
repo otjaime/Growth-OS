@@ -16,55 +16,55 @@ async function waitForApiData(page: import('@playwright/test').Page, urlPattern 
 
 test.describe('Dashboard Navigation', () => {
   test('loads the executive summary page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await expect(page.getByRole('heading', { name: 'Executive Summary' })).toBeVisible();
   });
 
   test('displays KPI cards on executive summary', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await waitForApiData(page, '/api/metrics/summary');
     const cards = page.locator('.card');
     await expect(cards.first()).toBeVisible();
   });
 
   test('navigates to channels page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/channels"]');
     await expect(page.getByRole('heading', { name: 'Channel Performance' })).toBeVisible();
   });
 
   test('navigates to cohorts page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/cohorts"]');
     await expect(page.getByRole('heading', { name: 'Cohorts & Retention' })).toBeVisible();
   });
 
   test('navigates to unit economics page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/unit-economics"]');
     await expect(page.getByRole('heading', { name: /Unit Economics/ })).toBeVisible();
   });
 
   test('navigates to alerts page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/alerts"]');
     await expect(page.getByRole('heading', { name: /Alerts/ })).toBeVisible();
   });
 
   test('navigates to WBR page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/wbr"]');
     await expect(page.getByRole('heading', { name: 'Weekly Business Review' })).toBeVisible();
   });
 
   test('navigates to connections page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/connections"]');
     await expect(page.getByRole('heading', { name: /Connections/ })).toBeVisible();
   });
 
   test('navigates to jobs page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.click('a[href="/jobs"]');
     await expect(page.getByRole('heading', { name: 'Job Runs' })).toBeVisible();
   });
@@ -72,13 +72,13 @@ test.describe('Dashboard Navigation', () => {
 
 test.describe('Executive Summary', () => {
   test('shows date range picker', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const picker = page.locator('button:has-text("7D"), button:has-text("14D"), button:has-text("30D")');
     await expect(picker.first()).toBeVisible();
   });
 
   test('changes date range and re-fetches data', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await waitForApiData(page, '/api/metrics/summary');
 
     // Click 30D preset and verify the API call fires with days=30
@@ -91,7 +91,7 @@ test.describe('Executive Summary', () => {
   });
 
   test('KPI cards show change indicators', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await waitForApiData(page, '/api/metrics/summary');
     // Cards should have some visual indicator of change (could be text or icon)
     const cards = page.locator('.card');
@@ -207,7 +207,7 @@ test.describe('Jobs Page', () => {
 
 test.describe('Sidebar', () => {
   test('shows demo mode badge', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const badge = page.locator('text=Demo Mode');
     await expect(badge).toBeVisible();
   });
@@ -226,7 +226,7 @@ test.describe('Cross-page data consistency', () => {
       if (msg.type() === 'error') errors.push(msg.text());
     });
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     await waitForApiData(page, '/api/metrics/summary');
 
     // Filter out expected non-critical messages
@@ -237,7 +237,7 @@ test.describe('Cross-page data consistency', () => {
   });
 
   test('API calls return 200 on each page', async ({ page }) => {
-    const pages = ['/', '/channels', '/cohorts', '/unit-economics', '/alerts', '/wbr', '/jobs', '/growth-model', '/email'];
+    const pages = ['/dashboard', '/channels', '/cohorts', '/unit-economics', '/alerts', '/wbr', '/jobs', '/growth-model', '/email'];
     for (const path of pages) {
       const responses: number[] = [];
       page.on('response', (r) => {
@@ -267,7 +267,7 @@ test.describe('Email Performance', () => {
   });
 
   test('sidebar has Email Performance nav item', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const link = page.locator('a[href="/email"]');
     await expect(link).toBeVisible();
     await expect(link).toContainText('Email');
@@ -324,7 +324,7 @@ test.describe('Growth Model', () => {
   });
 
   test('sidebar has Growth Model nav item', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const link = page.locator('a[href="/growth-model"]');
     await expect(link).toBeVisible();
     await expect(link).toContainText('Growth Model');
