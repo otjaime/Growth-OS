@@ -12,7 +12,8 @@ import {
   SeverityBadge,
 } from '@/components/autopilot';
 import { CounterTicker } from '@/components/ui/counter-ticker';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
+import { ReflectiveCard } from '@/components/ui/reflective-card';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
@@ -149,15 +150,15 @@ export default function AutopilotPage() {
       {/* Summary Cards */}
       {autopilotStats && (
         <div className="grid grid-cols-4 gap-4">
-          <SpotlightCard className="card p-4">
+          <ReflectiveCard className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <BarChart3 className="h-4 w-4 text-apple-blue" />
               <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Active Ads</p>
             </div>
             <CounterTicker value={autopilotStats.activeAds} className="text-2xl font-bold text-[var(--foreground)]" />
             <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{autopilotStats.totalAds} total</p>
-          </SpotlightCard>
-          <SpotlightCard className="card p-4">
+          </ReflectiveCard>
+          <ReflectiveCard className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <Activity className="h-4 w-4 text-apple-green" />
               <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Spend (7d)</p>
@@ -166,8 +167,8 @@ export default function AutopilotPage() {
             <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
               {autopilotStats.metrics7d.blendedRoas ? `${autopilotStats.metrics7d.blendedRoas.toFixed(2)}x ROAS` : 'No ROAS data'}
             </p>
-          </SpotlightCard>
-          <SpotlightCard className="card p-4">
+          </ReflectiveCard>
+          <ReflectiveCard className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <Target className="h-4 w-4 text-apple-purple" />
               <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Diagnoses</p>
@@ -181,8 +182,8 @@ export default function AutopilotPage() {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--tint-yellow)] text-apple-yellow font-medium">{stats!.warning} warning</span>
               )}
             </div>
-          </SpotlightCard>
-          <SpotlightCard className="card p-4">
+          </ReflectiveCard>
+          <ReflectiveCard className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <Eye className="h-4 w-4 text-apple-yellow" />
               <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Revenue (7d)</p>
@@ -191,7 +192,7 @@ export default function AutopilotPage() {
             <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
               {autopilotStats.metrics7d.totalConversions} conversions
             </p>
-          </SpotlightCard>
+          </ReflectiveCard>
         </div>
       )}
 
@@ -232,16 +233,16 @@ export default function AutopilotPage() {
       {/* Two-column layout */}
       <div className="grid grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
         {/* Left — Diagnosis List */}
-        <div className="col-span-4 card p-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+        <GlassSurface className="col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
           <DiagnosisList
             diagnoses={diagnoses}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
-        </div>
+        </GlassSurface>
 
         {/* Right — Detail Panel */}
-        <div className="col-span-8 card p-6 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+        <GlassSurface className="col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
           {selected ? (
             <DiagnosisDetail
               diagnosis={selected}
@@ -259,7 +260,7 @@ export default function AutopilotPage() {
               </p>
             </div>
           )}
-        </div>
+        </GlassSurface>
       </div>
     </div>
   );

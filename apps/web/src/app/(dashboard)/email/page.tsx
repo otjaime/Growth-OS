@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface EmailCampaign {
   campaignId: string;
@@ -106,7 +107,7 @@ export default function EmailPage() {
 
       {/* Campaign Performance Chart */}
       {chartData.length > 0 && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Campaign Performance</h2>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -130,11 +131,11 @@ export default function EmailPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </GlassSurface>
       )}
 
       {/* Campaign Detail Table */}
-      <div className="card overflow-x-auto">
+      <GlassSurface className="card overflow-x-auto" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Campaign Detail</h2>
         <table className="w-full text-sm">
           <thead>
@@ -160,7 +161,7 @@ export default function EmailPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </GlassSurface>
 
       {/* Flow Summary */}
       {flows.sends > 0 && (

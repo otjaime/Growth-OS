@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { formatCurrency, formatPercent, formatNumber, formatPercentChange, changeColor, formatMultiplier } from '@/lib/format';
 import { MiniSparkline } from './sparkline';
-import { SpotlightCard } from './ui/spotlight-card';
+import { ReflectiveCard } from './ui/reflective-card';
 import { CountUp } from './ui/count-up';
 
 interface KpiCardProps {
@@ -28,7 +28,7 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
   const formatFn = FORMAT_FNS[format];
 
   return (
-    <SpotlightCard className="card glass-interactive flex flex-col gap-2">
+    <ReflectiveCard intensity="medium" className="card glass-interactive flex flex-col gap-2">
       <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{title}</p>
       <div className="flex items-end justify-between">
         <CountUp
@@ -46,6 +46,6 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
       {benchmark && (
         <p className="text-[10px] text-[var(--foreground-secondary)]/50">DTC benchmark: {benchmark}</p>
       )}
-    </SpotlightCard>
+    </ReflectiveCard>
   );
 }

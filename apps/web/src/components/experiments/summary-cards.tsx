@@ -3,7 +3,7 @@
 import { FlaskConical, Clock, CheckCircle, Trophy } from 'lucide-react';
 import type { Experiment } from './types';
 import { CounterTicker } from '@/components/ui/counter-ticker';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
+import { ReflectiveCard } from '@/components/ui/reflective-card';
 
 export function SummaryCards({ allExperiments }: { allExperiments: Experiment[] }): React.ReactElement {
   const total = allExperiments.length;
@@ -26,7 +26,7 @@ export function SummaryCards({ allExperiments }: { allExperiments: Experiment[] 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((c) => (
-        <SpotlightCard key={c.label} className="card">
+        <ReflectiveCard key={c.label} intensity="subtle" className="card">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{c.label}</span>
             <c.icon className={`h-4 w-4 ${c.color}`} />
@@ -36,7 +36,7 @@ export function SummaryCards({ allExperiments }: { allExperiments: Experiment[] 
           ) : (
             <div className={`text-2xl font-bold ${c.color}`}>{'displayValue' in c ? c.displayValue : c.value}</div>
           )}
-        </SpotlightCard>
+        </ReflectiveCard>
       ))}
     </div>
   );

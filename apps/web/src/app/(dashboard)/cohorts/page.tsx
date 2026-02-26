@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
 import { exportToCSV } from '@/lib/export';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface ProjectedValue {
   value: number;
@@ -330,7 +331,7 @@ export default function CohortsPage() {
       )}
 
       {/* Retention Curves */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">Retention Curves by Cohort</h2>
         <p className="text-xs text-[var(--foreground-secondary)] mb-4">
           Each line represents a monthly cohort of first-time customers. The Y-axis shows what percentage made a repeat purchase within D7, D30, D60, or D90. Higher and flatter curves indicate stronger retention.
@@ -350,10 +351,10 @@ export default function CohortsPage() {
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </GlassSurface>
 
       {/* LTV Curves */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">LTV by Cohort</h2>
         <p className="text-xs text-[var(--foreground-secondary)] mb-4">
           Shows the cumulative revenue per customer at 30, 90, and 180 days after acquisition. Rising curves across cohorts mean newer customers are spending more over time. Compare against CAC to assess profitability.
@@ -372,10 +373,10 @@ export default function CohortsPage() {
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </GlassSurface>
 
       {/* Cohort Table */}
-      <div className="card overflow-x-auto">
+      <GlassSurface className="card overflow-x-auto" intensity="subtle">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Cohort Detail</h2>
           <button
@@ -476,7 +477,7 @@ export default function CohortsPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </GlassSurface>
 
       {/* Customer Segments (RFM) */}
       {segments.length > 0 && (
@@ -488,7 +489,7 @@ export default function CohortsPage() {
             </p>
           </div>
 
-          <div className="card">
+          <GlassSurface className="card" intensity="subtle">
             <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Segment Distribution</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -508,9 +509,9 @@ export default function CohortsPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </GlassSurface>
 
-          <div className="card overflow-x-auto">
+          <GlassSurface className="card overflow-x-auto" intensity="subtle">
             <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Segment Detail</h3>
             <table className="w-full text-sm">
               <thead>
@@ -539,7 +540,7 @@ export default function CohortsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </GlassSurface>
         </>
       )}
     </div>

@@ -73,7 +73,7 @@ function AlertCard({ alert, onCreateExperiment }: { alert: Alert; onCreateExperi
   };
 
   return (
-    <div className={`card border-l-4 ${severityBorder(alert.severity)}`}>
+    <GlassSurface className={`card border-l-4 ${severityBorder(alert.severity)}`} intensity="subtle">
       <div className="flex items-start gap-4">
         <div className="mt-0.5">{severityIcon(alert.severity)}</div>
         <div className="flex-1">
@@ -131,7 +131,7 @@ function AlertCard({ alert, onCreateExperiment }: { alert: Alert; onCreateExperi
           )}
         </div>
       </div>
-    </div>
+    </GlassSurface>
   );
 }
 

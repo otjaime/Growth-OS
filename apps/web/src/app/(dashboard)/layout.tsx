@@ -3,12 +3,12 @@ import { Sidebar } from '@/components/sidebar';
 import { FilterProvider } from '@/contexts/filters';
 import { DemoModeProvider } from '@/contexts/demo-mode';
 import { DemoBanner } from '@/components/demo-banner';
-import { GlassSurfaceFilter } from '@/components/ui/glass-surface';
+import { MeshGradientBg } from '@/components/ui/mesh-gradient-bg';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <GlassSurfaceFilter />
+      <MeshGradientBg />
       <AuthGate>
         <DemoModeProvider>
           <FilterProvider>

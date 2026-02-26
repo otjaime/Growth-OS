@@ -231,7 +231,7 @@ export function Sidebar() {
       {/* Sidebar — desktop: fixed, mobile: slide-out */}
       <aside
         className={clsx(
-          'fixed left-0 top-0 h-screen w-64 glass-thick glass-specular border-r border-[var(--glass-border)] flex flex-col z-50 transition-transform duration-200',
+          'fixed left-0 top-0 h-screen w-64 glass-thick glass-specular glass-sheen border-r border-[var(--glass-border)] flex flex-col z-50 transition-transform duration-200',
           // Desktop: always visible
           'lg:translate-x-0',
           // Mobile: slide in/out

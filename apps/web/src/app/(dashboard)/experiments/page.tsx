@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
 import { exportToCSV } from '@/lib/export';
 import { KpiCardSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
+import { GlassSurface } from '@/components/ui/glass-surface';
 import {
   type Experiment,
   type ExperimentStatus,
@@ -319,7 +320,7 @@ export default function ExperimentsPage() {
           onEdit={setEditingExp}
         />
       ) : (
-        <div className="card overflow-hidden !p-0">
+        <GlassSurface className="card overflow-hidden !p-0" intensity="subtle">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[var(--glass-border)] text-xs text-[var(--foreground-secondary)] uppercase">
@@ -337,7 +338,7 @@ export default function ExperimentsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </GlassSurface>
       )}
 
       {/* Modals */}

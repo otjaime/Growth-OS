@@ -7,6 +7,7 @@ import { MiniSparkline } from '@/components/sparkline';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { apiFetch } from '@/lib/api';
 import { exportToCSV } from '@/lib/export';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface SegmentStats {
   orderCount: number;
@@ -240,7 +241,7 @@ export default function UnitEconomicsPage() {
       </div>
 
       {/* Guardrails */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Guardrails</h2>
         <div className="grid grid-cols-4 gap-4">
           <div className={`rounded-lg p-3 ${guardrailBg(b.cmPercent, 0.20, 0.15)}`}>
@@ -268,11 +269,11 @@ export default function UnitEconomicsPage() {
             </p>
           </div>
         </div>
-      </div>
+      </GlassSurface>
 
       {/* New vs Returning Customers */}
       {data.customerSegments && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">New vs Returning Customers</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-56">
@@ -340,12 +341,12 @@ export default function UnitEconomicsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </GlassSurface>
       )}
 
       {/* Margin Segments */}
       {marginSegments.length > 0 && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Margin Segments</h2>
           <p className="text-xs text-[var(--foreground-secondary)] mb-4">Customers split by contribution margin percentage (above/below median CM%).</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -380,12 +381,12 @@ export default function UnitEconomicsPage() {
               );
             })}
           </div>
-        </div>
+        </GlassSurface>
       )}
 
       {/* Channel Unit Economics */}
       {sortedChannels.length > 0 && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-[var(--foreground)]">Channel Unit Economics</h2>
             <button
@@ -449,11 +450,11 @@ export default function UnitEconomicsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </GlassSurface>
       )}
 
       {/* Margin Decomposition */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Contribution Margin Decomposition</h2>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -481,10 +482,10 @@ export default function UnitEconomicsPage() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </GlassSurface>
 
       {/* Cost Breakdown Table */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Cost Breakdown (Last {days} Days)</h2>
           <button
@@ -526,10 +527,10 @@ export default function UnitEconomicsPage() {
             <tr className="border-b border-white/[0.04]"><td className="px-4 py-2 text-[var(--foreground)]/80">− Marketing Spend</td><td className="px-4 py-2 text-right text-apple-yellow">({formatCurrency(b.marketingSpend)})</td><td className="px-4 py-2 text-right">{b.revenueNet > 0 ? formatPercent(b.marketingSpend / b.revenueNet) : '\u2014'}</td></tr>
           </tbody>
         </table>
-      </div>
+      </GlassSurface>
 
       {/* CAC vs LTV Section */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">CAC vs LTV</h2>
         {cohort?.latest ? (
           <>
@@ -601,11 +602,11 @@ export default function UnitEconomicsPage() {
             </div>
           </div>
         )}
-      </div>
+      </GlassSurface>
 
       {/* Payment Method Breakdown */}
       {data.paymentBreakdown && data.paymentBreakdown.length > 0 && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Payment Methods</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-56">
@@ -675,7 +676,7 @@ export default function UnitEconomicsPage() {
               </table>
             </div>
           </div>
-        </div>
+        </GlassSurface>
       )}
     </div>
   );

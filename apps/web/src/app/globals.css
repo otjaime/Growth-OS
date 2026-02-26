@@ -187,6 +187,53 @@ body {
 }
 
 /* ==========================================================
+   MESH GRADIENT BACKGROUND — Ambient blobs
+   ========================================================== */
+@keyframes meshDrift1 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(8vw, 6vh) scale(1.1); }
+}
+@keyframes meshDrift2 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(-6vw, 8vh) scale(1.05); }
+}
+@keyframes meshDrift3 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(5vw, -5vh) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mesh-gradient-bg * { animation: none !important; }
+}
+
+/* ==========================================================
+   GLASS SHEEN — Directional highlight overlay
+   ========================================================== */
+.glass-sheen {
+  overflow: hidden;
+}
+.glass-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 30%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ==========================================================
+   CARD HOVER — Subtle border brighten on hover
+   ========================================================== */
+.card:hover {
+  border-color: var(--glass-border-hover);
+}
+
+/* ==========================================================
    PRINT STYLES — WBR Export PDF
    ========================================================== */
 @media print {

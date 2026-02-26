@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FileText, ClipboardCopy, Check, AlertTriangle, AlertCircle, Info, Sparkles, Loader2, Download, Send, Mail } from 'lucide-react';
 import { formatCurrency, formatPercent, formatPercentChange, changeColor, formatMultiplier } from '@/lib/format';
 import { apiFetch, API, getAuthToken } from '@/lib/api';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface WbrSummary {
   revenue: number;
@@ -421,12 +422,12 @@ export default function WbrPage() {
             {rendered.map((section, i) => {
               if (section.level === 1) return null;
               return (
-                <div key={i} className="card">
+                <GlassSurface key={i} className="card" intensity="subtle">
                   <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3">{section.heading}</h2>
                   <div className="text-[var(--foreground)]/80 text-sm leading-relaxed">
                     {section.body.split('\n').map((line, j) => renderLine(line, j))}
                   </div>
-                </div>
+                </GlassSurface>
               );
             })}
             {aiStreaming && (
@@ -437,12 +438,12 @@ export default function WbrPage() {
             )}
           </div>
         ) : (
-          <div className="card">
+          <GlassSurface className="card" intensity="subtle">
             <div className="text-[var(--foreground)]/80 whitespace-pre-wrap text-sm leading-relaxed">
               {activeNarrative}
               {aiStreaming && <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5" />}
             </div>
-          </div>
+          </GlassSurface>
         )}
       </div>
 
