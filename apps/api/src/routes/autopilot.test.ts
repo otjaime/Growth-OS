@@ -307,8 +307,11 @@ describe('POST /api/autopilot/sync', () => {
     expect(body.jobRunId).toBeDefined();
   });
 
-  it('returns 400 when no org context and not in demo mode', async () => {
+  it('returns 400 when no org context and no org in DB', async () => {
     mockIsDemoMode.mockResolvedValueOnce(false);
+    // Last-resort fallback also needs to fail — no orgs at all
+    mockPrisma.organization.findFirst.mockReset();
+    mockPrisma.organization.findFirst.mockResolvedValue(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/sync' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
@@ -519,8 +522,10 @@ describe('POST /api/autopilot/run-diagnosis', () => {
     expect(body.adsEvaluated).toBeDefined();
   });
 
-  it('returns 400 when no org context and not in demo mode', async () => {
+  it('returns 400 when no org context and no org in DB', async () => {
     mockIsDemoMode.mockResolvedValueOnce(false);
+    mockPrisma.organization.findFirst.mockReset();
+    mockPrisma.organization.findFirst.mockResolvedValue(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/run-diagnosis' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
@@ -531,8 +536,10 @@ describe('POST /api/autopilot/run-diagnosis', () => {
 // ── Copy Generation ──────────────────────────────────────────
 
 describe('POST /api/autopilot/diagnoses/:id/generate-copy', () => {
-  it('returns 400 when no org and not in demo mode', async () => {
+  it('returns 400 when no org and no org in DB', async () => {
     mockIsDemoMode.mockResolvedValueOnce(false);
+    mockPrisma.organization.findFirst.mockReset();
+    mockPrisma.organization.findFirst.mockResolvedValue(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/generate-copy' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
@@ -687,8 +694,10 @@ describe('GET /api/autopilot/history', () => {
 // ── Approve + Execute ──────────────────────────────────────────
 
 describe('POST /api/autopilot/diagnoses/:id/approve', () => {
-  it('returns 400 when no org and not in demo mode', async () => {
+  it('returns 400 when no org and no org in DB', async () => {
     mockIsDemoMode.mockResolvedValueOnce(false);
+    mockPrisma.organization.findFirst.mockReset();
+    mockPrisma.organization.findFirst.mockResolvedValue(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/approve' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);

@@ -3,9 +3,9 @@
 // Endpoints for Meta ad-level data, syncing, and campaign views
 // ──────────────────────────────────────────────────────────────
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { prisma, DiagnosisStatus, decrypt, isDemoMode } from '@growth-os/database';
-import { orgWhere, getOrgId } from '../lib/tenant.js';
+import { getOrgId } from '../lib/tenant.js';
 import { syncMetaAds } from '../jobs/sync-meta-ads.js';
 import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
@@ -24,10 +24,30 @@ async function resolveOrgId(request: { organizationId?: string }): Promise<strin
   const demo = await isDemoMode();
   if (demo) {
     const org = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
-    return org?.id ?? null;
+    if (org) return org.id;
   }
 
-  return null;
+  // Last resort: try to find ANY org (handles edge cases where isDemoMode check
+  // fails but an org exists — e.g. DB state out of sync with env vars)
+  const anyOrg = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+  return anyOrg?.id ?? null;
+}
+
+/**
+ * Returns a Prisma `where` fragment scoped to the organization, with async
+ * demo-mode fallback. For GET endpoints that should return data gracefully
+ * even when no org context is available (returns {} to show all data).
+ */
+async function resolveOrgWhere(request: FastifyRequest): Promise<{ organizationId?: string }> {
+  if (request.organizationId) return { organizationId: request.organizationId };
+
+  const demo = await isDemoMode();
+  if (demo) {
+    const org = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+    if (org) return { organizationId: org.id };
+  }
+
+  return {}; // No filter — show all data (backwards-compatible)
 }
 
 export async function autopilotRoutes(app: FastifyInstance) {
@@ -46,7 +66,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       limit?: string;
     };
 
-    const where: Record<string, unknown> = { ...orgWhere(request) };
+    const where: Record<string, unknown> = { ...(await resolveOrgWhere(request)) };
     if (status) where.status = status.toUpperCase();
     if (campaignId) where.campaignId = campaignId;
 
@@ -104,7 +124,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const ad = await prisma.metaAd.findFirst({
-      where: { id, ...orgWhere(request) },
+      where: { id, ...(await resolveOrgWhere(request)) },
       include: {
         campaign: true,
         adSet: true,
@@ -129,7 +149,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request) => {
     const campaigns = await prisma.metaCampaign.findMany({
-      where: orgWhere(request),
+      where: await resolveOrgWhere(request),
       orderBy: { name: 'asc' },
       include: {
         adSets: {
@@ -248,7 +268,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       description: 'Returns high-level statistics about Meta ad accounts, campaigns, and ads.',
     },
   }, async (request) => {
-    const where = orgWhere(request);
+    const where = await resolveOrgWhere(request);
 
     const [accountCount, campaignCount, adSetCount, adCount, activeAdCount] = await Promise.all([
       prisma.metaAdAccount.count({ where }),
@@ -316,7 +336,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       limit?: string;
     };
 
-    const where: Record<string, unknown> = { ...orgWhere(request) };
+    const where: Record<string, unknown> = { ...(await resolveOrgWhere(request)) };
     if (status) where.status = status.toUpperCase();
     if (severity) where.severity = severity.toUpperCase();
     if (adId) where.adId = adId;
@@ -363,7 +383,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       description: 'Returns counts of pending diagnoses grouped by severity.',
     },
   }, async (request) => {
-    const where = { ...orgWhere(request), status: 'PENDING' as const };
+    const where = { ...(await resolveOrgWhere(request)), status: 'PENDING' as const };
 
     const [critical, warning, info, total] = await Promise.all([
       prisma.diagnosis.count({ where: { ...where, severity: 'CRITICAL' } }),
@@ -386,7 +406,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const diagnosis = await prisma.diagnosis.findFirst({
-      where: { id, ...orgWhere(request) },
+      where: { id, ...(await resolveOrgWhere(request)) },
       include: {
         ad: {
           include: {
@@ -417,7 +437,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const diagnosis = await prisma.diagnosis.findFirst({
-      where: { id, ...orgWhere(request) },
+      where: { id, ...(await resolveOrgWhere(request)) },
     });
 
     if (!diagnosis) {
@@ -757,7 +777,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const diagnosis = await prisma.diagnosis.findFirst({
-      where: { id, ...orgWhere(request) },
+      where: { id, ...(await resolveOrgWhere(request)) },
       select: { id: true, status: true, actionType: true, executedAt: true, executionResult: true },
     });
 
@@ -847,7 +867,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const skip = offset ? parseInt(offset, 10) : 0;
 
     const where = {
-      ...orgWhere(request),
+      ...(await resolveOrgWhere(request)),
       status: { in: [DiagnosisStatus.EXECUTED, DiagnosisStatus.DISMISSED, DiagnosisStatus.EXPIRED, DiagnosisStatus.APPROVED] },
     };
 
