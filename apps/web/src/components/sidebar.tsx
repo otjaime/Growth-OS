@@ -30,6 +30,7 @@ import { apiFetch } from '@/lib/api';
 import { LogoutButton } from '@/components/auth-gate';
 import { useFilters } from '@/contexts/filters';
 import { useDemoMode } from '@/contexts/demo-mode';
+import { Dock, DockItem } from '@/components/ui/dock';
 
 const CHANNELS = [
   { slug: 'meta', label: 'Meta Ads' },
@@ -128,8 +129,31 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-auto">
+      {/* Navigation — Dock magnification on desktop */}
+      <Dock className="hidden lg:flex flex-1 flex-col px-3 py-4 space-y-1 overflow-auto">
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname === item.href;
+          const Icon = item.icon;
+          return (
+            <DockItem key={item.href}>
+              <Link
+                href={item.href}
+                className={clsx(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
+                  isActive
+                    ? 'bg-[var(--tint-blue)] text-apple-blue'
+                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            </DockItem>
+          );
+        })}
+      </Dock>
+      {/* Navigation — plain list on mobile */}
+      <nav className="lg:hidden flex-1 px-3 py-4 space-y-1 overflow-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -207,7 +231,7 @@ export function Sidebar() {
       {/* Sidebar — desktop: fixed, mobile: slide-out */}
       <aside
         className={clsx(
-          'fixed left-0 top-0 h-screen w-64 glass-thick glass-specular border-r border-[var(--glass-border)] flex flex-col z-50 transition-transform duration-200',
+          'fixed left-0 top-0 h-screen w-64 glass-thick glass-specular glass-sheen border-r border-[var(--glass-border)] flex flex-col z-50 transition-transform duration-200',
           // Desktop: always visible
           'lg:translate-x-0',
           // Mobile: slide in/out

@@ -1,8 +1,10 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { formatCurrency, formatPercent, formatNumber, formatPercentChange, changeColor } from '@/lib/format';
+import { formatCurrency, formatPercent, formatNumber, formatPercentChange, changeColor, formatMultiplier } from '@/lib/format';
 import { MiniSparkline } from './sparkline';
+import { ReflectiveCard } from './ui/reflective-card';
+import { CountUp } from './ui/count-up';
 
 interface KpiCardProps {
   title: ReactNode;
@@ -14,22 +16,26 @@ interface KpiCardProps {
   benchmark?: string;
 }
 
+const FORMAT_FNS: Record<string, (v: number) => string> = {
+  currency: formatCurrency,
+  percent: formatPercent,
+  number: formatNumber,
+  multiplier: formatMultiplier,
+};
+
 export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData, benchmark }: KpiCardProps) {
   const safeValue = Number.isFinite(value) ? value : 0;
-  const formatted = (() => {
-    switch (format) {
-      case 'currency': return formatCurrency(safeValue);
-      case 'percent': return formatPercent(safeValue);
-      case 'number': return formatNumber(safeValue);
-      case 'multiplier': return safeValue === 0 ? '--' : `${safeValue.toFixed(1)}x`;
-    }
-  })();
+  const formatFn = FORMAT_FNS[format];
 
   return (
-    <div className="card glass-interactive flex flex-col gap-2">
+    <ReflectiveCard intensity="medium" className="card glass-interactive flex flex-col gap-2">
       <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{title}</p>
       <div className="flex items-end justify-between">
-        <p className="text-2xl font-bold text-[var(--foreground)]">{formatted}</p>
+        <CountUp
+          value={safeValue}
+          format={formatFn}
+          className="text-2xl font-bold text-[var(--foreground)]"
+        />
         {sparkData && sparkData.length > 0 && (
           <MiniSparkline data={sparkData} color={(change ?? 0) >= 0 ? '#30d158' : '#ff453a'} />
         )}
@@ -40,6 +46,6 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
       {benchmark && (
         <p className="text-[10px] text-[var(--foreground-secondary)]/50">DTC benchmark: {benchmark}</p>
       )}
-    </div>
+    </ReflectiveCard>
   );
 }

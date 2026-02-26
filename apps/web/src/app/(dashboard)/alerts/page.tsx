@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle, Info, Sparkles, ChevronDown, ChevronUp, Loader2, CheckCircle, FlaskConical } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { CreateFromAlertModal } from '@/components/experiments';
+import { AnimatedList } from '@/components/ui/animated-list';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface Alert {
   id: string;
@@ -71,7 +73,7 @@ function AlertCard({ alert, onCreateExperiment }: { alert: Alert; onCreateExperi
   };
 
   return (
-    <div className={`card border-l-4 ${severityBorder(alert.severity)}`}>
+    <GlassSurface className={`card border-l-4 ${severityBorder(alert.severity)}`} intensity="subtle">
       <div className="flex items-start gap-4">
         <div className="mt-0.5">{severityIcon(alert.severity)}</div>
         <div className="flex-1">
@@ -129,7 +131,7 @@ function AlertCard({ alert, onCreateExperiment }: { alert: Alert; onCreateExperi
           )}
         </div>
       </div>
-    </div>
+    </GlassSurface>
   );
 }
 
@@ -175,17 +177,17 @@ export default function AlertsPage() {
       </div>
 
       {alerts.length === 0 ? (
-        <div className="card text-center py-16">
+        <GlassSurface className="card text-center py-16">
           <CheckCircle className="h-12 w-12 text-apple-green mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">All Clear</h2>
           <p className="text-sm text-[var(--foreground-secondary)]">No alerts this week &mdash; all metrics are within healthy thresholds.</p>
-        </div>
+        </GlassSurface>
       ) : (
-        <div className="space-y-4">
+        <AnimatedList className="space-y-4">
           {alerts.map((alert) => (
             <AlertCard key={alert.id} alert={alert} onCreateExperiment={setExperimentAlert} />
           ))}
-        </div>
+        </AnimatedList>
       )}
 
       {/* Create Experiment from Alert modal */}

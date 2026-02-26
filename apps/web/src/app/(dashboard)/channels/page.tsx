@@ -7,6 +7,7 @@ import { formatCurrency, formatPercent, formatNumber, changeColor, formatPercent
 import { apiFetch } from '@/lib/api';
 import { exportToCSV } from '@/lib/export';
 import { useFilters } from '@/contexts/filters';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 const CHANNEL_COLORS: Record<string, string> = {
   meta: '#0a84ff',
@@ -121,7 +122,7 @@ export default function ChannelsPage() {
 
       {/* Revenue Mix Donut */}
       {pieData.length > 0 && (
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue Mix</h2>
           <div className="h-48 flex items-center">
             <ResponsiveContainer width="50%" height="100%">
@@ -164,10 +165,10 @@ export default function ChannelsPage() {
               ))}
             </div>
           </div>
-        </div>
+        </GlassSurface>
       )}
 
-      <div className="card overflow-x-auto">
+      <GlassSurface className="card overflow-x-auto" intensity="subtle">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">Channel Breakdown</h2>
           <button
@@ -245,7 +246,7 @@ export default function ChannelsPage() {
             </tr>
           </tfoot>
         </table>
-      </div>
+      </GlassSurface>
     </div>
   );
 }

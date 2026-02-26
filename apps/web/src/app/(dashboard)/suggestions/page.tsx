@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
+import { AnimatedList } from '@/components/ui/animated-list';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -436,7 +438,7 @@ function OpportunityCard({
   const pendingCount = opportunity.suggestions.filter((s) => s.status === 'PENDING').length;
 
   return (
-    <div className="card !p-0 overflow-hidden">
+    <GlassSurface className="card !p-0 overflow-hidden" intensity="subtle">
       {/* Header */}
       <button
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.06]/30 transition-all ease-spring"
@@ -556,7 +558,7 @@ function OpportunityCard({
           </div>
         </div>
       )}
-    </div>
+    </GlassSurface>
   );
 }
 
@@ -724,7 +726,7 @@ export default function SuggestionsPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <AnimatedList className="space-y-3">
           {filtered.map((opp) => (
             <OpportunityCard
               key={opp.id}
@@ -733,7 +735,7 @@ export default function SuggestionsPage() {
               onPromote={(s, oppType) => setPromoteTarget({ suggestion: s, opportunityType: oppType })}
             />
           ))}
-        </div>
+        </AnimatedList>
       )}
 
       {/* Promote modal */}

@@ -10,6 +10,7 @@ import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from '@/components/skel
 import { AcronymTip } from '@/components/tooltip';
 import { formatCurrency, formatPercent, formatNumber, formatDays, formatMultiplier } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface KpiValue {
   value: number;
@@ -225,13 +226,13 @@ export default function DashboardPage() {
       {timeseries && (
         <section>
           <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue & Margin Trend</h2>
-          <div className="card">
+          <GlassSurface className="card" intensity="subtle">
             <RevenueChart
               revenueData={timeseries.dailyRevenue}
               spendData={timeseries.dailySpend}
               marginData={timeseries.dailyMargin}
             />
-          </div>
+          </GlassSurface>
         </section>
       )}
 
@@ -311,7 +312,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="card">
+        <GlassSurface className="card" intensity="subtle">
           {forecastLoading ? (
             <div className="flex items-center justify-center h-80">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
@@ -327,7 +328,7 @@ export default function DashboardPage() {
               No forecast data available
             </div>
           )}
-        </div>
+        </GlassSurface>
       </section>
 
       {/* SECTION 3: Customer Economics */}

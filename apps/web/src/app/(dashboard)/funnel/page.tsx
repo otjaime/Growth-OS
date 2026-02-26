@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { formatNumber, formatPercent, formatCurrency } from '@/lib/format';
 import { apiFetch } from '@/lib/api';
+import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface OrderData {
   totalOrders: number;
@@ -155,7 +156,7 @@ function TrafficFunnel({ traffic, orders }: { traffic: TrafficData; orders: Orde
       </div>
 
       {/* Funnel visualization */}
-      <div className="card space-y-1">
+      <GlassSurface className="card space-y-1" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-6">Funnel Steps</h2>
         {FUNNEL_STEPS.map((step, i) => {
           const value = traffic[step.key as keyof typeof traffic] as number;
@@ -207,7 +208,7 @@ function TrafficFunnel({ traffic, orders }: { traffic: TrafficData; orders: Orde
             </div>
           );
         })}
-      </div>
+      </GlassSurface>
 
       {/* Step-by-step CVRs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -271,7 +272,7 @@ function NoTrafficFunnel({ orders }: { orders: OrderData }) {
       </div>
 
       {/* Simple order breakdown */}
-      <div className="card">
+      <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Order Breakdown</h2>
         <div className="space-y-3">
           {[
@@ -300,7 +301,7 @@ function NoTrafficFunnel({ orders }: { orders: OrderData }) {
             );
           })}
         </div>
-      </div>
+      </GlassSurface>
     </>
   );
 }
