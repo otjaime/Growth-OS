@@ -78,11 +78,12 @@ function sleep(ms: number): Promise<void> {
 
 async function fetchWithRetry(
   url: string,
+  headers?: Record<string, string>,
   maxRetries = 5,
 ): Promise<unknown> {
   let retries = 0;
   while (true) {
-    const resp = await fetch(url);
+    const resp = await fetch(url, headers ? { headers } : undefined);
 
     if (resp.status === 429) {
       const backoff = Math.pow(2, retries) * 1000;
@@ -98,7 +99,12 @@ async function fetchWithRetry(
       throw new Error(`Meta API error: ${resp.status} — ${body}`);
     }
 
-    return resp.json();
+    const text = await resp.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Meta API returned invalid JSON (status ${resp.status}): ${text.substring(0, 200)}`);
+    }
   }
 }
 
@@ -106,12 +112,13 @@ async function fetchWithRetry(
 
 async function fetchAllPages<T>(
   initialUrl: string,
+  headers?: Record<string, string>,
 ): Promise<T[]> {
   const allData: T[] = [];
   let url: string | undefined = initialUrl;
 
   while (url) {
-    const result = await fetchWithRetry(url) as {
+    const result = await fetchWithRetry(url, headers) as {
       data: T[];
       paging?: { next?: string };
     };
@@ -135,13 +142,14 @@ export async function fetchMetaAdCreatives(
   const rawId = config.adAccountId.trim().replace(/^act_/, '');
   const accountId = `act_${rawId}`;
   const baseUrl = 'https://graph.facebook.com/v21.0';
-  const token = `access_token=${config.accessToken}`;
+  const authHeaders = { Authorization: `Bearer ${config.accessToken}` };
 
   // 1. Fetch campaigns
   log.info('Fetching Meta campaigns');
   const campaignFields = 'id,name,status,objective,daily_budget';
   const rawCampaigns = await fetchAllPages<Record<string, unknown>>(
-    `${baseUrl}/${accountId}/campaigns?fields=${campaignFields}&limit=500&${token}`,
+    `${baseUrl}/${accountId}/campaigns?fields=${campaignFields}&limit=500`,
+    authHeaders,
   );
   const campaigns: MetaCampaignData[] = rawCampaigns.map((c) => ({
     campaignId: String(c.id),
@@ -156,7 +164,8 @@ export async function fetchMetaAdCreatives(
   log.info('Fetching Meta ad sets');
   const adSetFields = 'id,name,status,campaign_id,daily_budget,targeting';
   const rawAdSets = await fetchAllPages<Record<string, unknown>>(
-    `${baseUrl}/${accountId}/adsets?fields=${adSetFields}&limit=500&${token}`,
+    `${baseUrl}/${accountId}/adsets?fields=${adSetFields}&limit=500`,
+    authHeaders,
   );
   const adSets: MetaAdSetData[] = rawAdSets.map((a) => ({
     adSetId: String(a.id),
@@ -172,7 +181,8 @@ export async function fetchMetaAdCreatives(
   log.info('Fetching Meta ads with creatives');
   const adFields = 'id,name,status,campaign_id,adset_id,creative{body,title,link_description,image_url,thumbnail_url,call_to_action_type,object_type}';
   const rawAds = await fetchAllPages<Record<string, unknown>>(
-    `${baseUrl}/${accountId}/ads?fields=${encodeURIComponent(adFields)}&limit=500&${token}`,
+    `${baseUrl}/${accountId}/ads?fields=${encodeURIComponent(adFields)}&limit=500`,
+    authHeaders,
   );
   const ads: MetaAdData[] = rawAds.map((a) => {
     const creative = (a.creative as Record<string, unknown>) ?? {};
@@ -201,7 +211,8 @@ export async function fetchMetaAdCreatives(
 
   const insightFields = 'ad_id,spend,impressions,clicks,actions,action_values,frequency';
   const rawInsights7d = await fetchAllPages<Record<string, unknown>>(
-    `${baseUrl}/${accountId}/insights?fields=${insightFields}&level=ad&time_range={"since":"${since7d}","until":"${until7d}"}&limit=500&${token}`,
+    `${baseUrl}/${accountId}/insights?fields=${insightFields}&level=ad&time_range={"since":"${since7d}","until":"${until7d}"}&limit=500`,
+    authHeaders,
   );
   const insights7d = parseInsights(rawInsights7d);
   log.info({ count: insights7d.length }, 'Fetched 7d insights');
@@ -212,7 +223,8 @@ export async function fetchMetaAdCreatives(
   log.info({ since: since14d, until: until14d }, 'Fetching 14d ad insights');
 
   const rawInsights14d = await fetchAllPages<Record<string, unknown>>(
-    `${baseUrl}/${accountId}/insights?fields=${insightFields}&level=ad&time_range={"since":"${since14d}","until":"${until14d}"}&limit=500&${token}`,
+    `${baseUrl}/${accountId}/insights?fields=${insightFields}&level=ad&time_range={"since":"${since14d}","until":"${until14d}"}&limit=500`,
+    authHeaders,
   );
   const insights14d = parseInsights(rawInsights14d);
   log.info({ count: insights14d.length }, 'Fetched 14d insights');

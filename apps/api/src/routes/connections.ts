@@ -6,6 +6,54 @@ import { normalizeStaging, buildMarts } from '@growth-os/etl';
 import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
 import { orgWhere, orgData, orgSqlParam } from '../lib/tenant.js';
 
+// ── OAuth CSRF protection — in-memory nonce store with TTL ──
+const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const oauthNonces = new Map<string, { createdAt: number; data: Record<string, string> }>();
+
+function createOAuthNonce(data: Record<string, string>): string {
+  const nonce = crypto.randomBytes(32).toString('hex');
+  oauthNonces.set(nonce, { createdAt: Date.now(), data });
+  // Cleanup expired nonces on each creation to prevent memory leaks
+  for (const [key, entry] of oauthNonces) {
+    if (Date.now() - entry.createdAt > NONCE_TTL_MS) oauthNonces.delete(key);
+  }
+  return nonce;
+}
+
+function validateOAuthNonce(nonce: string): Record<string, string> | null {
+  const entry = oauthNonces.get(nonce);
+  if (!entry) return null;
+  oauthNonces.delete(nonce); // One-time use
+  if (Date.now() - entry.createdAt > NONCE_TTL_MS) return null;
+  return entry.data;
+}
+
+// ── SSRF protection — validate external domains ─────────────
+function isExternalDomain(domain: string): boolean {
+  const cleaned = domain.replace(/^https?:\/\//, '').split('/')[0]?.split(':')[0] ?? '';
+  if (!cleaned) return false;
+
+  // Block internal/reserved hostnames
+  const blocklist = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'metadata.google.internal'];
+  if (blocklist.some((b) => cleaned === b || cleaned.endsWith(`.${b}`))) return false;
+
+  // Block private IP ranges
+  const ipMatch = cleaned.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipMatch) {
+    const octets = ipMatch.slice(1).map(Number);
+    const [a, b] = octets;
+    if (a === 10) return false;
+    if (a === 172 && b !== undefined && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 169 && b === 254) return false;
+  }
+
+  // Must have at least one dot (no single-label internal hostnames)
+  if (!cleaned.includes('.')) return false;
+
+  return true;
+}
+
 // ── Connector Catalog (served to frontend) ──────────────────
 
 interface ConnectorFieldDef {
@@ -515,7 +563,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
       const start = Date.now();
 
       if (type === 'shopify') {
-        const resp = await fetch(`https://${meta.shopDomain}/admin/api/${meta.apiVersion ?? '2024-10'}/shop.json`, {
+        const shopDomain = (meta.shopDomain ?? '').trim();
+        if (!isExternalDomain(shopDomain)) {
+          return { success: false, message: 'Invalid shop domain. Must be a valid external hostname (e.g., mystore.myshopify.com).' };
+        }
+        const resp = await fetch(`https://${shopDomain}/admin/api/${meta.apiVersion ?? '2024-10'}/shop.json`, {
           headers: { 'X-Shopify-Access-Token': creds.accessToken },
         });
         if (!resp.ok) throw new Error(`Shopify responded ${resp.status}`);
@@ -710,7 +762,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'woocommerce') {
-        const resp = await fetch(`${meta.siteUrl}/wp-json/wc/v3/system_status`, {
+        const siteUrl = (meta.siteUrl ?? '').trim();
+        try {
+          const parsed = new URL(siteUrl);
+          if (!isExternalDomain(parsed.hostname)) {
+            return { success: false, message: 'Invalid site URL. Must be a valid external domain.' };
+          }
+        } catch {
+          return { success: false, message: 'Invalid site URL format.' };
+        }
+        const resp = await fetch(`${siteUrl}/wp-json/wc/v3/system_status`, {
           headers: { Authorization: 'Basic ' + Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString('base64') },
         });
         if (!resp.ok) throw new Error(`WooCommerce responded ${resp.status}`);
@@ -734,7 +795,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'mailchimp') {
-        const resp = await fetch(`https://${meta.server}.api.mailchimp.com/3.0/ping`, {
+        const server = (meta.server ?? '').trim();
+        if (!/^[a-z]{2}\d{1,2}$/.test(server)) {
+          return { success: false, message: 'Invalid Mailchimp server identifier (expected format: us1, us2, etc.).' };
+        }
+        const resp = await fetch(`https://${server}.api.mailchimp.com/3.0/ping`, {
           headers: { Authorization: `apikey ${creds.apiKey}` },
         });
         if (!resp.ok) throw new Error(`Mailchimp responded ${resp.status}`);
@@ -750,7 +815,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       if (type === 'tiktok_ads') {
-        const resp = await fetch(`https://business-api.tiktok.com/open_api/v1.3/advertiser/info/?advertiser_ids=["${meta.advertiserId}"]`, {
+        const advertiserId = (meta.advertiserId ?? '').trim();
+        if (!/^\d+$/.test(advertiserId)) {
+          return { success: false, message: 'Invalid TikTok Advertiser ID. Must contain only digits.' };
+        }
+        const resp = await fetch(`https://business-api.tiktok.com/open_api/v1.3/advertiser/info/?advertiser_ids=["${advertiserId}"]`, {
           headers: { 'Access-Token': creds.accessToken },
         });
         if (!resp.ok) throw new Error(`TikTok responded ${resp.status}`);
@@ -1055,7 +1124,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
     };
     const scopes = (scopeMap[source ?? ''] ?? Object.values(scopeMap).flat()).join(' ');
 
-    const state = JSON.stringify({ source: source ?? 'google_ads' });
+    const nonce = createOAuthNonce({ source: source ?? 'google_ads' });
+    const state = JSON.stringify({ source: source ?? 'google_ads', nonce });
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code&scope=${encodeURIComponent(scopes)}&access_type=offline&prompt=consent` +
@@ -1074,12 +1144,19 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
     let connectorType = 'google_ads';
+    let stateNonce = '';
     try {
-      const parsed = JSON.parse(stateRaw ?? '{}');
+      const parsed = JSON.parse(stateRaw ?? '{}') as { source?: string; nonce?: string };
       connectorType = parsed.source ?? 'google_ads';
+      stateNonce = parsed.nonce ?? '';
     } catch { /* use default */ }
     // Remap legacy 'google' to 'google_ads' for backwards compatibility
     if (connectorType === 'google') connectorType = 'google_ads';
+
+    // Validate CSRF nonce
+    if (!stateNonce || !validateOAuthNonce(stateNonce)) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Invalid or expired OAuth state. Please try connecting again.')}`);
+    }
 
     try {
       const resp = await fetch('https://oauth2.googleapis.com/token', {
@@ -1175,7 +1252,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const apiBaseUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.API_PORT ?? '4000'}`;
     const redirectUri = `${apiBaseUrl}/api/auth/shopify/callback`;
     const scopes = 'read_orders,read_customers,read_products,read_inventory,read_analytics';
-    const nonce = crypto.randomBytes(16).toString('hex');
+    const nonce = createOAuthNonce({ provider: 'shopify' });
+
+    if (!isExternalDomain(shopDomain)) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Invalid shop domain')}`);
+    }
 
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?` +
       `client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -1186,11 +1267,21 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   // ── Shopify OAuth callback ────────────────────────────────
   app.get('/auth/shopify/callback', async (request, reply) => {
-    const { code, shop } = request.query as { code?: string; shop?: string; state?: string; hmac?: string };
+    const { code, shop, state: stateParam } = request.query as { code?: string; shop?: string; state?: string; hmac?: string };
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
     if (!code || !shop) {
       return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Missing code or shop from Shopify')}`);
+    }
+
+    // Validate CSRF nonce
+    if (!stateParam || !validateOAuthNonce(stateParam)) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Invalid or expired OAuth state. Please try connecting again.')}`);
+    }
+
+    // Validate shop domain to prevent SSRF during token exchange
+    if (!isExternalDomain(shop)) {
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent('Invalid shop domain in callback')}`);
     }
 
     // Get saved client credentials
@@ -1291,22 +1382,37 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return { success: false, message: 'Webhook not found' };
     }
 
-    // Validate webhook signature (HMAC-SHA256)
+    // Validate webhook signature (HMAC-SHA256) — mandatory if credentials exist
     const signature = (request.headers as Record<string, string>)['x-webhook-signature'];
     if (credential.encryptedData && credential.iv && credential.authTag) {
+      let signatureValid = false;
       try {
         const creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
         const secret = creds.webhookSecret;
         if (secret) {
+          if (!signature || !/^[0-9a-f]+$/i.test(signature)) {
+            app.log.warn({ webhookId: id }, 'Missing or malformed webhook signature');
+            return { success: false, message: 'Invalid signature' };
+          }
           const body = JSON.stringify(payload);
           const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
-          if (!signature || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) {
+          const sigBuf = Buffer.from(signature, 'hex');
+          const expBuf = Buffer.from(expected, 'hex');
+          if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
             app.log.warn({ webhookId: id }, 'Webhook signature verification failed');
             return { success: false, message: 'Invalid signature' };
           }
+          signatureValid = true;
+        } else {
+          app.log.warn({ webhookId: id }, 'Webhook has no secret configured — rejecting unsigned payload');
+          return { success: false, message: 'Webhook secret not configured' };
         }
       } catch (e) {
-        app.log.warn({ webhookId: id, error: (e as Error).message }, 'Failed to validate webhook signature');
+        app.log.error({ webhookId: id, error: (e as Error).message }, 'Failed to validate webhook signature');
+        return { success: false, message: 'Signature validation error' };
+      }
+      if (!signatureValid) {
+        return { success: false, message: 'Signature validation failed' };
       }
     }
 

@@ -29,14 +29,15 @@ export async function fetchMetaInsights(
   let url = `https://graph.facebook.com/v21.0/${accountId}/insights?` +
     `fields=${INSIGHTS_FIELDS}&level=campaign&time_increment=1` +
     (dateRange ? `&time_range={"since":"${dateRange.since}","until":"${dateRange.until}"}` : '') +
-    `&access_token=${config.accessToken}&limit=500`;
+    `&limit=500`;
+  const authHeaders = { Authorization: `Bearer ${config.accessToken}` };
 
   let retries = 0;
   const MAX_RETRIES = 5;
 
   while (url) {
     try {
-      const resp = await fetch(url);
+      const resp = await fetch(url, { headers: authHeaders });
 
       if (resp.status === 429) {
         const backoff = Math.pow(2, retries) * 1000;
