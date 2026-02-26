@@ -149,12 +149,12 @@ describe('computeRFMScores', () => {
     ];
     const results = computeRFMScores(customers, REF_DATE);
     expect(results).toHaveLength(1);
-    // Single customer: quintile assigns to 1 for frequency/monetary (no spread),
-    // recency is inverted: 6 - 1 = 5
-    expect(results[0]!.rfmScores.recency).toBe(5);
-    expect(results[0]!.rfmScores.frequency).toBe(1);
-    expect(results[0]!.rfmScores.monetary).toBe(1);
-    expect(results[0]!.segment).toBe('Potential'); // R>=3, F<=3, M<=3
+    // Single customer: no meaningful quintile ranking, neutral score 3 for all dimensions
+    // recency is inverted: 6 - 3 = 3
+    expect(results[0]!.rfmScores.recency).toBe(3);
+    expect(results[0]!.rfmScores.frequency).toBe(3);
+    expect(results[0]!.rfmScores.monetary).toBe(3);
+    expect(results[0]!.segment).toBe('Loyal'); // R>=3, F>=3, M>=3
   });
 });
 

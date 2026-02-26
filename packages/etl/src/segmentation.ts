@@ -74,8 +74,8 @@ export function computeRFMScores(
   const monetaryValues = rawData.map((d) => d.monetary).sort((a, b) => a - b);
 
   return rawData.map((d) => {
-    // Recency: lower days = better = higher score (inverted)
-    const rScore = 6 - assignQuintile(d.recencyDays, recencyValues);
+    // Recency: lower days = better = higher score (inverted, clamped to 1-5)
+    const rScore = Math.max(1, Math.min(5, 6 - assignQuintile(d.recencyDays, recencyValues)));
     const fScore = assignQuintile(d.frequency, frequencyValues);
     const mScore = assignQuintile(d.monetary, monetaryValues);
 
@@ -157,18 +157,21 @@ export function getSegmentDistribution(rfmData: CustomerRFM[]): SegmentSummary[]
 
 /**
  * Assign a quintile score (1-5) based on position in sorted array.
+ * Uses the count of values strictly less than the target to compute percentile rank,
+ * which handles duplicate values correctly.
  */
 function assignQuintile(value: number, sortedValues: number[]): number {
   const n = sortedValues.length;
   if (n === 0) return 3;
+  if (n === 1) return 3;
 
-  // Find the position of the value
-  let pos = 0;
+  // Count how many values are strictly less than the target
+  let countBelow = 0;
   for (let i = 0; i < n; i++) {
-    if (sortedValues[i]! <= value) pos = i;
+    if (sortedValues[i]! < value) countBelow++;
   }
 
-  const percentile = pos / (n - 1 || 1);
+  const percentile = countBelow / (n - 1);
 
   if (percentile < 0.2) return 1;
   if (percentile < 0.4) return 2;
