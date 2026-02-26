@@ -18,5 +18,7 @@ export type { GrowthModelInput, GrowthModelOutput, MonthlyProjection, DemoScenar
 export { computeRFMScores, classifySegment, getSegmentDistribution } from './segmentation.js';
 export type { CustomerRFM, RFMScores, CustomerSegment, SegmentSummary } from './segmentation.js';
 export { seedDemoExperiments } from './demo-experiments.js';
+export { seedDemoAutopilot } from './demo-autopilot.js';
+export { seedDemoOpportunities } from './demo-opportunities.js';
 export { evaluateDiagnosisRules } from './diagnosis-rules.js';
 export type { DiagnosisRuleInput, DiagnosisResult, DiagnosisActionType, DiagnosisSeverityLevel } from './diagnosis-rules.js';

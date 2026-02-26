@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { FastifyInstance } from 'fastify';
-import { prisma, DiagnosisStatus, decrypt } from '@growth-os/database';
+import { prisma, DiagnosisStatus, decrypt, isDemoMode } from '@growth-os/database';
 import { orgWhere, getOrgId } from '../lib/tenant.js';
 import { syncMetaAds } from '../jobs/sync-meta-ads.js';
 import { runDiagnosis } from '../jobs/run-diagnosis.js';
@@ -12,6 +12,23 @@ import { generateCopyVariants } from '../lib/copy-generator.js';
 import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
 import { isAIConfigured } from '../lib/ai.js';
+
+/**
+ * Resolve the organizationId from the request, falling back to the first
+ * available organization in demo mode (needed for Bearer auth / no-auth dev).
+ */
+async function resolveOrgId(request: { organizationId?: string }): Promise<string | null> {
+  if (request.organizationId) return request.organizationId;
+
+  // In demo mode, fall back to the first organization
+  const demo = await isDemoMode();
+  if (demo) {
+    const org = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+    return org?.id ?? null;
+  }
+
+  return null;
+}
 
 export async function autopilotRoutes(app: FastifyInstance) {
   // ── GET /autopilot/ads — list ads with metrics + trends ─────
@@ -177,10 +194,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
       description: 'Manually triggers a sync of Meta ad-level data for the current organization.',
     },
   }, async (request, reply) => {
-    const organizationId = getOrgId(request);
+    const organizationId = await resolveOrgId(request);
     if (!organizationId) {
       reply.status(400);
-      return { error: 'Organization context required' };
+      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
     }
 
     // Create a job run for tracking
@@ -429,10 +446,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
       description: 'Evaluates all diagnosis rules against current ad data for the organization.',
     },
   }, async (request, reply) => {
-    const organizationId = getOrgId(request);
+    const organizationId = await resolveOrgId(request);
     if (!organizationId) {
       reply.status(400);
-      return { error: 'Organization context required' };
+      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
     }
 
     const result = await runDiagnosis(organizationId);
@@ -448,10 +465,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const organizationId = getOrgId(request);
+    const organizationId = await resolveOrgId(request);
     if (!organizationId) {
       reply.status(400);
-      return { error: 'Organization context required' };
+      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
     }
 
     // Plan gate: STARTER+
@@ -610,10 +627,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const organizationId = getOrgId(request);
+    const organizationId = await resolveOrgId(request);
     if (!organizationId) {
       reply.status(400);
-      return { error: 'Organization context required' };
+      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
     }
 
     // Plan gate: STARTER+

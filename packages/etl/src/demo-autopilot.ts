@@ -9,19 +9,25 @@ import { createLogger } from './logger.js';
 
 const log = createLogger('demo:autopilot');
 
-export async function seedDemoAutopilot(): Promise<number> {
-  // Ensure a demo organization exists (required FK for all autopilot tables)
-  const org = await prisma.organization.upsert({
-    where: { clerkOrgId: 'demo_org' },
-    update: {},
-    create: {
-      name: 'Demo Store',
-      clerkOrgId: 'demo_org',
-      plan: 'GROWTH',
-    },
-  });
+export async function seedDemoAutopilot(organizationId?: string): Promise<number> {
+  let orgId: string;
 
-  const orgId = org.id;
+  if (organizationId) {
+    // Use the provided organization (e.g., from the authenticated user)
+    orgId = organizationId;
+  } else {
+    // Fallback: ensure a demo organization exists
+    const org = await prisma.organization.upsert({
+      where: { clerkOrgId: 'demo_org' },
+      update: {},
+      create: {
+        name: 'Demo Store',
+        clerkOrgId: 'demo_org',
+        plan: 'GROWTH',
+      },
+    });
+    orgId = org.id;
+  }
 
   // ── MetaAdAccount ──
   const account = await prisma.metaAdAccount.upsert({
@@ -254,7 +260,7 @@ export async function seedDemoAutopilot(): Promise<number> {
 
   const totalSeeded = campaigns.length + adSets.length + ads.length + diagCount;
   log.info({
-    org: org.name,
+    orgId,
     accounts: 1,
     campaigns: campaigns.length,
     adSets: adSets.length,

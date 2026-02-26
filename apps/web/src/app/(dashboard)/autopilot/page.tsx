@@ -68,12 +68,25 @@ export default function AutopilotPage() {
 
   const handleSync = async () => {
     setSyncing(true);
+    setError(null);
     try {
-      await apiFetch('/api/autopilot/sync', { method: 'POST' });
-      await apiFetch('/api/autopilot/run-diagnosis', { method: 'POST' });
+      const syncRes = await apiFetch('/api/autopilot/sync', { method: 'POST' });
+      if (!syncRes.ok) {
+        const body = await syncRes.json().catch(() => ({ error: syncRes.statusText }));
+        setError(`Sync failed: ${body.error ?? body.detail ?? syncRes.statusText}`);
+        setSyncing(false);
+        return;
+      }
+
+      const diagRes = await apiFetch('/api/autopilot/run-diagnosis', { method: 'POST' });
+      if (!diagRes.ok) {
+        const body = await diagRes.json().catch(() => ({ error: diagRes.statusText }));
+        setError(`Diagnosis run failed: ${body.error ?? diagRes.statusText}`);
+      }
+
       await fetchData();
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(`Sync error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSyncing(false);
     }

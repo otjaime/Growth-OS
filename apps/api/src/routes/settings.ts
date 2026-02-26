@@ -4,13 +4,21 @@
 
 import { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
-import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, validateData, computeGrowthModel, DEMO_SCENARIOS, seedDemoExperiments } from '@growth-os/etl';
+import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, validateData, computeGrowthModel, DEMO_SCENARIOS, seedDemoExperiments, seedDemoAutopilot, seedDemoOpportunities } from '@growth-os/etl';
 import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
 import { orgWhere, orgData } from '../lib/tenant.js';
 
 async function clearAllData(organizationId?: string) {
   const org = organizationId ? { organizationId } : {};
   return prisma.$transaction([
+    // Autopilot tables (FK order: variants → diagnoses → ads → adSets → campaigns → accounts)
+    prisma.adVariant.deleteMany(organizationId ? { where: { ad: { organizationId } } } : undefined),
+    prisma.diagnosis.deleteMany({ where: { ...org } }),
+    prisma.metaAd.deleteMany({ where: { ...org } }),
+    prisma.metaAdSet.deleteMany({ where: { ...org } }),
+    prisma.metaCampaign.deleteMany({ where: { ...org } }),
+    prisma.metaAdAccount.deleteMany({ where: { ...org } }),
+    // Suggestions & opportunities
     prisma.suggestionFeedback.deleteMany(organizationId ? { where: { suggestion: { opportunity: { organizationId } } } } : undefined),
     prisma.suggestion.deleteMany(organizationId ? { where: { opportunity: { organizationId } } } : undefined),
     prisma.opportunity.deleteMany({ where: { ...org } }),
@@ -231,6 +239,12 @@ export async function settingsRoutes(app: FastifyInstance) {
 
       // Seed demo experiments
       const experimentsSeeded = await seedDemoExperiments();
+
+      // Seed demo opportunities & suggestions
+      await seedDemoOpportunities();
+
+      // Seed demo autopilot data (Meta ads + diagnoses)
+      await seedDemoAutopilot(request.organizationId);
 
       const durationMs = Date.now() - startTime;
 
