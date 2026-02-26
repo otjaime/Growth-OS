@@ -2,6 +2,8 @@
 
 import { FlaskConical, Clock, CheckCircle, Trophy } from 'lucide-react';
 import type { Experiment } from './types';
+import { CounterTicker } from '@/components/ui/counter-ticker';
+import { SpotlightCard } from '@/components/ui/spotlight-card';
 
 export function SummaryCards({ allExperiments }: { allExperiments: Experiment[] }): React.ReactElement {
   const total = allExperiments.length;
@@ -18,19 +20,23 @@ export function SummaryCards({ allExperiments }: { allExperiments: Experiment[] 
     { label: 'Total Experiments', value: total, icon: FlaskConical, color: 'text-apple-blue' },
     { label: 'Running Now', value: running, icon: Clock, color: 'text-apple-green' },
     { label: 'Completed', value: completed, icon: CheckCircle, color: 'text-apple-purple' },
-    { label: 'Win Rate', value: winRate != null ? `${winRate}%` : '\u2014', icon: Trophy, color: 'text-apple-green' },
+    { label: 'Win Rate', value: winRate, displayValue: winRate != null ? `${winRate}%` : '\u2014', icon: Trophy, color: 'text-apple-green' },
   ];
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((c) => (
-        <div key={c.label} className="card">
+        <SpotlightCard key={c.label} className="card">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">{c.label}</span>
             <c.icon className={`h-4 w-4 ${c.color}`} />
           </div>
-          <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
-        </div>
+          {typeof c.value === 'number' && c.value !== null && !('displayValue' in c && c.displayValue) ? (
+            <CounterTicker value={c.value} className={`text-2xl font-bold ${c.color}`} />
+          ) : (
+            <div className={`text-2xl font-bold ${c.color}`}>{'displayValue' in c ? c.displayValue : c.value}</div>
+          )}
+        </SpotlightCard>
       ))}
     </div>
   );

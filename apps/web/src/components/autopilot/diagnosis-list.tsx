@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import { SeverityDot } from './severity-badge';
 import { ExpiryCountdown } from './expiry-countdown';
+import { AnimatedList } from '@/components/ui/animated-list';
 import type { Diagnosis } from './types';
 
 interface DiagnosisListProps {
@@ -49,7 +50,7 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisList
   }
 
   return (
-    <div className="space-y-1">
+    <AnimatedList className="space-y-1">
       {diagnoses.map((diag) => (
         <button
           key={diag.id}
@@ -83,6 +84,6 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisList
           </div>
         </button>
       ))}
-    </div>
+    </AnimatedList>
   );
 }

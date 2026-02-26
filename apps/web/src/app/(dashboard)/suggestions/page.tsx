@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
+import { AnimatedList } from '@/components/ui/animated-list';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -724,7 +725,7 @@ export default function SuggestionsPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <AnimatedList className="space-y-3">
           {filtered.map((opp) => (
             <OpportunityCard
               key={opp.id}
@@ -733,7 +734,7 @@ export default function SuggestionsPage() {
               onPromote={(s, oppType) => setPromoteTarget({ suggestion: s, opportunityType: oppType })}
             />
           ))}
-        </div>
+        </AnimatedList>
       )}
 
       {/* Promote modal */}
