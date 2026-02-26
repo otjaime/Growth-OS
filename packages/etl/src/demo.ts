@@ -11,6 +11,7 @@ import { buildMarts } from './pipeline/step3-build-marts.js';
 import { validateData } from './pipeline/validate.js';
 import { seedDemoExperiments } from './demo-experiments.js';
 import { seedDemoOpportunities } from './demo-opportunities.js';
+import { seedDemoAutopilot } from './demo-autopilot.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('demo');
@@ -88,6 +89,11 @@ async function runDemo() {
     // Step 8: Seed historical job runs for demo
     log.info('Step 8: Seeding demo job history...');
     await seedDemoJobRuns();
+
+    // Step 9: Seed autopilot data (Meta ads + diagnoses)
+    log.info('Step 9: Seeding demo autopilot data...');
+    const autopilotSeeded = await seedDemoAutopilot();
+    log.info({ autopilotSeeded }, 'Demo autopilot data seeded');
 
     // Update job run
     const durationMs = Date.now() - startTime;

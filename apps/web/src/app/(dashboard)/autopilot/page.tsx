@@ -22,7 +22,7 @@ export default function AutopilotPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('PENDING');
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('ALL');
 
@@ -39,7 +39,9 @@ export default function AutopilotPage() {
       ]);
 
       if (!diagRes.ok || !statsRes.ok) {
-        setError(true);
+        const failedRes = !diagRes.ok ? diagRes : statsRes;
+        const body = await failedRes.text().catch(() => '');
+        setError(`API returned ${failedRes.status}: ${body || failedRes.statusText}`);
         setLoading(false);
         return;
       }
@@ -51,9 +53,9 @@ export default function AutopilotPage() {
       setDiagnoses(diagData.diagnoses ?? []);
       setStats(statsData);
       setAutopilotStats(apStatsData);
-      setError(false);
-    } catch {
-      setError(true);
+      setError(null);
+    } catch (err) {
+      setError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -96,8 +98,9 @@ export default function AutopilotPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
-        <div className="card border-apple-red/50 flex items-center justify-center h-64">
-          <p className="text-apple-red">Failed to load autopilot data. Check that your API is running.</p>
+        <div className="card border-apple-red/50 flex flex-col items-center justify-center h-64 gap-2">
+          <p className="text-apple-red">Failed to load autopilot data.</p>
+          <p className="text-xs text-[var(--foreground-secondary)] max-w-md text-center">{error}</p>
         </div>
       </div>
     );

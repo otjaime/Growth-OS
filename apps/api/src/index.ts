@@ -2,6 +2,14 @@
 // Growth OS — API Server (Fastify)
 // ──────────────────────────────────────────────────────────────
 
+import { config } from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from monorepo root (two levels up from apps/api/src)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, '../../../.env') });
+
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
@@ -45,8 +53,8 @@ async function main() {
 
   await app.register(cors, {
     origin: process.env.FRONTEND_URL
-      ? [process.env.FRONTEND_URL]
-      : [/localhost/],
+      ? [process.env.FRONTEND_URL, /localhost/, /127\.0\.0\.1/]
+      : [/localhost/, /127\.0\.0\.1/],
   });
 
   await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
