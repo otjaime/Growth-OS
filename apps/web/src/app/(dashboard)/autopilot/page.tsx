@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Zap, RefreshCw, Loader2, BarChart3, Activity, Target, Eye } from 'lucide-react';
+import { Zap, RefreshCw, Loader2, BarChart3, Activity, Target, Eye, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
@@ -25,7 +25,8 @@ export default function AutopilotPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('PENDING');
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('ALL');
 
@@ -44,7 +45,7 @@ export default function AutopilotPage() {
       if (!diagRes.ok || !statsRes.ok) {
         const failedRes = !diagRes.ok ? diagRes : statsRes;
         const body = await failedRes.text().catch(() => '');
-        setError(`API returned ${failedRes.status}: ${body || failedRes.statusText}`);
+        setLoadError(`API returned ${failedRes.status}: ${body || failedRes.statusText}`);
         setLoading(false);
         return;
       }
@@ -56,9 +57,9 @@ export default function AutopilotPage() {
       setDiagnoses(diagData.diagnoses ?? []);
       setStats(statsData);
       setAutopilotStats(apStatsData);
-      setError(null);
+      setLoadError(null);
     } catch (err) {
-      setError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+      setLoadError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -71,12 +72,12 @@ export default function AutopilotPage() {
 
   const handleSync = async () => {
     setSyncing(true);
-    setError(null);
+    setSyncError(null);
     try {
       const syncRes = await apiFetch('/api/autopilot/sync', { method: 'POST' });
       if (!syncRes.ok) {
         const body = await syncRes.json().catch(() => ({ error: syncRes.statusText }));
-        setError(`Sync failed: ${body.error ?? body.detail ?? syncRes.statusText}`);
+        setSyncError(`Sync failed: ${body.error ?? body.detail ?? syncRes.statusText}`);
         setSyncing(false);
         return;
       }
@@ -84,12 +85,12 @@ export default function AutopilotPage() {
       const diagRes = await apiFetch('/api/autopilot/run-diagnosis', { method: 'POST' });
       if (!diagRes.ok) {
         const body = await diagRes.json().catch(() => ({ error: diagRes.statusText }));
-        setError(`Diagnosis run failed: ${body.error ?? diagRes.statusText}`);
+        setSyncError(`Diagnosis run failed: ${body.error ?? diagRes.statusText}`);
       }
 
       await fetchData();
     } catch (err) {
-      setError(`Sync error: ${err instanceof Error ? err.message : String(err)}`);
+      setSyncError(`Sync error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSyncing(false);
     }
@@ -110,13 +111,13 @@ export default function AutopilotPage() {
     );
   }
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
         <div className="card border-apple-red/50 flex flex-col items-center justify-center h-64 gap-2">
           <p className="text-apple-red">Failed to load autopilot data.</p>
-          <p className="text-xs text-[var(--foreground-secondary)] max-w-md text-center">{error}</p>
+          <p className="text-xs text-[var(--foreground-secondary)] max-w-md text-center">{loadError}</p>
         </div>
       </div>
     );
@@ -146,6 +147,16 @@ export default function AutopilotPage() {
           {syncing ? 'Syncing...' : 'Sync & Diagnose'}
         </button>
       </div>
+
+      {/* Sync Error Banner (inline — doesn't hide dashboard) */}
+      {syncError && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-[var(--tint-red)] border border-apple-red/30">
+          <p className="text-xs text-apple-red flex-1">{syncError}</p>
+          <button onClick={() => setSyncError(null)} className="text-apple-red/60 hover:text-apple-red">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       {autopilotStats && (
