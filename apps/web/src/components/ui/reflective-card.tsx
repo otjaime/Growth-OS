@@ -9,9 +9,9 @@ interface ReflectiveCardProps {
 }
 
 const INTENSITY_CONFIG = {
-  subtle: { noiseOpacity: 0.02, sheenOpacity: 0.06, borderOpacity: 0.08 },
-  medium: { noiseOpacity: 0.03, sheenOpacity: 0.10, borderOpacity: 0.12 },
-  strong: { noiseOpacity: 0.04, sheenOpacity: 0.15, borderOpacity: 0.18 },
+  subtle: { noiseOpacity: 0.04, sheenOpacity: 0.12, borderOpacity: 0.15 },
+  medium: { noiseOpacity: 0.06, sheenOpacity: 0.20, borderOpacity: 0.22 },
+  strong: { noiseOpacity: 0.08, sheenOpacity: 0.28, borderOpacity: 0.30 },
 } as const;
 
 /**

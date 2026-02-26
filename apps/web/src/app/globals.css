@@ -23,12 +23,13 @@
   --glass-blur-thick: 30px;
   --glass-blur-thin: 12px;
   --glass-saturate: 180%;
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-hover: rgba(255, 255, 255, 0.22);
   --glass-specular: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0) 40%
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.05) 20%,
+    rgba(255, 255, 255, 0) 50%
   );
 
   /* ── Backward-compat aliases ──────────────── */
@@ -203,27 +204,6 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .mesh-gradient-bg * { animation: none !important; }
-}
-
-/* ==========================================================
-   GLASS SHEEN — Directional highlight overlay
-   ========================================================== */
-.glass-sheen {
-  overflow: hidden;
-}
-.glass-sheen::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.06) 0%,
-    rgba(255, 255, 255, 0.02) 30%,
-    transparent 60%
-  );
-  pointer-events: none;
-  z-index: 1;
 }
 
 /* ==========================================================

@@ -29,7 +29,7 @@ interface DockProps {
   distance?: number;
 }
 
-export function Dock({ children, className = '', magnification = 1.3, distance = 100 }: DockProps) {
+export function Dock({ children, className = '', magnification = 1.04, distance = 140 }: DockProps) {
   const mouseY = useMotionValue(Infinity);
 
   return (
@@ -84,10 +84,10 @@ function DockItemInner({
   });
 
   const scaleRaw = useTransform(itemDistance, [-distance, 0, distance], [1, magnification, 1]);
-  const scale = useSpring(scaleRaw, { stiffness: 300, damping: 22 });
+  const scale = useSpring(scaleRaw, { stiffness: 200, damping: 28 });
 
   return (
-    <motion.div ref={ref} style={{ scale }} className={className} data-dock-item>
+    <motion.div ref={ref} style={{ scale, transformOrigin: 'left center' }} className={className} data-dock-item>
       {children}
     </motion.div>
   );

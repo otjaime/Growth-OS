@@ -27,7 +27,7 @@ export function MeshGradientBg() {
           top: '-10%',
           left: '-10%',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(10, 132, 255, 0.04) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(10, 132, 255, 0.12) 0%, transparent 70%)',
           animation: 'meshDrift1 30s ease-in-out infinite alternate',
           willChange: 'transform',
         }}
@@ -41,7 +41,7 @@ export function MeshGradientBg() {
           top: '30%',
           right: '-5%',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(191, 90, 242, 0.03) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(191, 90, 242, 0.09) 0%, transparent 70%)',
           animation: 'meshDrift2 35s ease-in-out infinite alternate',
           willChange: 'transform',
         }}
@@ -55,7 +55,7 @@ export function MeshGradientBg() {
           bottom: '-15%',
           left: '20%',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(48, 209, 88, 0.025) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(48, 209, 88, 0.08) 0%, transparent 70%)',
           animation: 'meshDrift3 40s ease-in-out infinite alternate',
           willChange: 'transform',
         }}

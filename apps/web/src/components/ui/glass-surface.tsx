@@ -11,9 +11,9 @@ interface GlassSurfaceProps {
 }
 
 const INTENSITY_CONFIG = {
-  subtle: { baseFreq: 0.03, octaves: 3, scale: 2, rOff: 1, gOff: 0.5, bOff: 1.5 },
-  medium: { baseFreq: 0.04, octaves: 4, scale: 4, rOff: 2, gOff: 1, bOff: 3 },
-  strong: { baseFreq: 0.05, octaves: 4, scale: 6, rOff: 3, gOff: 1.5, bOff: 4 },
+  subtle: { baseFreq: 0.03, octaves: 3, scale: 4, rOff: 2, gOff: 1, bOff: 3 },
+  medium: { baseFreq: 0.04, octaves: 4, scale: 8, rOff: 4, gOff: 2, bOff: 6 },
+  strong: { baseFreq: 0.05, octaves: 4, scale: 12, rOff: 6, gOff: 3, bOff: 8 },
 } as const;
 
 function useSupportsChromatic(): boolean {
@@ -130,7 +130,7 @@ export function GlassSurface({
               inset: 0,
               borderRadius: 'inherit',
               filter: `url(#${filterId})`,
-              opacity: 0.04,
+              opacity: 0.14,
               pointerEvents: 'none',
               zIndex: 1,
               mixBlendMode: 'screen',
