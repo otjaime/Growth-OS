@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -12,6 +14,7 @@ import {
   Target,
   Clock,
 } from 'lucide-react';
+import { getAuthToken } from '@/lib/api';
 
 const PLANS = [
   {
@@ -118,6 +121,15 @@ const STEPS = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  // Redirect authenticated users to the dashboard
+  useEffect(() => {
+    if (getAuthToken()) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
   return (
     <div className="text-[var(--foreground)]">
       {/* ── Navigation ─────────────────────────────── */}
