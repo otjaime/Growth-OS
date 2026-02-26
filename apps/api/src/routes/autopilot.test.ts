@@ -56,12 +56,15 @@ const mockPrisma = vi.hoisted(() => ({
   },
   organization: {
     findUnique: vi.fn().mockResolvedValue({ id: 'org-1', plan: 'STARTER' }),
+    findFirst: vi.fn().mockResolvedValue({ id: 'org-1' }),
   },
 }));
 
+const mockIsDemoMode = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
 vi.mock('@growth-os/database', () => ({
   prisma: mockPrisma,
-  isDemoMode: vi.fn().mockResolvedValue(true),
+  isDemoMode: mockIsDemoMode,
   decrypt: vi.fn().mockReturnValue('{}'),
   DiagnosisStatus: {
     PENDING: 'PENDING',
@@ -185,7 +188,13 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Clear any lingering mockResolvedValueOnce queues that weren't consumed
+  // Restore default mock values cleared by clearAllMocks
+  mockIsDemoMode.mockResolvedValue(true);
+  // Reset + restore defaults to clear any lingering mockResolvedValueOnce queues
+  mockPrisma.organization.findFirst.mockReset();
+  mockPrisma.organization.findFirst.mockResolvedValue({ id: 'org-1' });
+  mockPrisma.organization.findUnique.mockReset();
+  mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', plan: 'STARTER' });
   mockPrisma.diagnosis.findFirst.mockReset();
   mockPrisma.diagnosis.findFirst.mockResolvedValue(null);
 });
@@ -290,7 +299,16 @@ describe('GET /api/autopilot/campaigns', () => {
 
 // ── Sync ──────────────────────────────────────────────────────
 describe('POST /api/autopilot/sync', () => {
-  it('returns 400 without organization context', async () => {
+  it('falls back to first org in demo mode when no org context', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/autopilot/sync' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.adsUpserted).toBeDefined();
+    expect(body.jobRunId).toBeDefined();
+  });
+
+  it('returns 400 when no org context and not in demo mode', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(false);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/sync' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
@@ -492,7 +510,17 @@ describe('POST /api/autopilot/diagnoses/:id/dismiss', () => {
 });
 
 describe('POST /api/autopilot/run-diagnosis', () => {
-  it('returns 400 without organization context', async () => {
+  it('falls back to first org in demo mode when no org context', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(true);
+    mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1' });
+    const res = await app.inject({ method: 'POST', url: '/api/autopilot/run-diagnosis' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.adsEvaluated).toBeDefined();
+  });
+
+  it('returns 400 when no org context and not in demo mode', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(false);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/run-diagnosis' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
@@ -503,25 +531,33 @@ describe('POST /api/autopilot/run-diagnosis', () => {
 // ── Copy Generation ──────────────────────────────────────────
 
 describe('POST /api/autopilot/diagnoses/:id/generate-copy', () => {
-  it('returns 400 without organization context', async () => {
+  it('returns 400 when no org and not in demo mode', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(false);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/generate-copy' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
     expect(body.error).toContain('Organization');
   });
 
-  it('returns 404 for non-existent diagnosis', async () => {
-    // getOrgId returns null (no auth header) so it'll return 400 first.
-    // This test just verifies the endpoint responds correctly.
+  it('returns 404 for non-existent diagnosis (demo mode falls back to org)', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(true);
+    mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1' });
     mockPrisma.diagnosis.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/nonexistent/generate-copy' });
-    expect(res.statusCode).toBe(400); // no org context in test env
+    expect(res.statusCode).toBe(404);
   });
 
   it('returns 400 for non-GENERATE_COPY_VARIANTS diagnosis', async () => {
-    // Since getOrgId returns null, this will return 400 for missing org
+    mockIsDemoMode.mockResolvedValueOnce(true);
+    mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1' });
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce(mockDiagnosis({
+      actionType: 'PAUSE_AD',
+      ad: { id: 'ad-1', headline: 'Test', primaryText: 'Test', description: 'Test', spend7d: 100, roas7d: 1.5, ctr7d: 0.02, frequency7d: 3, conversions7d: 5 },
+    }));
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/generate-copy' });
     expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.payload);
+    expect(body.error).toContain('PAUSE_AD');
   });
 });
 
@@ -651,23 +687,30 @@ describe('GET /api/autopilot/history', () => {
 // ── Approve + Execute ──────────────────────────────────────────
 
 describe('POST /api/autopilot/diagnoses/:id/approve', () => {
-  it('returns 400 without organization context', async () => {
+  it('returns 400 when no org and not in demo mode', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(false);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/approve' });
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.payload);
     expect(body.error).toContain('Organization');
   });
 
-  it('returns 404 for non-existent diagnosis', async () => {
-    // Without org context, endpoint returns 400 before reaching findFirst
+  it('returns 404 for non-existent diagnosis (demo mode falls back to org)', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(true);
+    mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1' });
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce(null);
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/nonexistent/approve' });
-    expect(res.statusCode).toBe(400); // no org context in test env
+    expect(res.statusCode).toBe(404);
   });
 
-  it('returns 400 for non-PENDING diagnosis (when org is present)', async () => {
-    // Without org context set, the endpoint still returns 400 'Organization required'
+  it('returns 400 for non-PENDING diagnosis', async () => {
+    mockIsDemoMode.mockResolvedValueOnce(true);
+    mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1' });
+    mockPrisma.diagnosis.findFirst.mockResolvedValueOnce(mockDiagnosis({ status: 'EXECUTED' }));
     const res = await app.inject({ method: 'POST', url: '/api/autopilot/diagnoses/diag-1/approve' });
     expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.payload);
+    expect(body.error).toContain('Cannot approve');
   });
 });
 
