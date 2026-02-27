@@ -53,7 +53,7 @@ async function main() {
 
   await app.register(cors, {
     origin: process.env.FRONTEND_URL
-      ? [process.env.FRONTEND_URL, /localhost:\d+$/, /127\.0\.0\.1:\d+$/]
+      ? [process.env.FRONTEND_URL, /localhost:\d+$/, /127\.0\.0\.1:\d+$/, /\.up\.railway\.app$/]
       : true,
     credentials: true,
   });
