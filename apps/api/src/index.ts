@@ -53,8 +53,9 @@ async function main() {
 
   await app.register(cors, {
     origin: process.env.FRONTEND_URL
-      ? [process.env.FRONTEND_URL, /localhost/, /127\.0\.0\.1/]
-      : [/localhost/, /127\.0\.0\.1/],
+      ? [process.env.FRONTEND_URL, /localhost:\d+$/, /127\.0\.0\.1:\d+$/]
+      : true,
+    credentials: true,
   });
 
   await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
