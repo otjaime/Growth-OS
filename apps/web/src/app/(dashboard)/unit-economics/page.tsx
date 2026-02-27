@@ -212,7 +212,7 @@ export default function UnitEconomicsPage() {
       </div>
 
       {/* KPI Row with Sparklines */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card">
           <p className="text-xs text-[var(--foreground-secondary)] uppercase">AOV</p>
           <div className="flex items-center justify-between mt-1">
@@ -243,7 +243,7 @@ export default function UnitEconomicsPage() {
       {/* Guardrails */}
       <GlassSurface className="card" intensity="subtle">
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Guardrails</h2>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`rounded-lg p-3 ${guardrailBg(b.cmPercent, 0.20, 0.15)}`}>
             <p className="text-xs text-[var(--foreground-secondary)] uppercase">CM%</p>
             <p className={`text-xl font-bold mt-1 ${guardrailColor(b.cmPercent, 0.20, 0.15)}`}>{formatPercent(b.cmPercent)}</p>
@@ -361,7 +361,7 @@ export default function UnitEconomicsPage() {
                     <span className={`w-3 h-3 rounded-full ${isHigh ? 'bg-apple-green' : 'bg-apple-yellow'}`} />
                     <span className={`text-sm font-semibold ${isHigh ? 'text-apple-green' : 'text-apple-yellow'}`}>{ms.segment}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <div className="text-[10px] text-[var(--foreground-secondary)] uppercase">Customers</div>
                       <div className="text-lg font-bold text-[var(--foreground)] mt-0.5">{ms.count.toLocaleString()}</div>
@@ -534,7 +534,7 @@ export default function UnitEconomicsPage() {
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">CAC vs LTV</h2>
         {cohort?.latest ? (
           <>
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <div className="text-center">
                 <p className="text-xs text-[var(--foreground-secondary)] uppercase">LTV:CAC Ratio</p>
                 <p className={`text-2xl font-bold mt-1 ${cohort.latest.ltvCacRatio >= 3 ? 'text-apple-green' : cohort.latest.ltvCacRatio >= 2 ? 'text-apple-yellow' : 'text-apple-red'}`}>

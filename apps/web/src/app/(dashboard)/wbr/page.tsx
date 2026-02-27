@@ -274,7 +274,7 @@ export default function WbrPage() {
             <p className="text-xs text-[var(--foreground-secondary)]/70 mt-0.5">{data.weekLabel}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {data.aiEnabled && (
             <button
               onClick={handleGenerateAI}
@@ -358,7 +358,7 @@ export default function WbrPage() {
       {data.drivers && (
         <div className="card print:break-before">
           <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider mb-3">Revenue Drivers</h2>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-xs text-[var(--foreground-secondary)]">Volume Effect</p>
               <p className={`text-lg font-bold ${data.drivers.volumeEffect >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>

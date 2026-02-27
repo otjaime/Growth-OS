@@ -219,7 +219,7 @@ export default function ExperimentsPage() {
           <FlaskConical className="h-6 w-6 text-apple-blue" />
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Growth Experiments</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <SearchBar value={searchQuery} onChange={setSearchQuery} />
           {availableSegments.length > 0 && (
             <select

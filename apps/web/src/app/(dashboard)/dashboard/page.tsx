@@ -242,7 +242,7 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold text-[var(--foreground-secondary)] uppercase tracking-wider">
             {forecastMetric === 'revenue' ? 'Revenue' : forecastMetric === 'orders' ? 'Orders' : 'Spend'} Forecast ({forecastHorizon}-day)
           </h2>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <div className="flex gap-1">
               {([7, 14, 30, 60, 90] as const).map((h) => (
                 <button
