@@ -33,6 +33,9 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
   let diagnosesCreated = 0;
   let diagnosesUpdated = 0;
 
+  // Track which [adId, ruleId] pairs fired in this run
+  const firedPairs = new Set<string>();
+
   // 2. Evaluate rules per ad
   for (const ad of ads) {
     const input: DiagnosisRuleInput = {
@@ -64,6 +67,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
     const results = evaluateDiagnosisRules(input, now);
 
     for (const diag of results) {
+      firedPairs.add(`${ad.id}::${diag.ruleId}`);
       // Upsert by [organizationId, adId, ruleId] — update if already exists
       const existing = await prisma.diagnosis.findUnique({
         where: {
@@ -110,8 +114,31 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
     }
   }
 
-  // 3. Expire stale PENDING diagnoses older than 72h
-  const expired = await prisma.diagnosis.updateMany({
+  // 3. Expire PENDING diagnoses whose rules no longer fire
+  //    Fetch all PENDING diagnoses for this org, expire any not in firedPairs
+  const pendingDiagnoses = await prisma.diagnosis.findMany({
+    where: { organizationId, status: 'PENDING' },
+    select: { id: true, adId: true, ruleId: true },
+  });
+
+  const toExpireIds: string[] = [];
+  for (const d of pendingDiagnoses) {
+    if (!firedPairs.has(`${d.adId}::${d.ruleId}`)) {
+      toExpireIds.push(d.id);
+    }
+  }
+
+  let expiredCount = 0;
+  if (toExpireIds.length > 0) {
+    const result = await prisma.diagnosis.updateMany({
+      where: { id: { in: toExpireIds } },
+      data: { status: 'EXPIRED' },
+    });
+    expiredCount = result.count;
+  }
+
+  // Also expire any remaining stale PENDING diagnoses older than 72h
+  const expiredStale = await prisma.diagnosis.updateMany({
     where: {
       organizationId,
       status: 'PENDING',
@@ -119,12 +146,13 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
     },
     data: { status: 'EXPIRED' },
   });
+  expiredCount += expiredStale.count;
 
   return {
     adsEvaluated: ads.length,
     diagnosesCreated,
     diagnosesUpdated,
-    diagnosesExpired: expired.count,
+    diagnosesExpired: expiredCount,
     durationMs: Date.now() - start,
   };
 }
