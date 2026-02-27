@@ -16,15 +16,32 @@ import { executeAction } from '../jobs/execute-action.js';
  * Ensure at least one Organization exists. When using Bearer-token auth
  * (no Clerk) in live mode, there's no automatic org creation — so we
  * create a default one on-the-fly so autopilot records have a valid FK.
+ *
+ * Also claims any orphaned ConnectorCredentials (organizationId = null)
+ * and links them to this org so that syncMetaAds can find them.
  */
 async function ensureOrganization(): Promise<string> {
   const existing = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
-  if (existing) return existing.id;
+  if (existing) {
+    // Claim any orphaned credentials that were saved before an org existed
+    await prisma.connectorCredential.updateMany({
+      where: { organizationId: null },
+      data: { organizationId: existing.id },
+    });
+    return existing.id;
+  }
 
   const created = await prisma.organization.create({
     data: { name: 'My Organization' },
     select: { id: true },
   });
+
+  // Claim orphaned credentials
+  await prisma.connectorCredential.updateMany({
+    where: { organizationId: null },
+    data: { organizationId: created.id },
+  });
+
   return created.id;
 }
 

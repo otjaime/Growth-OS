@@ -19,10 +19,22 @@ export interface SyncMetaAdsResult {
 export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsResult> {
   const start = Date.now();
 
-  // 1. Get Meta credentials for this org
-  const credential = await prisma.connectorCredential.findFirst({
+  // 1. Get Meta credentials for this org (fallback: any meta_ads cred if org-scoped fails)
+  let credential = await prisma.connectorCredential.findFirst({
     where: { connectorType: 'meta_ads', organizationId },
   });
+  if (!credential) {
+    credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads' },
+    });
+    // Claim the orphaned credential for this org
+    if (credential && !credential.organizationId) {
+      await prisma.connectorCredential.update({
+        where: { id: credential.id },
+        data: { organizationId },
+      });
+    }
+  }
 
   const demoMode = await isDemoMode();
 
