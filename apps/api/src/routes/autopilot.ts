@@ -4,51 +4,47 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { prisma, DiagnosisStatus, decrypt, isDemoMode } from '@growth-os/database';
+import { prisma, DiagnosisStatus, decrypt } from '@growth-os/database';
 import { getOrgId } from '../lib/tenant.js';
 import { syncMetaAds } from '../jobs/sync-meta-ads.js';
 import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
 import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
-import { isAIConfigured } from '../lib/ai.js';
 
 /**
- * Resolve the organizationId from the request, falling back to the first
- * available organization in demo mode (needed for Bearer auth / no-auth dev).
- * Last resort: returns any existing org even if isDemoMode fails.
+ * Ensure at least one Organization exists. When using Bearer-token auth
+ * (no Clerk) in live mode, there's no automatic org creation — so we
+ * create a default one on-the-fly so autopilot records have a valid FK.
  */
-async function resolveOrgId(request: { organizationId?: string }): Promise<string | null> {
-  if (request.organizationId) return request.organizationId;
+async function ensureOrganization(): Promise<string> {
+  const existing = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+  if (existing) return existing.id;
 
-  // In demo mode, fall back to the first organization
-  const demo = await isDemoMode();
-  if (demo) {
-    const org = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
-    if (org) return org.id;
-  }
-
-  // Last resort: try to find ANY org (handles edge cases where isDemoMode DB check
-  // fails but DEMO_MODE env var is set, or DB connection was temporarily unavailable)
-  const anyOrg = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
-  return anyOrg?.id ?? null;
+  const created = await prisma.organization.create({
+    data: { name: 'My Organization' },
+    select: { id: true },
+  });
+  return created.id;
 }
 
 /**
- * Build a Prisma `where` fragment scoped to the resolved organization.
- * Used by GET endpoints — returns `{}` (no filter) as graceful fallback
- * so queries still return data even if org resolution fails.
+ * Resolve the organizationId from the request, falling back to the first
+ * available organization (or auto-creating one if none exists).
  */
-async function resolveOrgWhere(request: FastifyRequest): Promise<{ organizationId?: string }> {
-  if (request.organizationId) return { organizationId: request.organizationId };
+async function resolveOrgId(request: { organizationId?: string }): Promise<string> {
+  if (request.organizationId) return request.organizationId;
+  return ensureOrganization();
+}
 
-  const demo = await isDemoMode();
-  if (demo) {
-    const org = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
-    if (org) return { organizationId: org.id };
-  }
-
-  return {}; // No filter — show all data (backwards-compatible)
+/**
+ * Returns a Prisma `where` fragment scoped to the organization.
+ * Always resolves to a concrete org (auto-creates if needed) so
+ * GET endpoints return data scoped to the correct tenant.
+ */
+async function resolveOrgWhere(request: FastifyRequest): Promise<{ organizationId: string }> {
+  const orgId = await resolveOrgId(request);
+  return { organizationId: orgId };
 }
 
 export async function autopilotRoutes(app: FastifyInstance) {
@@ -217,10 +213,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const organizationId = await resolveOrgId(request);
-    if (!organizationId) {
-      reply.status(400);
-      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
-    }
 
     // Create a job run for tracking
     const jobRun = await prisma.jobRun.create({
@@ -471,10 +463,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const organizationId = await resolveOrgId(request);
-    if (!organizationId) {
-      reply.status(400);
-      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
-    }
 
     const result = await runDiagnosis(organizationId);
     return result;
@@ -490,10 +478,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const organizationId = await resolveOrgId(request);
-    if (!organizationId) {
-      reply.status(400);
-      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
-    }
 
     // Plan gate: STARTER+
     try {
@@ -652,10 +636,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const organizationId = await resolveOrgId(request);
-    if (!organizationId) {
-      reply.status(400);
-      return { error: 'Organization context required. Ensure you are logged in or running in demo mode.' };
-    }
 
     // Plan gate: STARTER+
     try {
