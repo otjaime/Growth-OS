@@ -63,6 +63,9 @@ export interface DiagnosisResult {
  * Trigger: ad age < 48h OR impressions < 500
  */
 function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisResult | null {
+  // Learning phase only applies to ACTIVE ads — paused/archived ads aren't accumulating data
+  if (input.status !== 'ACTIVE') return null;
+
   const ageMs = now.getTime() - input.createdAt.getTime();
   const ageHours = ageMs / (1000 * 60 * 60);
   const isNew = ageHours < 48;
