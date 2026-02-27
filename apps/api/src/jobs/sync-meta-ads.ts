@@ -212,6 +212,9 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
       lastSyncAt: new Date(),
     };
 
+    // Use the real Meta creation date if available (overrides @default(now()))
+    const metaCreatedAt = ad.createdTime ? new Date(ad.createdTime) : undefined;
+
     await prisma.metaAd.upsert({
       where: {
         organizationId_adId: { organizationId, adId: ad.adId },
@@ -223,6 +226,7 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
         adSetId: internalAdSetId,
         adId: ad.adId,
         ...data,
+        ...(metaCreatedAt && !isNaN(metaCreatedAt.getTime()) ? { createdAt: metaCreatedAt } : {}),
       },
       update: data,
     });

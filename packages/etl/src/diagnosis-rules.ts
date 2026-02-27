@@ -60,7 +60,10 @@ export interface DiagnosisResult {
 
 /**
  * Rule 7: Learning Phase (checked FIRST — blocks all other rules)
- * Trigger: ad age < 48h OR impressions < 500
+ * Trigger: ad age < 48h AND impressions < 500
+ * Both conditions must be true — an ad with real data (500+ impressions)
+ * is past learning regardless of createdAt, and a new ad with enough
+ * impressions has already gathered sufficient signal.
  */
 function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisResult | null {
   // Learning phase only applies to ACTIVE ads — paused/archived ads aren't accumulating data
@@ -71,15 +74,13 @@ function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisR
   const isNew = ageHours < 48;
   const lowImpressions = input.impressions7d < 500;
 
-  if (isNew || lowImpressions) {
-    const reason = isNew
-      ? `Ad is ${Math.round(ageHours)}h old (< 48h learning period)`
-      : `Only ${input.impressions7d} impressions (< 500 minimum)`;
+  // Both must be true: new AND low impressions
+  if (isNew && lowImpressions) {
     return {
       ruleId: 'learning_phase',
       severity: 'INFO',
       title: 'Ad in Learning Phase',
-      message: `${input.adName}: ${reason}. Wait for more data before making changes.`,
+      message: `${input.adName}: Ad is ${Math.round(ageHours)}h old with only ${input.impressions7d} impressions. Wait for more data before making changes.`,
       actionType: 'NONE',
       suggestedValue: null,
     };

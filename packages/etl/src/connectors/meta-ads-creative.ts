@@ -40,6 +40,7 @@ export interface MetaAdData {
   adSetId: string;
   name: string;
   status: string;
+  createdTime: string | null; // ISO 8601 from Meta API (e.g. "2024-01-15T10:30:00+0000")
   headline: string | null;
   primaryText: string | null;
   description: string | null;
@@ -179,7 +180,7 @@ export async function fetchMetaAdCreatives(
 
   // 3. Fetch ads with creative fields
   log.info('Fetching Meta ads with creatives');
-  const adFields = 'id,name,status,campaign_id,adset_id,creative{body,title,image_url,thumbnail_url,call_to_action_type,object_type}';
+  const adFields = 'id,name,status,campaign_id,adset_id,created_time,creative{body,title,image_url,thumbnail_url,call_to_action_type,object_type}';
   const rawAds = await fetchAllPages<Record<string, unknown>>(
     `${baseUrl}/${accountId}/ads?fields=${encodeURIComponent(adFields)}&limit=500`,
     authHeaders,
@@ -192,6 +193,7 @@ export async function fetchMetaAdCreatives(
       adSetId: String(a.adset_id ?? ''),
       name: String(a.name ?? ''),
       status: String(a.status ?? 'UNKNOWN'),
+      createdTime: a.created_time ? String(a.created_time) : null,
       headline: creative.title ? String(creative.title) : null,
       primaryText: creative.body ? String(creative.body) : null,
       description: null,

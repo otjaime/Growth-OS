@@ -184,12 +184,15 @@ export function generateDemoMetaAds(): MetaAdCreativeResult {
       });
 
       for (const ad of adSet.ads) {
+        // Demo ads created 30 days ago
+        const demoCreatedTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
         ads.push({
           adId: ad.id,
           campaignId: camp.id,
           adSetId: adSet.id,
           name: ad.name,
           status: ad.status,
+          createdTime: demoCreatedTime,
           headline: pick(HEADLINES, rng),
           primaryText: pick(PRIMARY_TEXTS, rng),
           description: pick(DESCRIPTIONS, rng),
