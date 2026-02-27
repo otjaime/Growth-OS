@@ -60,11 +60,25 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
       throw new Error('Failed to decrypt Meta Ads credentials');
     }
     const meta = (credential.metadata ?? {}) as Record<string, string>;
+    const accessToken = decrypted.accessToken ?? '';
+    const adAccountId = ((meta.adAccountId as string) ?? '').trim();
+
+    if (!accessToken) {
+      throw new Error(
+        'Meta Ads access token is empty. Please reconnect Meta Ads in Data Connections.',
+      );
+    }
+    if (!adAccountId) {
+      throw new Error(
+        'Meta Ads ad account ID is missing. Please reconnect Meta Ads and provide your Ad Account ID (e.g. act_123456789).',
+      );
+    }
+
     config = {
       source: 'meta',
       isDemoMode: false,
-      accessToken: decrypted.accessToken ?? '',
-      adAccountId: ((meta.adAccountId as string) ?? '').trim(),
+      accessToken,
+      adAccountId,
       organizationId,
     };
   }

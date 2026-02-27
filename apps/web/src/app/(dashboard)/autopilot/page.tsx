@@ -77,7 +77,9 @@ export default function AutopilotPage() {
       const syncRes = await apiFetch('/api/autopilot/sync', { method: 'POST' });
       if (!syncRes.ok) {
         const body = await syncRes.json().catch(() => ({ error: syncRes.statusText }));
-        setSyncError(`Sync failed: ${body.error ?? body.detail ?? syncRes.statusText}`);
+        const msg = body.error ?? syncRes.statusText;
+        const detail = body.detail ? ` — ${body.detail}` : '';
+        setSyncError(`Sync failed: ${msg}${detail}`);
         setSyncing(false);
         return;
       }
