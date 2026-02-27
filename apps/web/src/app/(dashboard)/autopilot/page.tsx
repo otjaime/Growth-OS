@@ -160,7 +160,7 @@ export default function AutopilotPage() {
 
       {/* Summary Cards */}
       {autopilotStats && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <ReflectiveCard className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <BarChart3 className="h-4 w-4 text-apple-blue" />
@@ -242,9 +242,9 @@ export default function AutopilotPage() {
       </div>
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
         {/* Left — Diagnosis List */}
-        <GlassSurface className="col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+        <GlassSurface className="col-span-full lg:col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
           <DiagnosisList
             diagnoses={diagnoses}
             selectedId={selectedId}
@@ -253,7 +253,7 @@ export default function AutopilotPage() {
         </GlassSurface>
 
         {/* Right — Detail Panel */}
-        <GlassSurface className="col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+        <GlassSurface className="col-span-full lg:col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
           {selected ? (
             <DiagnosisDetail
               diagnosis={selected}

@@ -97,7 +97,7 @@ export default function EmailPage() {
       <h1 className="text-2xl font-bold text-[var(--foreground)]">Email Performance</h1>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
         <KpiCard label="Total Sends" value={formatNumber(summary.totalSends)} />
         <KpiCard label="Open Rate" value={formatPercent(summary.avgOpenRate)} />
         <KpiCard label="Click Rate" value={formatPercent(summary.avgClickRate)} />
@@ -170,7 +170,7 @@ export default function EmailPage() {
           <p className="text-xs text-[var(--foreground-secondary)] mb-4">
             Aggregate performance of automated email flows (Welcome Series, Abandoned Cart, Post-Purchase, etc.)
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             <div>
               <span className="text-xs text-[var(--foreground-secondary)]">Sends</span>
               <p className="text-lg font-bold text-[var(--foreground)]">{formatNumber(flows.sends)}</p>

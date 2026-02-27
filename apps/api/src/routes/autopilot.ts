@@ -16,6 +16,7 @@ import { isAIConfigured } from '../lib/ai.js';
 /**
  * Resolve the organizationId from the request, falling back to the first
  * available organization in demo mode (needed for Bearer auth / no-auth dev).
+ * Last resort: returns any existing org even if isDemoMode fails.
  */
 async function resolveOrgId(request: { organizationId?: string }): Promise<string | null> {
   if (request.organizationId) return request.organizationId;
@@ -27,16 +28,16 @@ async function resolveOrgId(request: { organizationId?: string }): Promise<strin
     if (org) return org.id;
   }
 
-  // Last resort: try to find ANY org (handles edge cases where isDemoMode check
-  // fails but an org exists — e.g. DB state out of sync with env vars)
+  // Last resort: try to find ANY org (handles edge cases where isDemoMode DB check
+  // fails but DEMO_MODE env var is set, or DB connection was temporarily unavailable)
   const anyOrg = await prisma.organization.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
   return anyOrg?.id ?? null;
 }
 
 /**
- * Returns a Prisma `where` fragment scoped to the organization, with async
- * demo-mode fallback. For GET endpoints that should return data gracefully
- * even when no org context is available (returns {} to show all data).
+ * Build a Prisma `where` fragment scoped to the resolved organization.
+ * Used by GET endpoints — returns `{}` (no filter) as graceful fallback
+ * so queries still return data even if org resolution fails.
  */
 async function resolveOrgWhere(request: FastifyRequest): Promise<{ organizationId?: string }> {
   if (request.organizationId) return { organizationId: request.organizationId };
@@ -66,7 +67,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
       limit?: string;
     };
 
-    const where: Record<string, unknown> = { ...(await resolveOrgWhere(request)) };
+    const orgFilter = await resolveOrgWhere(request);
+    const where: Record<string, unknown> = { ...orgFilter };
     if (status) where.status = status.toUpperCase();
     if (campaignId) where.campaignId = campaignId;
 
@@ -336,7 +338,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
       limit?: string;
     };
 
-    const where: Record<string, unknown> = { ...(await resolveOrgWhere(request)) };
+    const orgFilter = await resolveOrgWhere(request);
+    const where: Record<string, unknown> = { ...orgFilter };
     if (status) where.status = status.toUpperCase();
     if (severity) where.severity = severity.toUpperCase();
     if (adId) where.adId = adId;
@@ -383,7 +386,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
       description: 'Returns counts of pending diagnoses grouped by severity.',
     },
   }, async (request) => {
-    const where = { ...(await resolveOrgWhere(request)), status: 'PENDING' as const };
+    const orgFilter = await resolveOrgWhere(request);
+    const where = { ...orgFilter, status: 'PENDING' as const };
 
     const [critical, warning, info, total] = await Promise.all([
       prisma.diagnosis.count({ where: { ...where, severity: 'CRITICAL' } }),
@@ -866,8 +870,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const take = limit ? parseInt(limit, 10) : 50;
     const skip = offset ? parseInt(offset, 10) : 0;
 
+    const orgFilter = await resolveOrgWhere(request);
     const where = {
-      ...(await resolveOrgWhere(request)),
+      ...orgFilter,
       status: { in: [DiagnosisStatus.EXECUTED, DiagnosisStatus.DISMISSED, DiagnosisStatus.EXPIRED, DiagnosisStatus.APPROVED] },
     };
 
