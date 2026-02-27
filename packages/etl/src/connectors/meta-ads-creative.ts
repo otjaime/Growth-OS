@@ -179,7 +179,7 @@ export async function fetchMetaAdCreatives(
 
   // 3. Fetch ads with creative fields
   log.info('Fetching Meta ads with creatives');
-  const adFields = 'id,name,status,campaign_id,adset_id,creative{body,title,link_description,image_url,thumbnail_url,call_to_action_type,object_type}';
+  const adFields = 'id,name,status,campaign_id,adset_id,creative{body,title,description,image_url,thumbnail_url,call_to_action_type,object_type}';
   const rawAds = await fetchAllPages<Record<string, unknown>>(
     `${baseUrl}/${accountId}/ads?fields=${encodeURIComponent(adFields)}&limit=500`,
     authHeaders,
@@ -194,7 +194,7 @@ export async function fetchMetaAdCreatives(
       status: String(a.status ?? 'UNKNOWN'),
       headline: creative.title ? String(creative.title) : null,
       primaryText: creative.body ? String(creative.body) : null,
-      description: creative.link_description ? String(creative.link_description) : null,
+      description: creative.description ? String(creative.description) : null,
       imageUrl: creative.image_url ? String(creative.image_url) : null,
       thumbnailUrl: creative.thumbnail_url ? String(creative.thumbnail_url) : null,
       callToAction: creative.call_to_action_type ? String(creative.call_to_action_type) : null,
