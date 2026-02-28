@@ -360,7 +360,13 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const orgFilter = await resolveOrgWhere(request);
     const where: Record<string, unknown> = { ...orgFilter };
-    if (status) where.status = status.toUpperCase();
+    if (status) {
+      where.status = status.toUpperCase();
+    } else {
+      // By default, exclude EXPIRED diagnoses — they're stale and no longer actionable.
+      // Users can explicitly pass status=EXPIRED to see them (e.g., in History tab).
+      where.status = { not: 'EXPIRED' };
+    }
     if (severity) where.severity = severity.toUpperCase();
     if (adId) where.adId = adId;
 
