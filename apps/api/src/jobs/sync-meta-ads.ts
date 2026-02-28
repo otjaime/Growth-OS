@@ -179,9 +179,11 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
     const i7 = insights7dMap.get(ad.adId);
     const i14 = insights14dMap.get(ad.adId);
 
+    // Use effective_status for the stored status — it reflects actual delivery state
+    // (e.g. CAMPAIGN_PAUSED when the ad's campaign is off, even if ad.status=ACTIVE)
     const data = {
       name: ad.name,
-      status: mapStatus(ad.status),
+      status: mapStatus(ad.effectiveStatus),
       headline: ad.headline,
       primaryText: ad.primaryText,
       description: ad.description,
@@ -242,11 +244,23 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
   };
 }
 
+/**
+ * Maps Meta API status / effective_status to our internal status.
+ *
+ * Meta effective_status values include:
+ *   ACTIVE, PAUSED, DELETED, ARCHIVED,
+ *   CAMPAIGN_PAUSED, ADSET_PAUSED, DISAPPROVED,
+ *   PENDING_REVIEW, PENDING_BILLING_INFO,
+ *   IN_PROCESS, WITH_ISSUES, PREAPPROVED
+ *
+ * Only ACTIVE maps to ACTIVE — everything else means the ad is NOT delivering.
+ */
 function mapStatus(status: string): 'ACTIVE' | 'PAUSED' | 'DELETED' | 'ARCHIVED' {
   const s = status.toUpperCase();
   if (s === 'ACTIVE') return 'ACTIVE';
-  if (s === 'PAUSED') return 'PAUSED';
   if (s === 'DELETED') return 'DELETED';
   if (s === 'ARCHIVED') return 'ARCHIVED';
-  return 'PAUSED'; // default for unknown status
+  // PAUSED, CAMPAIGN_PAUSED, ADSET_PAUSED, DISAPPROVED, PENDING_REVIEW,
+  // IN_PROCESS, WITH_ISSUES, PREAPPROVED, and any unknown → PAUSED
+  return 'PAUSED';
 }

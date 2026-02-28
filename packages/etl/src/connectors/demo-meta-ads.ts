@@ -186,12 +186,17 @@ export function generateDemoMetaAds(): MetaAdCreativeResult {
       for (const ad of adSet.ads) {
         // Demo ads created 30 days ago
         const demoCreatedTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        // In demo, effective_status mirrors the cascade: if campaign or adset is paused, ad is paused too
+        const demoEffective = camp.status !== 'ACTIVE' ? 'CAMPAIGN_PAUSED'
+          : adSet.status !== 'ACTIVE' ? 'ADSET_PAUSED'
+          : ad.status;
         ads.push({
           adId: ad.id,
           campaignId: camp.id,
           adSetId: adSet.id,
           name: ad.name,
           status: ad.status,
+          effectiveStatus: demoEffective,
           createdTime: demoCreatedTime,
           headline: pick(HEADLINES, rng),
           primaryText: pick(PRIMARY_TEXTS, rng),

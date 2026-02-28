@@ -40,6 +40,7 @@ export interface MetaAdData {
   adSetId: string;
   name: string;
   status: string;
+  effectiveStatus: string; // Meta effective_status: actual delivery status (ACTIVE, CAMPAIGN_PAUSED, ADSET_PAUSED, etc.)
   createdTime: string | null; // ISO 8601 from Meta API (e.g. "2024-01-15T10:30:00+0000")
   headline: string | null;
   primaryText: string | null;
@@ -147,7 +148,7 @@ export async function fetchMetaAdCreatives(
 
   // 1. Fetch campaigns
   log.info('Fetching Meta campaigns');
-  const campaignFields = 'id,name,status,objective,daily_budget';
+  const campaignFields = 'id,name,status,effective_status,objective,daily_budget';
   const rawCampaigns = await fetchAllPages<Record<string, unknown>>(
     `${baseUrl}/${accountId}/campaigns?fields=${campaignFields}&limit=500`,
     authHeaders,
@@ -155,7 +156,7 @@ export async function fetchMetaAdCreatives(
   const campaigns: MetaCampaignData[] = rawCampaigns.map((c) => ({
     campaignId: String(c.id),
     name: String(c.name ?? ''),
-    status: String(c.status ?? 'UNKNOWN'),
+    status: String(c.effective_status ?? c.status ?? 'UNKNOWN'),
     objective: String(c.objective ?? ''),
     dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null, // cents → dollars
   }));
@@ -163,7 +164,7 @@ export async function fetchMetaAdCreatives(
 
   // 2. Fetch ad sets
   log.info('Fetching Meta ad sets');
-  const adSetFields = 'id,name,status,campaign_id,daily_budget,targeting';
+  const adSetFields = 'id,name,status,effective_status,campaign_id,daily_budget,targeting';
   const rawAdSets = await fetchAllPages<Record<string, unknown>>(
     `${baseUrl}/${accountId}/adsets?fields=${adSetFields}&limit=500`,
     authHeaders,
@@ -172,7 +173,7 @@ export async function fetchMetaAdCreatives(
     adSetId: String(a.id),
     campaignId: String(a.campaign_id ?? ''),
     name: String(a.name ?? ''),
-    status: String(a.status ?? 'UNKNOWN'),
+    status: String(a.effective_status ?? a.status ?? 'UNKNOWN'),
     dailyBudget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
     targeting: (a.targeting as Record<string, unknown>) ?? null,
   }));
@@ -180,7 +181,7 @@ export async function fetchMetaAdCreatives(
 
   // 3. Fetch ads with creative fields
   log.info('Fetching Meta ads with creatives');
-  const adFields = 'id,name,status,campaign_id,adset_id,created_time,creative{body,title,image_url,thumbnail_url,call_to_action_type,object_type}';
+  const adFields = 'id,name,status,effective_status,campaign_id,adset_id,created_time,creative{body,title,image_url,thumbnail_url,call_to_action_type,object_type}';
   const rawAds = await fetchAllPages<Record<string, unknown>>(
     `${baseUrl}/${accountId}/ads?fields=${encodeURIComponent(adFields)}&limit=500`,
     authHeaders,
@@ -193,6 +194,7 @@ export async function fetchMetaAdCreatives(
       adSetId: String(a.adset_id ?? ''),
       name: String(a.name ?? ''),
       status: String(a.status ?? 'UNKNOWN'),
+      effectiveStatus: String(a.effective_status ?? a.status ?? 'UNKNOWN'),
       createdTime: a.created_time ? String(a.created_time) : null,
       headline: creative.title ? String(creative.title) : null,
       primaryText: creative.body ? String(creative.body) : null,
