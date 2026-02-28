@@ -5,7 +5,7 @@
 // and expires stale PENDING diagnoses older than 72h.
 // ──────────────────────────────────────────────────────────────
 
-import { prisma } from '@growth-os/database';
+import { prisma, Prisma } from '@growth-os/database';
 import { evaluateDiagnosisRules } from '@growth-os/etl';
 import type { DiagnosisRuleInput } from '@growth-os/etl';
 
@@ -82,6 +82,8 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
       if (existing) {
         // Only update if the existing diagnosis is still PENDING
         if (existing.status === 'PENDING') {
+          // Clear cached AI insight if the message changed (metrics shifted)
+          const insightChanged = existing.message !== diag.message;
           await prisma.diagnosis.update({
             where: { id: existing.id },
             data: {
@@ -91,6 +93,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
               actionType: diag.actionType,
               suggestedValue: diag.suggestedValue as never,
               expiresAt,
+              ...(insightChanged ? { aiInsight: Prisma.DbNull, aiInsightAt: null } : {}),
             },
           });
           diagnosesUpdated++;
