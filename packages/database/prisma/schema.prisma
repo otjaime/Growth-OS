@@ -902,6 +902,8 @@ model Diagnosis {
   suggestedValue   Json?              @map("suggested_value") // e.g. { newBudget: 500 }
   executedAt       DateTime?          @map("executed_at")
   executionResult  Json?              @map("execution_result")
+  aiInsight        Json?              @map("ai_insight")       // cached AI analysis (rootCause, recommendations)
+  aiInsightAt      DateTime?          @map("ai_insight_at")    // when AI insight was last generated
   expiresAt        DateTime           @map("expires_at")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
