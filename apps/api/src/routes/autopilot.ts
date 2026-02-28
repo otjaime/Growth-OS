@@ -256,7 +256,16 @@ export async function autopilotRoutes(app: FastifyInstance) {
         },
       });
 
-      return { ...result, jobRunId: jobRun.id };
+      // Re-run diagnosis rules against fresh metrics — this updates stale
+      // PENDING diagnoses (messages, severity) and expires diagnoses whose
+      // rules no longer fire (e.g., ROAS improved above threshold).
+      const diagResult = await runDiagnosis(organizationId);
+      app.log.info(
+        { orgId: organizationId, ...diagResult },
+        'Post-sync diagnosis run complete',
+      );
+
+      return { ...result, diagnosis: diagResult, jobRunId: jobRun.id };
     } catch (err) {
       await prisma.jobRun.update({
         where: { id: jobRun.id },
