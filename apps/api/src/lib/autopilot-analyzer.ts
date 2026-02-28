@@ -353,6 +353,33 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
         estimatedImpact: 'No immediate impact — monitor for 48h before evaluating performance.',
       };
 
+    case 'top_performer': {
+      const estimatedDailySpend = Math.round(input.spend7d / 7);
+      const scaledBudget = Math.round(estimatedDailySpend * 1.5);
+      const roasTrend = input.roas14d !== null && input.roas7d !== null && input.roas7d >= input.roas14d
+        ? `ROAS is trending up (${input.roas14d.toFixed(2)}x → ${input.roas7d?.toFixed(2)}x), confirming momentum.`
+        : `ROAS is holding steady at ${input.roas7d?.toFixed(2) ?? '?'}x, indicating reliable profitability.`;
+      return {
+        rootCause: `This ad is generating $${input.revenue7d.toFixed(0)} revenue on $${input.spend7d.toFixed(0)} spend (${input.roas7d?.toFixed(2) ?? '?'}x ROAS). ${roasTrend}${siblingContext}`,
+        adRecommendation: {
+          action: 'Protect winning creative — no changes',
+          detail: `This ad is profitable at ${input.roas7d?.toFixed(2) ?? '?'}x ROAS. Do not modify the creative, headline, or CTA. Any edit resets the learning phase and risks breaking what works.`,
+          priority: 'low',
+        },
+        adSetRecommendation: {
+          action: `Scale daily budget from ~$${estimatedDailySpend} to ~$${scaledBudget}/day`,
+          detail: `Frequency at ${input.frequency7d?.toFixed(1) ?? '?'}x leaves room to reach more of the audience. Increase budget 20-30% every 3 days to scale without shocking the algorithm.`,
+          priority: 'high',
+        },
+        campaignRecommendation: {
+          action: 'Duplicate creative into new audiences',
+          detail: `This proven creative should be tested in 2-3 new ad sets with lookalike audiences (1%, 3%, 5%) to find additional profitable reach.`,
+          priority: 'medium',
+        },
+        estimatedImpact: `Scaling spend 50% could add ~$${Math.round(input.revenue7d * 0.4)}/week in revenue at similar ${input.roas7d?.toFixed(2) ?? '?'}x ROAS.`,
+      };
+    }
+
     default:
       return {
         rootCause: `${input.title}: ${input.message}`,
