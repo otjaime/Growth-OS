@@ -177,6 +177,24 @@ describe('Rule 3: Winner Not Scaled', () => {
     expect((winner!.suggestedValue as Record<string, number>).suggestedBudget).toBe(150);
   });
 
+  it('fires with null adSetDailyBudget — estimates from spend7d', () => {
+    // VacunoIA scenario: 5.19x ROAS, 1.7x freq, no daily budget
+    const input = baseInput({
+      roas7d: 5.19,
+      frequency7d: 1.7,
+      spend7d: 6930,
+      adSetDailyBudget: null,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const winner = results.find((r) => r.ruleId === 'winner_not_scaled');
+    expect(winner).toBeDefined();
+    expect(winner!.actionType).toBe('INCREASE_BUDGET');
+    // 6930 / 7 = 990/day, suggested = 1485/day
+    const sv = winner!.suggestedValue as Record<string, number>;
+    expect(sv.estimatedDailySpend).toBe(990);
+    expect(sv.suggestedBudget).toBe(1485);
+  });
+
   it('does NOT fire if budget >= $200', () => {
     const input = baseInput({
       roas7d: 4.5,
@@ -358,13 +376,101 @@ describe('Rule 8: Paused Positive', () => {
   });
 });
 
+// ── Rule 9: Top Performer ───────────────────────────────────
+
+describe('Rule 9: Top Performer', () => {
+  it('fires when ROAS >= 2.0, spend >= $100, frequency < 3.0', () => {
+    // CerdoIA scenario: ROAS 2.9x — good but not > 3.0
+    const input = baseInput({
+      roas7d: 2.9,
+      spend7d: 13613,
+      revenue7d: 39500,
+      frequency7d: 2.5,
+      adSetDailyBudget: null,
+      roas14d: 2.5, // improving
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const topPerf = results.find((r) => r.ruleId === 'top_performer');
+    expect(topPerf).toBeDefined();
+    expect(topPerf!.severity).toBe('INFO');
+    expect(topPerf!.title).toContain('Double Down');
+    expect(topPerf!.actionType).toBe('INCREASE_BUDGET');
+    expect((topPerf!.suggestedValue as Record<string, string>).trend).toBe('improving');
+  });
+
+  it('does NOT fire when ROAS > 3.0 AND frequency < 2.0 (winner_not_scaled territory)', () => {
+    // VacunoIA scenario: ROAS 5.19x, freq 1.7x — winner_not_scaled handles this
+    const input = baseInput({
+      roas7d: 5.19,
+      frequency7d: 1.7,
+      spend7d: 6930,
+      adSetDailyBudget: null,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.find((r) => r.ruleId === 'top_performer')).toBeUndefined();
+    // winner_not_scaled should fire instead
+    expect(results.find((r) => r.ruleId === 'winner_not_scaled')).toBeDefined();
+  });
+
+  it('does NOT fire when ROAS < 2.0', () => {
+    const input = baseInput({
+      roas7d: 1.5,
+      spend7d: 200,
+      frequency7d: 1.5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.find((r) => r.ruleId === 'top_performer')).toBeUndefined();
+  });
+
+  it('does NOT fire when spend < $100', () => {
+    const input = baseInput({
+      roas7d: 2.5,
+      spend7d: 80,
+      frequency7d: 1.5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.find((r) => r.ruleId === 'top_performer')).toBeUndefined();
+  });
+
+  it('does NOT fire when frequency >= 3.0', () => {
+    const input = baseInput({
+      roas7d: 2.5,
+      spend7d: 500,
+      frequency7d: 3.5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.find((r) => r.ruleId === 'top_performer')).toBeUndefined();
+  });
+
+  it('marks trend as stable when ROAS declined', () => {
+    const input = baseInput({
+      roas7d: 2.5,
+      roas14d: 3.0, // was higher
+      spend7d: 200,
+      frequency7d: 2.0,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const topPerf = results.find((r) => r.ruleId === 'top_performer');
+    expect(topPerf).toBeDefined();
+    expect((topPerf!.suggestedValue as Record<string, string>).trend).toBe('stable');
+  });
+});
+
 // ── Multi-rule interactions ──────────────────────────────────
 
 describe('Multi-rule interactions', () => {
-  it('healthy ad triggers zero diagnoses', () => {
-    const input = baseInput(); // defaults: good ROAS, reasonable frequency, decent CTR
+  it('healthy ad triggers only positive signals', () => {
+    const input = baseInput(); // defaults: ROAS 4.0, freq 2.0, CTR 3%, spend $200
     const results = evaluateDiagnosisRules(input, NOW);
-    expect(results).toHaveLength(0);
+    // No problem rules fire (no negative ROAS, no wasted budget, etc.)
+    const problemRules = results.filter((r) =>
+      ['negative_roas', 'wasted_budget', 'low_ctr', 'creative_fatigue', 'click_no_buy'].includes(r.ruleId),
+    );
+    expect(problemRules).toHaveLength(0);
+    // Top performer fires because ROAS 4.0x, spend $200, freq 2.0 (but not winner_not_scaled since freq >= 2.0)
+    const topPerf = results.find((r) => r.ruleId === 'top_performer');
+    expect(topPerf).toBeDefined();
+    expect(topPerf!.title).toContain('Double Down');
   });
 
   it('multiple rules can fire for same ad', () => {

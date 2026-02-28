@@ -131,26 +131,41 @@ function evaluateNegativeRoas(input: DiagnosisRuleInput): DiagnosisResult | null
 
 /**
  * Rule 3: Winner Not Scaled
- * Trigger: ROAS > 3.0 AND frequency < 2.0 AND budget low
+ * Trigger: ROAS > 3.0 AND frequency < 2.0 AND budget has headroom
+ * When adSetDailyBudget is null (lifetime budget, campaign-level budget),
+ * we estimate daily spend from spend7d / 7 to still surface the opportunity.
  */
 function evaluateWinnerNotScaled(input: DiagnosisRuleInput): DiagnosisResult | null {
   if (input.status !== 'ACTIVE') return null;
   if (input.roas7d === null || input.roas7d <= 3.0) return null;
   if (input.frequency7d === null || input.frequency7d >= 2.0) return null;
-  if (input.adSetDailyBudget === null) return null;
 
-  // Consider "low budget" as ad set daily budget < $200
-  if (input.adSetDailyBudget >= 200) return null;
+  // If we know the daily budget and it's already high ($200+), no scaling needed
+  if (input.adSetDailyBudget !== null && input.adSetDailyBudget >= 200) return null;
 
-  const suggestedBudget = Math.round(input.adSetDailyBudget * 1.5);
+  if (input.adSetDailyBudget !== null) {
+    // Known budget path — suggest concrete 50% increase
+    const suggestedBudget = Math.round(input.adSetDailyBudget * 1.5);
+    return {
+      ruleId: 'winner_not_scaled',
+      severity: 'INFO',
+      title: 'High-Performing Ad — Scale Opportunity',
+      message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x with low frequency (${input.frequency7d.toFixed(1)}x). There's headroom to scale this ad set from $${input.adSetDailyBudget}/day to $${suggestedBudget}/day.`,
+      actionType: 'INCREASE_BUDGET',
+      suggestedValue: { currentBudget: input.adSetDailyBudget, suggestedBudget, currentRoas: input.roas7d },
+    };
+  }
 
+  // No daily budget set — estimate from 7d spend
+  const estimatedDaily = Math.round(input.spend7d / 7);
+  const suggestedDaily = Math.round(estimatedDaily * 1.5);
   return {
     ruleId: 'winner_not_scaled',
     severity: 'INFO',
     title: 'High-Performing Ad — Scale Opportunity',
-    message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x with low frequency (${input.frequency7d.toFixed(1)}x). There's headroom to scale this ad set from $${input.adSetDailyBudget}/day to $${suggestedBudget}/day.`,
+    message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x with low frequency (${input.frequency7d.toFixed(1)}x). Currently spending ~$${estimatedDaily}/day — consider increasing to ~$${suggestedDaily}/day to capture more conversions.`,
     actionType: 'INCREASE_BUDGET',
-    suggestedValue: { currentBudget: input.adSetDailyBudget, suggestedBudget, currentRoas: input.roas7d },
+    suggestedValue: { estimatedDailySpend: estimatedDaily, suggestedBudget: suggestedDaily, currentRoas: input.roas7d },
   };
 }
 
@@ -238,6 +253,35 @@ function evaluatePausedPositive(input: DiagnosisRuleInput): DiagnosisResult | nu
   };
 }
 
+/**
+ * Rule 9: Top Performer (positive signal — double down)
+ * Trigger: ROAS ≥ 2.0 AND spend ≥ $100 AND frequency < 3.0
+ * Does NOT fire when winner_not_scaled would fire (ROAS > 3.0 + freq < 2.0)
+ * to avoid duplicate positive signals. This rule catches the "good but not
+ * amazing" performers that still deserve more budget.
+ */
+function evaluateTopPerformer(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.roas7d === null || input.roas7d < 2.0) return null;
+  if (input.spend7d < 100) return null;
+  if (input.frequency7d !== null && input.frequency7d >= 3.0) return null;
+
+  // Skip if winner_not_scaled would fire (avoids overlap)
+  if (input.roas7d > 3.0 && (input.frequency7d === null || input.frequency7d < 2.0)) return null;
+
+  const roasImproving = input.roas14d !== null && input.roas7d >= input.roas14d;
+  const trend = roasImproving ? 'improving' : 'stable';
+
+  return {
+    ruleId: 'top_performer',
+    severity: 'INFO',
+    title: 'Top Performer — Double Down',
+    message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x generating $${input.revenue7d.toFixed(0)} revenue on $${input.spend7d.toFixed(0)} spend this week${roasImproving ? ' (trending up)' : ''}. This ad is profitable — consider increasing spend to maximize returns.`,
+    actionType: 'INCREASE_BUDGET',
+    suggestedValue: { currentRoas: input.roas7d, revenue7d: input.revenue7d, spend7d: input.spend7d, trend },
+  };
+}
+
 // ── Main Evaluator ───────────────────────────────────────────
 
 /**
@@ -280,6 +324,12 @@ export function evaluateDiagnosisRules(
   // Paused ad rule (8)
   const paused = evaluatePausedPositive(input);
   if (paused) results.push(paused);
+
+  // Positive signal rules (9) — only if winner_not_scaled didn't fire
+  if (!winner) {
+    const topPerf = evaluateTopPerformer(input);
+    if (topPerf) results.push(topPerf);
+  }
 
   return results;
 }
