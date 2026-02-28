@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { SeverityBadge } from './severity-badge';
 import { ExpiryCountdown } from './expiry-countdown';
+import { AdThumbnail } from './ad-thumbnail';
+import { TrendArrow } from './trend-arrow';
 import type { Diagnosis, AdVariant } from './types';
 import { apiFetch } from '@/lib/api';
 
@@ -48,11 +50,17 @@ function actionDescription(d: Diagnosis): string {
   }
 }
 
-function MetricPill({ label, value }: { label: string; value: string }) {
+function MetricPill({ label, value, change, invert }: {
+  label: string;
+  value: string;
+  change?: number | null;
+  invert?: boolean;
+}) {
   return (
     <div className="px-3 py-2 bg-white/[0.04] rounded-lg">
       <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
       <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{value}</p>
+      {change !== undefined && <TrendArrow change={change ?? null} invert={invert} size="sm" />}
     </div>
   );
 }
@@ -196,13 +204,12 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
       {/* Ad Context */}
       <div className="card border border-[var(--glass-border)] p-4">
         <div className="flex items-start gap-3">
-          {ad.thumbnailUrl && (
-            <img
-              src={ad.thumbnailUrl}
-              alt=""
-              className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-white/[0.06]"
-            />
-          )}
+          <AdThumbnail
+            thumbnailUrl={ad.thumbnailUrl}
+            imageUrl={ad.imageUrl}
+            name={ad.name}
+            size="lg"
+          />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-[var(--foreground)] truncate">{ad.name}</p>
             <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
