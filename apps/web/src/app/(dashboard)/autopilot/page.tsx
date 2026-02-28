@@ -1,24 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Zap, RefreshCw, Loader2, BarChart3, Activity, Target, Eye, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Zap, RefreshCw, Loader2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
   type DiagnosisStats,
   type AutopilotStats,
+  type AutopilotTab,
+  type MetaAdWithTrends,
+  type HistoryItem,
   DiagnosisList,
   DiagnosisDetail,
-  SeverityBadge,
+  AutopilotTabBar,
+  AutopilotSummaryCards,
+  AdsTable,
+  HistoryTable,
 } from '@/components/autopilot';
-import { CounterTicker } from '@/components/ui/counter-ticker';
-import { ReflectiveCard } from '@/components/ui/reflective-card';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
 
 export default function AutopilotPage() {
+  // ── Core state ────────────────────────────────────────────────
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [stats, setStats] = useState<DiagnosisStats | null>(null);
   const [autopilotStats, setAutopilotStats] = useState<AutopilotStats | null>(null);
@@ -27,9 +32,25 @@ export default function AutopilotPage() {
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // ── Tab state ─────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<AutopilotTab>('diagnoses');
+
+  // ── Diagnosis filters (scoped to diagnoses tab) ───────────────
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('PENDING');
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('ALL');
 
+  // ── Lazy-loaded data for other tabs ───────────────────────────
+  const [allAds, setAllAds] = useState<MetaAdWithTrends[]>([]);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsLoaded, setAdsLoaded] = useState(false);
+
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // ── Fetch core diagnosis data ─────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -70,6 +91,51 @@ export default function AutopilotPage() {
     fetchData();
   }, [fetchData]);
 
+  // ── Lazy load ads when tab opens ──────────────────────────────
+  useEffect(() => {
+    if (activeTab === 'ads' && !adsLoaded && !adsLoading) {
+      setAdsLoading(true);
+      apiFetch('/api/autopilot/ads?sortBy=spend')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { ads: MetaAdWithTrends[] } | null) => {
+          if (data) setAllAds(data.ads ?? []);
+          setAdsLoaded(true);
+        })
+        .catch(() => {})
+        .finally(() => setAdsLoading(false));
+    }
+  }, [activeTab, adsLoaded, adsLoading]);
+
+  // ── Lazy load history when tab opens ──────────────────────────
+  useEffect(() => {
+    if (activeTab === 'history' && !historyLoaded && !historyLoading) {
+      setHistoryLoading(true);
+      apiFetch('/api/autopilot/history?limit=50')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { items: HistoryItem[]; total: number } | null) => {
+          if (data) {
+            setHistoryItems(data.items ?? []);
+            setHistoryTotal(data.total ?? 0);
+          }
+          setHistoryLoaded(true);
+        })
+        .catch(() => {})
+        .finally(() => setHistoryLoading(false));
+    }
+  }, [activeTab, historyLoaded, historyLoading]);
+
+  // ── Cross-reference diagnoses by ad ID for AdsTable ───────────
+  const diagnosisByAdId = useMemo(() => {
+    const map = new Map<string, Diagnosis[]>();
+    for (const d of diagnoses) {
+      const existing = map.get(d.ad.id) ?? [];
+      existing.push(d);
+      map.set(d.ad.id, existing);
+    }
+    return map;
+  }, [diagnoses]);
+
+  // ── Handlers ──────────────────────────────────────────────────
   const handleSync = async () => {
     setSyncing(true);
     setSyncError(null);
@@ -90,6 +156,9 @@ export default function AutopilotPage() {
         setSyncError(`Diagnosis run failed: ${body.error ?? diagRes.statusText}`);
       }
 
+      // Invalidate lazy-loaded tabs so they re-fetch
+      setAdsLoaded(false);
+      setHistoryLoaded(false);
       await fetchData();
     } catch (err) {
       setSyncError(`Sync error: ${err instanceof Error ? err.message : String(err)}`);
@@ -101,10 +170,13 @@ export default function AutopilotPage() {
   const handleDismiss = (id: string) => {
     setDiagnoses((prev) => prev.filter((d) => d.id !== id));
     if (selectedId === id) setSelectedId(null);
+    // Invalidate history since dismissal creates a new history entry
+    setHistoryLoaded(false);
   };
 
   const selected = diagnoses.find((d) => d.id === selectedId) ?? null;
 
+  // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -113,6 +185,7 @@ export default function AutopilotPage() {
     );
   }
 
+  // ── Error state ───────────────────────────────────────────────
   if (loadError) {
     return (
       <div className="space-y-6">
@@ -150,7 +223,7 @@ export default function AutopilotPage() {
         </button>
       </div>
 
-      {/* Sync Error Banner (inline — doesn't hide dashboard) */}
+      {/* Sync Error Banner */}
       {syncError && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-[var(--tint-red)] border border-apple-red/30">
           <p className="text-xs text-apple-red flex-1">{syncError}</p>
@@ -161,120 +234,109 @@ export default function AutopilotPage() {
       )}
 
       {/* Summary Cards */}
-      {autopilotStats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <ReflectiveCard className="card p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <BarChart3 className="h-4 w-4 text-apple-blue" />
-              <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Active Ads</p>
+      <AutopilotSummaryCards
+        stats={autopilotStats}
+        diagnosisStats={stats}
+        diagnoses={diagnoses}
+      />
+
+      {/* Tab Bar */}
+      <AutopilotTabBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        diagnosisCount={stats?.total ?? 0}
+        adsCount={autopilotStats?.totalAds ?? 0}
+      />
+
+      {/* ═══ Diagnoses Tab ═══════════════════════════════════════ */}
+      {activeTab === 'diagnoses' && (
+        <>
+          {/* Filter Bar (scoped to diagnoses) */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
+              {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFilterStatus(s)}
+                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
+                    filterStatus === s
+                      ? 'bg-[var(--tint-blue)] text-apple-blue'
+                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                  }`}
+                >
+                  {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+                </button>
+              ))}
             </div>
-            <CounterTicker value={autopilotStats.activeAds} className="text-2xl font-bold text-[var(--foreground)]" />
-            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{autopilotStats.totalAds} total</p>
-          </ReflectiveCard>
-          <ReflectiveCard className="card p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity className="h-4 w-4 text-apple-green" />
-              <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Spend (7d)</p>
+            <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
+              {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFilterSeverity(s)}
+                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
+                    filterSeverity === s
+                      ? 'bg-[var(--tint-blue)] text-apple-blue'
+                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                  }`}
+                >
+                  {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
+                </button>
+              ))}
             </div>
-            <p className="text-2xl font-bold text-[var(--foreground)]">${autopilotStats.metrics7d.totalSpend.toLocaleString()}</p>
-            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
-              {autopilotStats.metrics7d.blendedRoas ? `${autopilotStats.metrics7d.blendedRoas.toFixed(2)}x ROAS` : 'No ROAS data'}
-            </p>
-          </ReflectiveCard>
-          <ReflectiveCard className="card p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="h-4 w-4 text-apple-purple" />
-              <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Diagnoses</p>
-            </div>
-            <CounterTicker value={stats?.total ?? 0} className="text-2xl font-bold text-[var(--foreground)]" />
-            <div className="flex items-center gap-2 mt-1">
-              {(stats?.critical ?? 0) > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--tint-red)] text-apple-red font-medium">{stats!.critical} critical</span>
+          </div>
+
+          {/* Two-column layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
+            {/* Left — Diagnosis List */}
+            <GlassSurface className="col-span-full lg:col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+              <DiagnosisList
+                diagnoses={diagnoses}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            </GlassSurface>
+
+            {/* Right — Detail Panel */}
+            <GlassSurface className="col-span-full lg:col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+              {selected ? (
+                <DiagnosisDetail
+                  diagnosis={selected}
+                  onDismiss={handleDismiss}
+                  onRefresh={fetchData}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <Zap className="h-12 w-12 text-[var(--foreground-secondary)]/20 mb-4" />
+                  <p className="text-sm font-medium text-[var(--foreground-secondary)]">
+                    Select a diagnosis to view details
+                  </p>
+                  <p className="text-xs text-[var(--foreground-secondary)]/60 mt-1">
+                    Click any item in the list to see the full diagnosis and take action
+                  </p>
+                </div>
               )}
-              {(stats?.warning ?? 0) > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--tint-yellow)] text-apple-yellow font-medium">{stats!.warning} warning</span>
-              )}
-            </div>
-          </ReflectiveCard>
-          <ReflectiveCard className="card p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Eye className="h-4 w-4 text-apple-yellow" />
-              <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Revenue (7d)</p>
-            </div>
-            <p className="text-2xl font-bold text-[var(--foreground)]">${autopilotStats.metrics7d.totalRevenue.toLocaleString()}</p>
-            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
-              {autopilotStats.metrics7d.totalConversions} conversions
-            </p>
-          </ReflectiveCard>
-        </div>
+            </GlassSurface>
+          </div>
+        </>
       )}
 
-      {/* Filter Bar */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
-          {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilterStatus(s)}
-              className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
-                filterStatus === s
-                  ? 'bg-[var(--tint-blue)] text-apple-blue'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
-          {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilterSeverity(s)}
-              className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
-                filterSeverity === s
-                  ? 'bg-[var(--tint-blue)] text-apple-blue'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* ═══ All Ads Tab ═════════════════════════════════════════ */}
+      {activeTab === 'ads' && (
+        <AdsTable
+          ads={allAds}
+          loading={adsLoading}
+          diagnosisByAdId={diagnosisByAdId}
+        />
+      )}
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
-        {/* Left — Diagnosis List */}
-        <GlassSurface className="col-span-full lg:col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
-          <DiagnosisList
-            diagnoses={diagnoses}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-        </GlassSurface>
-
-        {/* Right — Detail Panel */}
-        <GlassSurface className="col-span-full lg:col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
-          {selected ? (
-            <DiagnosisDetail
-              diagnosis={selected}
-              onDismiss={handleDismiss}
-              onRefresh={fetchData}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <Zap className="h-12 w-12 text-[var(--foreground-secondary)]/20 mb-4" />
-              <p className="text-sm font-medium text-[var(--foreground-secondary)]">
-                Select a diagnosis to view details
-              </p>
-              <p className="text-xs text-[var(--foreground-secondary)]/60 mt-1">
-                Click any item in the list to see the full diagnosis and take action
-              </p>
-            </div>
-          )}
-        </GlassSurface>
-      </div>
+      {/* ═══ History Tab ═════════════════════════════════════════ */}
+      {activeTab === 'history' && (
+        <HistoryTable
+          items={historyItems}
+          total={historyTotal}
+          loading={historyLoading}
+        />
+      )}
     </div>
   );
 }
