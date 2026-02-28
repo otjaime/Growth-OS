@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Sparkles, Pause, Play, TrendingUp, TrendingDown,
-  RefreshCw, Eye, Loader2, Check, X, Copy,
+  RefreshCw, Eye, Loader2, Check, X, Copy, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { SeverityBadge } from './severity-badge';
 import { ExpiryCountdown } from './expiry-countdown';
@@ -139,6 +139,8 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveResult, setApproveResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const d = diagnosis;
   const ad = d.ad;
@@ -172,6 +174,26 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
       // ignore
     } finally {
       setDismissing(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    setApproving(true);
+    setApproveResult(null);
+    try {
+      const res = await apiFetch(`/api/autopilot/diagnoses/${d.id}/approve`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setApproveResult({ success: false, message: data.error ?? 'Failed to approve action' });
+      } else {
+        setApproveResult({ success: true, message: data.message ?? 'Action approved and executing via Meta API...' });
+        // Refresh parent list after a short delay to show updated status
+        setTimeout(() => onRefresh(), 2000);
+      }
+    } catch {
+      setApproveResult({ success: false, message: 'Network error — could not reach the server' });
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -260,24 +282,47 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             </button>
           )}
 
-          {d.actionType === 'PAUSE_AD' && d.status === 'PENDING' && (
-            <button className="flex items-center gap-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 px-4 py-2 rounded-lg transition-all ease-spring">
-              <Pause className="h-3.5 w-3.5" />
-              Pause Ad
+          {d.actionType === 'PAUSE_AD' && d.status === 'PENDING' && !approveResult?.success && (
+            <button
+              onClick={handleApprove}
+              disabled={approving}
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
+              {approving ? 'Pausing...' : 'Pause Ad'}
             </button>
           )}
 
-          {d.actionType === 'REACTIVATE_AD' && d.status === 'PENDING' && (
-            <button className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring">
-              <Play className="h-3.5 w-3.5" />
-              Reactivate Ad
+          {d.actionType === 'REACTIVATE_AD' && d.status === 'PENDING' && !approveResult?.success && (
+            <button
+              onClick={handleApprove}
+              disabled={approving}
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              {approving ? 'Reactivating...' : 'Reactivate Ad'}
             </button>
           )}
 
-          {d.actionType === 'INCREASE_BUDGET' && d.status === 'PENDING' && (
-            <button className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Scale Budget to ${(d.suggestedValue?.suggestedBudget as number) ?? '?'}/day
+          {d.actionType === 'INCREASE_BUDGET' && d.status === 'PENDING' && !approveResult?.success && (
+            <button
+              onClick={handleApprove}
+              disabled={approving}
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TrendingUp className="h-3.5 w-3.5" />}
+              {approving ? 'Scaling...' : `Scale Budget to $${(d.suggestedValue?.suggestedBudget as number) ?? '?'}/day`}
+            </button>
+          )}
+
+          {d.actionType === 'DECREASE_BUDGET' && d.status === 'PENDING' && !approveResult?.success && (
+            <button
+              onClick={handleApprove}
+              disabled={approving}
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-yellow bg-[var(--tint-yellow)] hover:bg-apple-yellow/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TrendingDown className="h-3.5 w-3.5" />}
+              {approving ? 'Reducing...' : 'Reduce Budget'}
             </button>
           )}
 
@@ -295,6 +340,19 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
 
         {genError && (
           <p className="text-xs text-apple-red mt-2">{genError}</p>
+        )}
+
+        {approveResult && (
+          <div className={`flex items-center gap-2 mt-3 px-3 py-2 rounded-lg text-xs font-medium ${
+            approveResult.success
+              ? 'text-apple-green bg-[var(--tint-green)]'
+              : 'text-apple-red bg-[var(--tint-red)]'
+          }`}>
+            {approveResult.success
+              ? <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+              : <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />}
+            {approveResult.message}
+          </div>
         )}
       </div>
 
