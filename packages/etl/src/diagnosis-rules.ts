@@ -162,6 +162,8 @@ function evaluateWastedBudget(input: DiagnosisRuleInput): DiagnosisResult | null
   if (input.status !== 'ACTIVE') return null;
   if (input.spend7d <= 100) return null;
   if (input.conversions7d >= 2) return null;
+  // Don't flag ads with strong ROAS — even with few conversions, they're profitable
+  if (input.roas7d !== null && input.roas7d > 2.0) return null;
 
   return {
     ruleId: 'wasted_budget',

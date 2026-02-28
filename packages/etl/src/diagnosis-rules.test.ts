@@ -201,10 +201,12 @@ describe('Rule 3: Winner Not Scaled', () => {
 // ── Rule 4: Wasted Budget ────────────────────────────────────
 
 describe('Rule 4: Wasted Budget', () => {
-  it('fires when spend > $100 AND conversions < 2', () => {
+  it('fires when spend > $100 AND conversions < 2 AND low ROAS', () => {
     const input = baseInput({
       spend7d: 250,
       conversions7d: 1,
+      roas7d: 0.5,
+      revenue7d: 125,
     });
     const results = evaluateDiagnosisRules(input, NOW);
     const wasted = results.find((r) => r.ruleId === 'wasted_budget');
@@ -220,6 +222,29 @@ describe('Rule 4: Wasted Budget', () => {
     });
     const results = evaluateDiagnosisRules(input, NOW);
     expect(results.find((r) => r.ruleId === 'wasted_budget')).toBeUndefined();
+  });
+
+  it('does NOT fire if ROAS > 2x despite low conversions', () => {
+    const input = baseInput({
+      spend7d: 250,
+      conversions7d: 1,
+      roas7d: 5.19,
+      revenue7d: 1298,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.find((r) => r.ruleId === 'wasted_budget')).toBeUndefined();
+  });
+
+  it('fires when ROAS is null despite high spend', () => {
+    const input = baseInput({
+      spend7d: 300,
+      conversions7d: 0,
+      roas7d: null,
+      revenue7d: 0,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const wasted = results.find((r) => r.ruleId === 'wasted_budget');
+    expect(wasted).toBeDefined();
   });
 });
 
