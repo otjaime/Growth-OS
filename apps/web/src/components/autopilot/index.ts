@@ -5,6 +5,8 @@ export type {
   DiagnosisAd,
   Diagnosis,
   DiagnosisStats,
+  DiagnosisInsight,
+  InsightRecommendation,
   AdVariant,
   AutopilotStats,
   AutopilotTab,
@@ -22,3 +24,4 @@ export { AutopilotSummaryCards } from './summary-cards';
 export { SeverityGroupHeader } from './severity-group';
 export { AdsTable } from './ads-table';
 export { HistoryTable } from './history-table';
+export { AIInsightCard } from './ai-insight-card';

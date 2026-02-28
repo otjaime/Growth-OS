@@ -10,6 +10,7 @@ import { ExpiryCountdown } from './expiry-countdown';
 import { AdThumbnail } from './ad-thumbnail';
 import { TrendArrow } from './trend-arrow';
 import type { Diagnosis, AdVariant } from './types';
+import { AIInsightCard } from './ai-insight-card';
 import { apiFetch } from '@/lib/api';
 
 interface DiagnosisDetailProps {
@@ -234,6 +235,9 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
           <MetricPill label="Freq" value={ad.frequency7d != null ? `${Number(ad.frequency7d).toFixed(1)}x` : '—'} />
         </div>
       </div>
+
+      {/* AI Analysis — multi-level recommendations */}
+      <AIInsightCard diagnosisId={d.id} />
 
       {/* Recommended Action */}
       <div className="card border border-[var(--glass-border)] p-4">

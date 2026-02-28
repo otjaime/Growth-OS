@@ -82,6 +82,22 @@ export interface AutopilotStats {
   lastSyncAt: string | null;
 }
 
+// ── AI Insight types ──────────────────────────────────────────
+
+export interface InsightRecommendation {
+  action: string;
+  detail: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface DiagnosisInsight {
+  rootCause: string;
+  adRecommendation: InsightRecommendation;
+  adSetRecommendation: InsightRecommendation;
+  campaignRecommendation: InsightRecommendation;
+  estimatedImpact: string;
+}
+
 // ── New types for Ads table + History tab ─────────────────────
 
 export interface MetaAdWithTrends {

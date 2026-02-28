@@ -4,13 +4,15 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { prisma, DiagnosisStatus, decrypt } from '@growth-os/database';
+import { prisma, DiagnosisStatus, decrypt, Prisma } from '@growth-os/database';
 import { getOrgId } from '../lib/tenant.js';
 import { syncMetaAds } from '../jobs/sync-meta-ads.js';
 import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
 import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
+import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
+import { isAIConfigured } from '../lib/ai.js';
 
 /**
  * Ensure at least one Organization exists. When using Bearer-token auth
@@ -483,6 +485,122 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const result = await runDiagnosis(organizationId);
     return result;
+  });
+
+  // ── POST /autopilot/diagnoses/:id/analyze — AI analysis ──────
+  app.post('/autopilot/diagnoses/:id/analyze', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Analyze diagnosis with AI',
+      description: 'Returns multi-level (ad, ad-set, campaign) AI-powered analysis and recommendations for a diagnosis. Caches results for 6 hours.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const organizationId = await resolveOrgId(request);
+
+    const diagnosis = await prisma.diagnosis.findFirst({
+      where: { id, organizationId },
+      include: {
+        ad: {
+          include: {
+            campaign: { select: { id: true, name: true, campaignId: true, status: true, objective: true } },
+            adSet: { select: { id: true, name: true, adSetId: true, status: true, dailyBudget: true } },
+          },
+        },
+      },
+    });
+
+    if (!diagnosis) {
+      reply.status(404);
+      return { error: 'Diagnosis not found' };
+    }
+
+    // Return cached insight if fresh (< 6 hours old)
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    if (
+      diagnosis.aiInsight &&
+      diagnosis.aiInsightAt &&
+      Date.now() - new Date(diagnosis.aiInsightAt).getTime() < SIX_HOURS_MS
+    ) {
+      return { insight: diagnosis.aiInsight, cached: true };
+    }
+
+    // Fetch sibling ads in the same ad set (for context)
+    const siblingAds = await prisma.metaAd.findMany({
+      where: {
+        adSetId: diagnosis.ad.adSetId,
+        id: { not: diagnosis.adId },
+      },
+      select: {
+        name: true,
+        status: true,
+        spend7d: true,
+        roas7d: true,
+        ctr7d: true,
+      },
+    });
+
+    const ad = diagnosis.ad;
+    const analyzerInput = {
+      ruleId: diagnosis.ruleId,
+      severity: diagnosis.severity,
+      title: diagnosis.title,
+      message: diagnosis.message,
+      actionType: diagnosis.actionType,
+      suggestedValue: diagnosis.suggestedValue as Record<string, unknown> | null,
+      adName: ad.name,
+      adStatus: ad.status,
+      creativeType: ad.creativeType,
+      headline: ad.headline,
+      primaryText: ad.primaryText,
+      callToAction: ad.callToAction,
+      spend7d: Number(ad.spend7d),
+      impressions7d: ad.impressions7d,
+      clicks7d: ad.clicks7d,
+      conversions7d: ad.conversions7d,
+      revenue7d: Number(ad.revenue7d),
+      roas7d: ad.roas7d ? Number(ad.roas7d) : null,
+      ctr7d: ad.ctr7d ? Number(ad.ctr7d) : null,
+      cpc7d: ad.cpc7d ? Number(ad.cpc7d) : null,
+      frequency7d: ad.frequency7d ? Number(ad.frequency7d) : null,
+      spend14d: Number(ad.spend14d),
+      roas14d: ad.roas14d ? Number(ad.roas14d) : null,
+      ctr14d: ad.ctr14d ? Number(ad.ctr14d) : null,
+      frequency14d: ad.frequency14d ? Number(ad.frequency14d) : null,
+      campaignName: ad.campaign.name,
+      campaignObjective: ad.campaign.objective,
+      adSetName: ad.adSet.name,
+      adSetDailyBudget: ad.adSet.dailyBudget ? Number(ad.adSet.dailyBudget) : null,
+      siblingAds: siblingAds.map((s) => ({
+        name: s.name,
+        status: s.status,
+        spend7d: Number(s.spend7d),
+        roas7d: s.roas7d ? Number(s.roas7d) : null,
+        ctr7d: s.ctr7d ? Number(s.ctr7d) : null,
+      })),
+    };
+
+    let insight;
+    try {
+      insight = isAIConfigured()
+        ? await generateDiagnosisInsight(analyzerInput)
+        : generateRuleBasedInsight(analyzerInput);
+    } catch (err) {
+      // Fallback to rule-based if AI fails
+      request.log.warn({ err }, 'AI insight generation failed, falling back to rule-based');
+      insight = generateRuleBasedInsight(analyzerInput);
+    }
+
+    // Cache the insight in the diagnosis row
+    await prisma.diagnosis.update({
+      where: { id: diagnosis.id },
+      data: {
+        aiInsight: insight as unknown as Prisma.InputJsonValue,
+        aiInsightAt: new Date(),
+      },
+    });
+
+    return { insight, cached: false };
   });
 
   // ── POST /autopilot/diagnoses/:id/generate-copy — AI variants ─
