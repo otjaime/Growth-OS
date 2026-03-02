@@ -40,6 +40,16 @@ async function startScheduler() {
     },
   );
 
+  await syncQueue.add(
+    'autopilot-sync',
+    { type: 'autopilot' },
+    {
+      repeat: { pattern: process.env.AUTOPILOT_CRON ?? '0 */6 * * *' }, // Every 6h
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    },
+  );
+
   // Worker
   const worker = new Worker(
     'growth-os-sync',
@@ -78,6 +88,19 @@ async function startScheduler() {
           }
         } else if (job.data.type === 'build-marts') {
           await buildMarts();
+        } else if (job.data.type === 'autopilot') {
+          const { syncMetaAds } = await import('./jobs/sync-meta-ads.js');
+          const { runDiagnosis } = await import('./jobs/run-diagnosis.js');
+          // Run for all orgs
+          const orgs = await prisma.organization.findMany({ select: { id: true } });
+          for (const org of orgs) {
+            try {
+              await syncMetaAds(org.id);
+              await runDiagnosis(org.id);
+            } catch (err) {
+              log.error({ orgId: org.id, error: String(err) }, 'Autopilot sync failed for org');
+            }
+          }
         }
 
         const durationMs = Date.now() - startTime;

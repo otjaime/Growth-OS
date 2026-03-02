@@ -64,7 +64,10 @@ model Organization {
   metaCampaigns        MetaCampaign[]
   metaAdSets           MetaAdSet[]
   metaAds              MetaAd[]
+  metaAdSnapshots      MetaAdSnapshot[]
   diagnoses            Diagnosis[]
+  autopilotConfig      AutopilotConfig?
+  autopilotActionLogs  AutopilotActionLog[]
 
   @@map("organizations")
 }
@@ -850,6 +853,7 @@ model MetaAd {
 
   diagnoses      Diagnosis[]
   variants       AdVariant[]
+  snapshots      MetaAdSnapshot[]
 
   @@unique([organizationId, adId])
   @@index([organizationId])
@@ -954,6 +958,91 @@ model AdVariant {
   @@index([adId])
   @@index([status])
   @@map("ad_variants")
+}
+
+// ══════════════════════════════════════════════════════════════
+// META AD SNAPSHOTS — Daily metric history for trend analysis
+// ══════════════════════════════════════════════════════════════
+
+model MetaAdSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  adId           String       @map("ad_id")
+  ad             MetaAd       @relation(fields: [adId], references: [id], onDelete: Cascade)
+  date           DateTime     @db.Date
+  spend          Decimal      @default(0) @db.Decimal(12, 2)
+  impressions    Int          @default(0)
+  clicks         Int          @default(0)
+  conversions    Int          @default(0)
+  revenue        Decimal      @default(0) @db.Decimal(12, 2)
+  roas           Decimal?     @db.Decimal(8, 4)
+  ctr            Decimal?     @db.Decimal(8, 6)
+  cpc            Decimal?     @db.Decimal(12, 2)
+  frequency      Decimal?     @db.Decimal(8, 4)
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([organizationId, adId, date])
+  @@index([adId, date])
+  @@index([organizationId, date])
+  @@map("meta_ad_snapshots")
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUTOPILOT CONFIGURATION — Per-org targets, modes, and limits
+// ══════════════════════════════════════════════════════════════
+
+model AutopilotConfig {
+  id                   String       @id @default(cuid())
+  organizationId       String       @unique @map("organization_id")
+  organization         Organization @relation(fields: [organizationId], references: [id])
+
+  // Automation mode: monitor (alerts only) | suggest (approval needed) | auto (auto-execute)
+  mode                 String       @default("suggest")
+
+  // Performance targets
+  targetRoas           Decimal?     @map("target_roas") @db.Decimal(8, 4)
+  maxCpa               Decimal?     @map("max_cpa") @db.Decimal(12, 2)
+  dailyBudgetCap       Decimal?     @map("daily_budget_cap") @db.Decimal(12, 2)
+
+  // Safety limits for auto-mode
+  maxBudgetIncreasePct Int          @default(50) @map("max_budget_increase_pct")
+  minSpendBeforeAction Decimal      @default(50) @map("min_spend_before_action") @db.Decimal(12, 2)
+
+  // Notification preferences
+  slackWebhookUrl      String?      @map("slack_webhook_url")
+  notifyOnCritical     Boolean      @default(true) @map("notify_on_critical")
+  notifyOnAutoAction   Boolean      @default(true) @map("notify_on_auto_action")
+
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  @@map("autopilot_configs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUTOPILOT ACTION LOG — Audit trail for all actions (manual + auto)
+// ══════════════════════════════════════════════════════════════
+
+model AutopilotActionLog {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  diagnosisId    String?      @map("diagnosis_id")
+  actionType     String       @map("action_type")
+  triggeredBy    String       @map("triggered_by") // user | auto | schedule
+  targetEntity   String       @map("target_entity") // ad | adset | campaign
+  targetId       String       @map("target_id")
+  targetName     String       @map("target_name")
+  beforeValue    Json?        @map("before_value")
+  afterValue     Json?        @map("after_value")
+  success        Boolean
+  errorMessage   String?      @map("error_message")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([targetId])
+  @@map("autopilot_action_logs")
 }
 
 // ══════════════════════════════════════════════════════════════

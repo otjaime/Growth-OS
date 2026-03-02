@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Zap, RefreshCw, Loader2, X } from 'lucide-react';
+import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
   type DiagnosisStats,
   type AutopilotStats,
   type AutopilotTab,
+  type AutopilotMode,
   type MetaAdWithTrends,
   type HistoryItem,
   DiagnosisList,
@@ -16,11 +17,20 @@ import {
   AutopilotSummaryCards,
   AdsTable,
   HistoryTable,
+  ConfigPanel,
+  BudgetView,
+  CampaignHealthView,
 } from '@/components/autopilot';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
+
+const MODE_BADGE: Record<AutopilotMode, { label: string; icon: typeof Eye; color: string; bg: string }> = {
+  monitor: { label: 'Monitor', icon: Eye, color: 'text-[var(--foreground-secondary)]', bg: 'bg-white/[0.06]' },
+  suggest: { label: 'Suggest', icon: Lightbulb, color: 'text-apple-blue', bg: 'bg-[var(--tint-blue)]' },
+  auto: { label: 'Auto', icon: Zap, color: 'text-apple-purple', bg: 'bg-[var(--tint-purple)]' },
+};
 
 export default function AutopilotPage() {
   // ── Core state ────────────────────────────────────────────────
@@ -32,6 +42,9 @@ export default function AutopilotPage() {
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // ── Mode state (loaded from config) ─────────────────────────
+  const [autopilotMode, setAutopilotMode] = useState<AutopilotMode>('monitor');
 
   // ── Tab state ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<AutopilotTab>('diagnoses');
@@ -57,10 +70,11 @@ export default function AutopilotPage() {
       if (filterStatus !== 'ALL') params.set('status', filterStatus);
       if (filterSeverity !== 'ALL') params.set('severity', filterSeverity);
 
-      const [diagRes, statsRes, apStatsRes] = await Promise.all([
+      const [diagRes, statsRes, apStatsRes, configRes] = await Promise.all([
         apiFetch(`/api/autopilot/diagnoses?${params.toString()}`),
         apiFetch('/api/autopilot/diagnoses/stats'),
         apiFetch('/api/autopilot/stats'),
+        apiFetch('/api/autopilot/config'),
       ]);
 
       if (!diagRes.ok || !statsRes.ok) {
@@ -74,6 +88,11 @@ export default function AutopilotPage() {
       const diagData = await diagRes.json();
       const statsData = await statsRes.json();
       const apStatsData = apStatsRes.ok ? await apStatsRes.json() : null;
+
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        if (configData.mode) setAutopilotMode(configData.mode);
+      }
 
       setDiagnoses(diagData.diagnoses ?? []);
       setStats(statsData);
@@ -101,7 +120,10 @@ export default function AutopilotPage() {
           if (data) setAllAds(data.ads ?? []);
           setAdsLoaded(true);
         })
-        .catch(() => {})
+        .catch((err: unknown) => {
+          console.error('[Autopilot] Failed to load ads:', err);
+          setAdsLoaded(true); // Mark loaded to avoid infinite retry
+        })
         .finally(() => setAdsLoading(false));
     }
   }, [activeTab, adsLoaded, adsLoading]);
@@ -119,7 +141,10 @@ export default function AutopilotPage() {
           }
           setHistoryLoaded(true);
         })
-        .catch(() => {})
+        .catch((err: unknown) => {
+          console.error('[Autopilot] Failed to load history:', err);
+          setHistoryLoaded(true); // Mark loaded to avoid infinite retry
+        })
         .finally(() => setHistoryLoading(false));
     }
   }, [activeTab, historyLoaded, historyLoading]);
@@ -176,6 +201,10 @@ export default function AutopilotPage() {
 
   const selected = diagnoses.find((d) => d.id === selectedId) ?? null;
 
+  // ── Mode badge ──────────────────────────────────────────────
+  const modeBadge = MODE_BADGE[autopilotMode];
+  const ModeBadgeIcon = modeBadge.icon;
+
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
@@ -207,7 +236,13 @@ export default function AutopilotPage() {
             <Zap className="h-5 w-5 text-apple-purple" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${modeBadge.color} ${modeBadge.bg}`}>
+                <ModeBadgeIcon className="h-3 w-3" />
+                {modeBadge.label}
+              </span>
+            </div>
             <p className="text-xs text-[var(--foreground-secondary)]">
               AI-powered ad diagnosis &amp; optimization
             </p>
@@ -329,6 +364,16 @@ export default function AutopilotPage() {
         />
       )}
 
+      {/* ═══ Budget Tab ════════════════════════════════════════ */}
+      {activeTab === 'budget' && (
+        <BudgetView />
+      )}
+
+      {/* ═══ Health Tab ════════════════════════════════════════ */}
+      {activeTab === 'health' && (
+        <CampaignHealthView />
+      )}
+
       {/* ═══ History Tab ═════════════════════════════════════════ */}
       {activeTab === 'history' && (
         <HistoryTable
@@ -336,6 +381,11 @@ export default function AutopilotPage() {
           total={historyTotal}
           loading={historyLoading}
         />
+      )}
+
+      {/* ═══ Settings Tab ═══════════════════════════════════════ */}
+      {activeTab === 'settings' && (
+        <ConfigPanel />
       )}
     </div>
   );

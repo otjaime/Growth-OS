@@ -13,6 +13,19 @@ import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
 import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
 import { isAIConfigured } from '../lib/ai.js';
+import {
+  optimizeBudgetAllocation,
+  scoreCampaignHealth,
+  detectAnomalies,
+  analyzeCreativeDecay,
+} from '@growth-os/etl';
+import type {
+  AdSetMetrics,
+  CampaignMetrics,
+  AdSetHealth,
+  MetricSeries,
+  DailySnapshot,
+} from '@growth-os/etl';
 
 /**
  * Ensure at least one Organization exists. When using Bearer-token auth
@@ -1029,5 +1042,482 @@ export async function autopilotRoutes(app: FastifyInstance) {
     ]);
 
     return { items, total };
+  });
+
+  // ── GET /autopilot/config — current org config ──────────────
+  app.get('/autopilot/config', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Get autopilot configuration',
+      description: 'Returns the current autopilot configuration for the organization. Creates defaults if none exists.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    let config = await prisma.autopilotConfig.findUnique({
+      where: { organizationId },
+    });
+
+    if (!config) {
+      config = await prisma.autopilotConfig.create({
+        data: { organizationId },
+      });
+    }
+
+    return {
+      mode: config.mode,
+      targetRoas: config.targetRoas?.toNumber() ?? null,
+      maxCpa: config.maxCpa?.toNumber() ?? null,
+      dailyBudgetCap: config.dailyBudgetCap?.toNumber() ?? null,
+      maxBudgetIncreasePct: config.maxBudgetIncreasePct,
+      minSpendBeforeAction: config.minSpendBeforeAction.toNumber(),
+      // Mask webhook URL — only show whether it's set (never expose full URL)
+      slackWebhookUrl: config.slackWebhookUrl ? '••••••' + config.slackWebhookUrl.slice(-8) : null,
+      hasSlackWebhook: !!config.slackWebhookUrl,
+      notifyOnCritical: config.notifyOnCritical,
+      notifyOnAutoAction: config.notifyOnAutoAction,
+    };
+  });
+
+  // ── PATCH /autopilot/config — update org config ─────────────
+  app.patch('/autopilot/config', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Update autopilot configuration',
+      description: 'Updates autopilot configuration fields. Only provided fields are changed.',
+    },
+  }, async (request, reply) => {
+    const organizationId = await resolveOrgId(request);
+    const body = request.body as Record<string, unknown>;
+
+    // Ensure config exists
+    const existing = await prisma.autopilotConfig.findUnique({ where: { organizationId } });
+    if (!existing) {
+      await prisma.autopilotConfig.create({ data: { organizationId } });
+    }
+
+    // Helper: parse numeric field with NaN guard
+    const safeNumber = (val: unknown): number | null => {
+      if (val === null || val === undefined) return null;
+      const n = Number(val);
+      return isNaN(n) || !isFinite(n) ? null : n;
+    };
+
+    const data: Record<string, unknown> = {};
+    if (body.mode !== undefined) {
+      const mode = String(body.mode);
+      if (!['monitor', 'suggest', 'auto'].includes(mode)) {
+        return reply.status(400).send({ error: 'Invalid mode. Must be: monitor, suggest, or auto' });
+      }
+      data.mode = mode;
+    }
+    if (body.targetRoas !== undefined) {
+      const v = safeNumber(body.targetRoas);
+      data.targetRoas = v !== null && v >= 0 ? v : null;
+    }
+    if (body.maxCpa !== undefined) {
+      const v = safeNumber(body.maxCpa);
+      data.maxCpa = v !== null && v >= 0 ? v : null;
+    }
+    if (body.dailyBudgetCap !== undefined) {
+      const v = safeNumber(body.dailyBudgetCap);
+      data.dailyBudgetCap = v !== null && v >= 0 ? v : null;
+    }
+    if (body.maxBudgetIncreasePct !== undefined) {
+      const v = safeNumber(body.maxBudgetIncreasePct);
+      data.maxBudgetIncreasePct = v !== null ? Math.max(10, Math.min(200, v)) : 50;
+    }
+    if (body.minSpendBeforeAction !== undefined) {
+      const v = safeNumber(body.minSpendBeforeAction);
+      data.minSpendBeforeAction = v !== null ? Math.max(0, v) : 0;
+    }
+    if (body.slackWebhookUrl !== undefined) {
+      // Accept null to clear, or a non-empty string to set
+      data.slackWebhookUrl = body.slackWebhookUrl === null || body.slackWebhookUrl === '' ? null : String(body.slackWebhookUrl);
+    }
+    if (body.notifyOnCritical !== undefined) data.notifyOnCritical = Boolean(body.notifyOnCritical);
+    if (body.notifyOnAutoAction !== undefined) data.notifyOnAutoAction = Boolean(body.notifyOnAutoAction);
+
+    const updated = await prisma.autopilotConfig.update({
+      where: { organizationId },
+      data,
+    });
+
+    return {
+      mode: updated.mode,
+      targetRoas: updated.targetRoas?.toNumber() ?? null,
+      maxCpa: updated.maxCpa?.toNumber() ?? null,
+      dailyBudgetCap: updated.dailyBudgetCap?.toNumber() ?? null,
+      maxBudgetIncreasePct: updated.maxBudgetIncreasePct,
+      minSpendBeforeAction: updated.minSpendBeforeAction.toNumber(),
+      slackWebhookUrl: updated.slackWebhookUrl ? '••••••' + updated.slackWebhookUrl.slice(-8) : null,
+      hasSlackWebhook: !!updated.slackWebhookUrl,
+      notifyOnCritical: updated.notifyOnCritical,
+      notifyOnAutoAction: updated.notifyOnAutoAction,
+    };
+  });
+
+  // ── GET /autopilot/budget-optimization — portfolio optimizer ──
+  app.get('/autopilot/budget-optimization', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Budget optimization suggestions',
+      description: 'Returns portfolio-level budget reallocation suggestions based on ROAS performance across ad sets.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    // Load config for optimization parameters
+    const config = await prisma.autopilotConfig.findUnique({
+      where: { organizationId },
+    });
+
+    // Fetch ad sets with aggregated ad metrics
+    const adSets = await prisma.metaAdSet.findMany({
+      where: { organizationId },
+      include: {
+        ads: {
+          where: { status: 'ACTIVE' },
+          select: {
+            spend7d: true, revenue7d: true, impressions7d: true,
+            clicks7d: true, conversions7d: true, roas7d: true, frequency7d: true,
+          },
+        },
+      },
+    });
+
+    // Aggregate ad-level metrics per ad set
+    const adSetMetrics: AdSetMetrics[] = adSets.map((as) => {
+      let spend = 0, revenue = 0, impressions = 0, clicks = 0, conversions = 0;
+      let totalFreq = 0, freqCount = 0;
+      for (const ad of as.ads) {
+        spend += Number(ad.spend7d);
+        revenue += Number(ad.revenue7d);
+        impressions += ad.impressions7d;
+        clicks += ad.clicks7d;
+        conversions += ad.conversions7d;
+        if (ad.frequency7d !== null) {
+          totalFreq += Number(ad.frequency7d);
+          freqCount++;
+        }
+      }
+      return {
+        adSetId: as.adSetId,
+        adSetName: as.name,
+        currentDailyBudget: as.dailyBudget ? Number(as.dailyBudget) : Math.round(spend / 7),
+        spend7d: spend,
+        revenue7d: revenue,
+        roas7d: spend > 0 ? revenue / spend : null,
+        impressions7d: impressions,
+        clicks7d: clicks,
+        conversions7d: conversions,
+        frequency7d: freqCount > 0 ? totalFreq / freqCount : null,
+      };
+    }).filter((m) => m.spend7d > 0); // Only include ad sets with spend
+
+    const optimization = optimizeBudgetAllocation(adSetMetrics, {
+      totalBudgetCap: config?.dailyBudgetCap?.toNumber() ?? undefined,
+      targetRoas: config?.targetRoas?.toNumber() ?? 2.0,
+      maxChangePct: config?.maxBudgetIncreasePct ?? 50,
+      minDailyBudget: 10,
+    });
+
+    return optimization;
+  });
+
+  // ── GET /autopilot/campaigns/health — campaign health scores ──
+  app.get('/autopilot/campaigns/health', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Campaign health scores',
+      description: 'Returns 0-100 health scores for all campaigns with component breakdown.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    const config = await prisma.autopilotConfig.findUnique({
+      where: { organizationId },
+    });
+
+    // Fetch campaigns with ad sets and their ads
+    const campaigns = await prisma.metaCampaign.findMany({
+      where: { organizationId },
+      include: {
+        adSets: {
+          include: {
+            ads: {
+              where: { status: 'ACTIVE' },
+              select: {
+                id: true, spend7d: true, revenue7d: true,
+                roas7d: true, ctr7d: true, frequency7d: true,
+                roas14d: true, ctr14d: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // For each campaign, also fetch snapshot-based ROAS values for stability scoring
+    const scores = await Promise.all(campaigns.map(async (camp) => {
+      const adSetHealths: AdSetHealth[] = [];
+
+      for (const adSet of camp.adSets) {
+        let spend = 0, revenue = 0;
+        let totalRoas = 0, roasCount = 0;
+        let totalCtr = 0, ctrCount = 0;
+        let totalFreq = 0, freqCount = 0;
+        let totalRoas14 = 0, roas14Count = 0;
+        let totalCtr14 = 0, ctr14Count = 0;
+
+        // Collect ad IDs for snapshot queries
+        const adIds: string[] = [];
+        for (const ad of adSet.ads) {
+          adIds.push(ad.id);
+          spend += Number(ad.spend7d);
+          revenue += Number(ad.revenue7d);
+          if (ad.roas7d !== null) { totalRoas += Number(ad.roas7d); roasCount++; }
+          if (ad.ctr7d !== null) { totalCtr += Number(ad.ctr7d); ctrCount++; }
+          if (ad.frequency7d !== null) { totalFreq += Number(ad.frequency7d); freqCount++; }
+          if (ad.roas14d !== null) { totalRoas14 += Number(ad.roas14d); roas14Count++; }
+          if (ad.ctr14d !== null) { totalCtr14 += Number(ad.ctr14d); ctr14Count++; }
+        }
+
+        // Get snapshot ROAS values for variance calculation (last 21 days)
+        let roasValues: number[] | undefined;
+        if (adIds.length > 0) {
+          const since = new Date();
+          since.setDate(since.getDate() - 21);
+          const snapshots = await prisma.metaAdSnapshot.findMany({
+            where: { adId: { in: adIds }, date: { gte: since } },
+            select: { roas: true },
+          });
+          const validRoas = snapshots
+            .map((s) => s.roas?.toNumber())
+            .filter((v): v is number => v !== null && v !== undefined);
+          if (validRoas.length >= 5) roasValues = validRoas;
+        }
+
+        adSetHealths.push({
+          adSetId: adSet.adSetId,
+          spend7d: spend,
+          revenue7d: revenue,
+          roas7d: roasCount > 0 ? totalRoas / roasCount : null,
+          ctr7d: ctrCount > 0 ? totalCtr / ctrCount : null,
+          frequency7d: freqCount > 0 ? totalFreq / freqCount : null,
+          roas14d: roas14Count > 0 ? totalRoas14 / roas14Count : null,
+          ctr14d: ctr14Count > 0 ? totalCtr14 / ctr14Count : null,
+          roasValues,
+        });
+      }
+
+      const campaignMetrics: CampaignMetrics = {
+        campaignId: camp.campaignId,
+        campaignName: camp.name,
+        adSets: adSetHealths,
+      };
+
+      return scoreCampaignHealth(campaignMetrics, {
+        targetRoas: config?.targetRoas?.toNumber() ?? 2.0,
+      });
+    }));
+
+    // Sort by score descending
+    scores.sort((a, b) => b.overallScore - a.overallScore);
+    return { campaigns: scores, total: scores.length };
+  });
+
+  // ── GET /autopilot/ads/:id/anomalies — anomaly detection ──
+  app.get('/autopilot/ads/:id/anomalies', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Detect anomalies for an ad',
+      description: 'Uses z-score based anomaly detection on snapshot history for a specific ad.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orgFilter = await resolveOrgWhere(request);
+
+    const ad = await prisma.metaAd.findFirst({
+      where: { id, ...orgFilter },
+      select: {
+        id: true, name: true,
+        roas7d: true, ctr7d: true, cpc7d: true, frequency7d: true, spend7d: true,
+      },
+    });
+    if (!ad) return reply.status(404).send({ error: 'Ad not found' });
+
+    // Get last 30 days of snapshots
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const snapshots = await prisma.metaAdSnapshot.findMany({
+      where: { adId: id, organizationId: orgFilter.organizationId, date: { gte: since } },
+      orderBy: { date: 'asc' },
+      select: { roas: true, ctr: true, cpc: true, frequency: true, spend: true },
+    });
+
+    // Preserve array length (use NaN for nulls) so excludeRecentDays stays time-aligned
+    const series: MetricSeries[] = [];
+    const addSeries = (metric: string, getter: (s: typeof snapshots[0]) => number | null) => {
+      const values = snapshots.map((s) => getter(s) ?? NaN);
+      const validCount = values.filter((v) => !isNaN(v)).length;
+      if (validCount > 0) series.push({ values, metric });
+    };
+
+    addSeries('roas', (s) => s.roas?.toNumber() ?? null);
+    addSeries('ctr', (s) => s.ctr?.toNumber() ?? null);
+    addSeries('cpc', (s) => s.cpc?.toNumber() ?? null);
+    addSeries('frequency', (s) => s.frequency?.toNumber() ?? null);
+    addSeries('spend', (s) => s.spend?.toNumber() ?? null);
+
+    const currentValues: Record<string, number> = {};
+    if (ad.roas7d !== null) currentValues.roas = Number(ad.roas7d);
+    if (ad.ctr7d !== null) currentValues.ctr = Number(ad.ctr7d);
+    if (ad.cpc7d !== null) currentValues.cpc = Number(ad.cpc7d);
+    if (ad.frequency7d !== null) currentValues.frequency = Number(ad.frequency7d);
+    if (ad.spend7d !== null) currentValues.spend = Number(ad.spend7d);
+
+    const anomalies = detectAnomalies(series, currentValues);
+    return { adId: ad.id, adName: ad.name, anomalies, snapshotCount: snapshots.length };
+  });
+
+  // ── GET /autopilot/ads/:id/decay — creative decay analysis ──
+  app.get('/autopilot/ads/:id/decay', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Creative decay analysis',
+      description: 'Analyzes the creative performance decay curve for a specific ad using snapshot history.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orgFilter = await resolveOrgWhere(request);
+
+    const ad = await prisma.metaAd.findFirst({
+      where: { id, ...orgFilter },
+      select: { id: true, name: true, roas7d: true },
+    });
+    if (!ad) return reply.status(404).send({ error: 'Ad not found' });
+
+    const snapshots = await prisma.metaAdSnapshot.findMany({
+      where: { adId: id },
+      orderBy: { date: 'asc' },
+      select: {
+        date: true, spend: true, revenue: true,
+        roas: true, ctr: true, impressions: true, frequency: true,
+      },
+    });
+
+    const dailySnapshots: DailySnapshot[] = snapshots.map((s) => ({
+      date: s.date.toISOString().split('T')[0]!,
+      spend: s.spend.toNumber(),
+      revenue: s.revenue.toNumber(),
+      roas: s.roas?.toNumber() ?? null,
+      ctr: s.ctr?.toNumber() ?? null,
+      impressions: s.impressions,
+      frequency: s.frequency?.toNumber() ?? null,
+    }));
+
+    const analysis = analyzeCreativeDecay(
+      ad.id,
+      ad.name,
+      dailySnapshots,
+      ad.roas7d ? Number(ad.roas7d) : null,
+    );
+
+    return analysis;
+  });
+
+  // ── GET /autopilot/action-log — audit trail ──────────────────
+  app.get('/autopilot/action-log', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Action audit log',
+      description: 'Returns the audit trail of all autopilot actions (manual + auto).',
+    },
+  }, async (request) => {
+    const { limit, offset, triggeredBy } = request.query as {
+      limit?: string; offset?: string; triggeredBy?: string;
+    };
+    const take = limit ? Math.min(parseInt(limit, 10), 200) : 50;
+    const skip = offset ? parseInt(offset, 10) : 0;
+
+    const orgFilter = await resolveOrgWhere(request);
+    const where: Record<string, unknown> = { ...orgFilter };
+    if (triggeredBy) where.triggeredBy = triggeredBy;
+
+    const [items, total] = await Promise.all([
+      prisma.autopilotActionLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      prisma.autopilotActionLog.count({ where }),
+    ]);
+
+    return { items, total };
+  });
+
+  // ── GET /autopilot/ads/:id/timeseries — snapshot time-series ─
+  app.get('/autopilot/ads/:id/timeseries', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Ad snapshot timeseries',
+      description: 'Returns daily snapshot data for a specific ad over a given period.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { days = '30' } = request.query as { days?: string };
+    const daysNum = Math.min(90, Math.max(7, parseInt(days, 10) || 30));
+    const orgFilter = await resolveOrgWhere(request);
+
+    const since = new Date();
+    since.setDate(since.getDate() - daysNum);
+    since.setHours(0, 0, 0, 0);
+
+    const ad = await prisma.metaAd.findFirst({
+      where: { id, ...orgFilter },
+      select: { id: true, name: true, adId: true },
+    });
+
+    if (!ad) {
+      return reply.status(404).send({ error: 'Ad not found' });
+    }
+
+    const snapshots = await prisma.metaAdSnapshot.findMany({
+      where: { adId: id, date: { gte: since } },
+      orderBy: { date: 'asc' },
+      select: {
+        date: true,
+        spend: true,
+        impressions: true,
+        clicks: true,
+        conversions: true,
+        revenue: true,
+        roas: true,
+        ctr: true,
+        cpc: true,
+        frequency: true,
+      },
+    });
+
+    return {
+      adId: ad.id,
+      adName: ad.name,
+      metaAdId: ad.adId,
+      days: daysNum,
+      series: snapshots.map((s) => ({
+        date: s.date.toISOString().split('T')[0],
+        spend: s.spend.toNumber(),
+        impressions: s.impressions,
+        clicks: s.clicks,
+        conversions: s.conversions,
+        revenue: s.revenue.toNumber(),
+        roas: s.roas?.toNumber() ?? null,
+        ctr: s.ctr?.toNumber() ?? null,
+        cpc: s.cpc?.toNumber() ?? null,
+        frequency: s.frequency?.toNumber() ?? null,
+      })),
+    };
   });
 }

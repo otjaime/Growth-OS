@@ -56,6 +56,13 @@ export interface DiagnosisResult {
   suggestedValue: Record<string, unknown> | null;
 }
 
+export interface DiagnosisRuleConfig {
+  targetRoas?: number;       // default 3.0 — used in winner_not_scaled
+  topPerformerRoas?: number; // default 2.0 — used in top_performer
+  maxFrequency?: number;     // default 4.0 — used in creative_fatigue
+  minCtr?: number;           // default 0.008 (0.8%) — used in low_ctr
+}
+
 // ── Rule Definitions ─────────────────────────────────────────
 
 /**
@@ -90,11 +97,12 @@ function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisR
 
 /**
  * Rule 1: Creative Fatigue
- * Trigger: frequency > 4 AND CTR dropped > 20% (7d vs 14d)
+ * Trigger: frequency > maxFrequency AND CTR dropped > 20% (7d vs 14d)
  */
-function evaluateCreativeFatigue(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateCreativeFatigue(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const maxFreq = config?.maxFrequency ?? 4;
   if (input.status !== 'ACTIVE') return null;
-  if (input.frequency7d === null || input.frequency7d <= 4) return null;
+  if (input.frequency7d === null || input.frequency7d <= maxFreq) return null;
   if (input.ctr7d === null || input.ctr14d === null || input.ctr14d === 0) return null;
 
   const ctrDrop = (input.ctr14d - input.ctr7d) / input.ctr14d;
@@ -131,13 +139,14 @@ function evaluateNegativeRoas(input: DiagnosisRuleInput): DiagnosisResult | null
 
 /**
  * Rule 3: Winner Not Scaled
- * Trigger: ROAS > 3.0 AND frequency < 2.0 AND budget has headroom
+ * Trigger: ROAS > targetRoas AND frequency < 2.0 AND budget has headroom
  * When adSetDailyBudget is null (lifetime budget, campaign-level budget),
  * we estimate daily spend from spend7d / 7 to still surface the opportunity.
  */
-function evaluateWinnerNotScaled(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateWinnerNotScaled(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const targetRoas = config?.targetRoas ?? 3.0;
   if (input.status !== 'ACTIVE') return null;
-  if (input.roas7d === null || input.roas7d <= 3.0) return null;
+  if (input.roas7d === null || input.roas7d <= targetRoas) return null;
   if (input.frequency7d === null || input.frequency7d >= 2.0) return null;
 
   // If we know the daily budget and it's already high ($200+), no scaling needed
@@ -192,12 +201,13 @@ function evaluateWastedBudget(input: DiagnosisRuleInput): DiagnosisResult | null
 
 /**
  * Rule 5: Low CTR
- * Trigger: CTR < 0.8% AND impressions > 1000
+ * Trigger: CTR < minCtr AND impressions > 1000
  */
-function evaluateLowCtr(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateLowCtr(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const minCtr = config?.minCtr ?? 0.008; // 0.8% as decimal
   if (input.status !== 'ACTIVE') return null;
   if (input.ctr7d === null) return null;
-  if (input.ctr7d >= 0.008) return null; // 0.8% as decimal
+  if (input.ctr7d >= minCtr) return null;
   if (input.impressions7d <= 1000) return null;
 
   return {
@@ -255,19 +265,21 @@ function evaluatePausedPositive(input: DiagnosisRuleInput): DiagnosisResult | nu
 
 /**
  * Rule 9: Top Performer (positive signal — double down)
- * Trigger: ROAS ≥ 2.0 AND spend ≥ $100 AND frequency < 3.0
- * Does NOT fire when winner_not_scaled would fire (ROAS > 3.0 + freq < 2.0)
+ * Trigger: ROAS ≥ topPerformerRoas AND spend ≥ $100 AND frequency < 3.0
+ * Does NOT fire when winner_not_scaled would fire (ROAS > targetRoas + freq < 2.0)
  * to avoid duplicate positive signals. This rule catches the "good but not
  * amazing" performers that still deserve more budget.
  */
-function evaluateTopPerformer(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateTopPerformer(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const topPerformerRoas = config?.topPerformerRoas ?? 2.0;
+  const targetRoas = config?.targetRoas ?? 3.0;
   if (input.status !== 'ACTIVE') return null;
-  if (input.roas7d === null || input.roas7d < 2.0) return null;
+  if (input.roas7d === null || input.roas7d < topPerformerRoas) return null;
   if (input.spend7d < 100) return null;
   if (input.frequency7d !== null && input.frequency7d >= 3.0) return null;
 
   // Skip if winner_not_scaled would fire (avoids overlap)
-  if (input.roas7d > 3.0 && (input.frequency7d === null || input.frequency7d < 2.0)) return null;
+  if (input.roas7d > targetRoas && (input.frequency7d === null || input.frequency7d < 2.0)) return null;
 
   const roasImproving = input.roas14d !== null && input.roas7d >= input.roas14d;
   const trend = roasImproving ? 'improving' : 'stable';
@@ -287,10 +299,12 @@ function evaluateTopPerformer(input: DiagnosisRuleInput): DiagnosisResult | null
 /**
  * Evaluate all diagnosis rules for a single ad.
  * Rule 7 (learning phase) is checked first — if it fires, no other rules run.
+ * Optional config overrides default thresholds (e.g., from AutopilotConfig).
  */
 export function evaluateDiagnosisRules(
   input: DiagnosisRuleInput,
   now?: Date,
+  config?: DiagnosisRuleConfig,
 ): DiagnosisResult[] {
   const referenceDate = now ?? new Date();
 
@@ -303,19 +317,19 @@ export function evaluateDiagnosisRules(
   const results: DiagnosisResult[] = [];
 
   // Active ad rules (1-6)
-  const fatigue = evaluateCreativeFatigue(input);
+  const fatigue = evaluateCreativeFatigue(input, config);
   if (fatigue) results.push(fatigue);
 
   const negRoas = evaluateNegativeRoas(input);
   if (negRoas) results.push(negRoas);
 
-  const winner = evaluateWinnerNotScaled(input);
+  const winner = evaluateWinnerNotScaled(input, config);
   if (winner) results.push(winner);
 
   const wasted = evaluateWastedBudget(input);
   if (wasted) results.push(wasted);
 
-  const lowCtr = evaluateLowCtr(input);
+  const lowCtr = evaluateLowCtr(input, config);
   if (lowCtr) results.push(lowCtr);
 
   const clickNoBuy = evaluateClickNoBuy(input);
@@ -327,7 +341,7 @@ export function evaluateDiagnosisRules(
 
   // Positive signal rules (9) — only if winner_not_scaled didn't fire
   if (!winner) {
-    const topPerf = evaluateTopPerformer(input);
+    const topPerf = evaluateTopPerformer(input, config);
     if (topPerf) results.push(topPerf);
   }
 

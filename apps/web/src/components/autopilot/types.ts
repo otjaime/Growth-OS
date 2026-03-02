@@ -14,7 +14,76 @@ export type DiagnosisAction =
   | 'REFRESH_CREATIVE'
   | 'NONE';
 
-export type AutopilotTab = 'diagnoses' | 'ads' | 'history';
+export type AutopilotTab = 'diagnoses' | 'ads' | 'budget' | 'health' | 'history' | 'settings';
+
+// ── Autopilot v2 mode & config ──────────────────────────────
+
+export type AutopilotMode = 'monitor' | 'suggest' | 'auto';
+
+export interface AutopilotConfig {
+  mode: AutopilotMode;
+  targetRoas: number | null;
+  maxCpa: number | null;
+  dailyBudgetCap: number | null;
+  maxBudgetIncreasePct: number;
+  minSpendBeforeAction: number;
+  slackWebhookUrl: string | null;
+  notifyOnCritical: boolean;
+  notifyOnAutoAction: boolean;
+}
+
+// ── Budget optimization ─────────────────────────────────────
+
+export interface BudgetAllocation {
+  adSetId: string;
+  adSetName: string;
+  currentDailyBudget: number;
+  suggestedDailyBudget: number;
+  changePct: number;
+  reason: string;
+}
+
+export interface PortfolioOptimization {
+  totalCurrentDailyBudget: number;
+  totalSuggestedDailyBudget: number;
+  currentBlendedRoas: number | null;
+  projectedBlendedRoas: number | null;
+  allocations: BudgetAllocation[];
+  summary: string;
+}
+
+// ── Campaign health ─────────────────────────────────────────
+
+export interface CampaignHealthScore {
+  campaignId: string;
+  campaignName: string;
+  overallScore: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  components: {
+    roasScore: number;
+    efficiencyScore: number;
+    scaleScore: number;
+    stabilityScore: number;
+  };
+  trend: 'improving' | 'stable' | 'declining';
+  topIssue: string | null;
+}
+
+// ── Action log ──────────────────────────────────────────────
+
+export interface ActionLogItem {
+  id: string;
+  actionType: string;
+  triggeredBy: string;
+  targetEntity: string;
+  targetId: string;
+  targetName: string;
+  beforeValue: Record<string, unknown> | null;
+  afterValue: Record<string, unknown> | null;
+  success: boolean;
+  errorMessage: string | null;
+  createdAt: string;
+}
 
 export interface DiagnosisAd {
   id: string;
