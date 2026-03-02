@@ -13,6 +13,7 @@ export interface SyncMetaAdsResult {
   campaignsUpserted: number;
   adSetsUpserted: number;
   adsUpserted: number;
+  snapshotsUpserted: number;
   durationMs: number;
 }
 
@@ -171,6 +172,7 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
 
   // 6. Upsert ads with creative + metrics
   let adsUpserted = 0;
+  const adIdMap = new Map<string, string>(); // externalAdId → internal id
   for (const ad of result.ads) {
     const internalCampaignId = campaignIdMap.get(ad.campaignId);
     const internalAdSetId = adSetIdMap.get(ad.adSetId);
@@ -217,7 +219,7 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
     // Use the real Meta creation date if available (overrides @default(now()))
     const metaCreatedAt = ad.createdTime ? new Date(ad.createdTime) : undefined;
 
-    await prisma.metaAd.upsert({
+    const record = await prisma.metaAd.upsert({
       where: {
         organizationId_adId: { organizationId, adId: ad.adId },
       },
@@ -232,7 +234,64 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
       },
       update: data,
     });
+    adIdMap.set(ad.adId, record.id);
     adsUpserted++;
+  }
+
+  // 7. Persist daily MetaAdSnapshot for each ad (time-series history)
+  let snapshotsUpserted = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (const ad of result.ads) {
+    const insight7d = insights7dMap.get(ad.adId);
+    if (!insight7d) continue;
+
+    const internalAdId = adIdMap.get(ad.adId);
+    if (!internalAdId) continue;
+
+    // Estimate daily from 7d aggregate (divide by 7)
+    const dailySpend = Math.round((insight7d.spend / 7) * 100) / 100;
+    const dailyRevenue = Math.round((insight7d.revenue / 7) * 100) / 100;
+    const dailyImpressions = Math.round((insight7d.impressions ?? 0) / 7);
+    const dailyClicks = Math.round((insight7d.clicks ?? 0) / 7);
+    const dailyConversions = Math.round((insight7d.conversions ?? 0) / 7);
+
+    await prisma.metaAdSnapshot.upsert({
+      where: {
+        organizationId_adId_date: {
+          organizationId,
+          adId: internalAdId,
+          date: today,
+        },
+      },
+      update: {
+        spend: dailySpend,
+        impressions: dailyImpressions,
+        clicks: dailyClicks,
+        conversions: dailyConversions,
+        revenue: dailyRevenue,
+        roas: insight7d.roas ?? null,
+        ctr: insight7d.ctr ?? null,
+        cpc: insight7d.cpc ?? null,
+        frequency: insight7d.frequency ?? null,
+      },
+      create: {
+        organizationId,
+        adId: internalAdId,
+        date: today,
+        spend: dailySpend,
+        impressions: dailyImpressions,
+        clicks: dailyClicks,
+        conversions: dailyConversions,
+        revenue: dailyRevenue,
+        roas: insight7d.roas ?? null,
+        ctr: insight7d.ctr ?? null,
+        cpc: insight7d.cpc ?? null,
+        frequency: insight7d.frequency ?? null,
+      },
+    });
+    snapshotsUpserted++;
   }
 
   return {
@@ -240,6 +299,7 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
     campaignsUpserted,
     adSetsUpserted,
     adsUpserted,
+    snapshotsUpserted,
     durationMs: Date.now() - start,
   };
 }

@@ -10,6 +10,12 @@ export type {
   AdVariant,
   AutopilotStats,
   AutopilotTab,
+  AutopilotMode,
+  AutopilotConfig,
+  PortfolioOptimization,
+  BudgetAllocation,
+  CampaignHealthScore,
+  ActionLogItem,
   MetaAdWithTrends,
   HistoryItem,
 } from './types';
@@ -25,3 +31,6 @@ export { SeverityGroupHeader } from './severity-group';
 export { AdsTable } from './ads-table';
 export { HistoryTable } from './history-table';
 export { AIInsightCard } from './ai-insight-card';
+export { ConfigPanel } from './config-panel';
+export { BudgetView } from './budget-view';
+export { CampaignHealthView } from './campaign-health-view';

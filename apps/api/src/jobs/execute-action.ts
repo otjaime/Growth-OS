@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────────────────────
 // Growth OS — Execute Diagnosis Action
 // Takes an approved diagnosis and executes it via the Meta API.
+// Records an AutopilotActionLog entry for every execution attempt.
 // ──────────────────────────────────────────────────────────────
 
 import { prisma, decrypt } from '@growth-os/database';
@@ -23,12 +24,92 @@ export interface ExecuteActionResult {
   error?: string;
 }
 
+/** Trigger source for an action execution. */
+export type TriggeredBy = 'user' | 'auto' | 'schedule';
+
+/**
+ * Extract the "before" state of the ad/adset for the action log,
+ * based on the action type being performed.
+ */
+function getBeforeValue(diagnosis: DiagnosisWithAd): Record<string, unknown> | null {
+  switch (diagnosis.actionType) {
+    case 'PAUSE_AD':
+      return { status: diagnosis.ad.status };
+    case 'REACTIVATE_AD':
+      return { status: diagnosis.ad.status };
+    case 'INCREASE_BUDGET':
+    case 'DECREASE_BUDGET':
+      return {
+        dailyBudget: diagnosis.ad.adSet.dailyBudget
+          ? Number(diagnosis.ad.adSet.dailyBudget)
+          : null,
+      };
+    case 'GENERATE_COPY_VARIANTS':
+      return { action: 'create_new_ad' };
+    case 'REFRESH_CREATIVE':
+      return { action: 'refresh_creative' };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Extract the "after" state for the action log, incorporating the
+ * execution result for success cases or the error for failures.
+ */
+function getAfterValue(
+  diagnosis: DiagnosisWithAd,
+  result: ExecutionResult,
+): Record<string, unknown> | null {
+  if (!result.success) {
+    return { error: result.error ?? 'Unknown error' };
+  }
+
+  switch (diagnosis.actionType) {
+    case 'PAUSE_AD':
+      return { status: 'PAUSED' };
+    case 'REACTIVATE_AD':
+      return { status: 'ACTIVE' };
+    case 'INCREASE_BUDGET':
+    case 'DECREASE_BUDGET': {
+      const suggested = diagnosis.suggestedValue as { newBudget?: number } | null;
+      return { dailyBudget: suggested?.newBudget ?? null };
+    }
+    case 'GENERATE_COPY_VARIANTS': {
+      const resp = result.metaResponse as { adId?: string } | undefined;
+      return { newAdId: resp?.adId ?? null };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Shape of the diagnosis object returned by our Prisma query with includes. */
+interface DiagnosisWithAd {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly actionType: string;
+  readonly status: string;
+  readonly suggestedValue: unknown;
+  readonly ad: {
+    readonly adId: string;
+    readonly name: string;
+    readonly status: string;
+    readonly adSet: { readonly adSetId: string; readonly dailyBudget: unknown };
+    readonly account: { readonly adAccountId: string };
+  };
+}
+
 /**
  * Execute the approved action for a diagnosis.
- * Fetches credentials, calls Meta API, updates diagnosis record.
+ * Fetches credentials, calls Meta API, updates diagnosis record,
+ * and writes an AutopilotActionLog entry for the audit trail.
  */
-export async function executeAction(diagnosisId: string): Promise<ExecuteActionResult> {
-  // Load diagnosis with ad + account context
+export async function executeAction(
+  diagnosisId: string,
+  triggeredBy: TriggeredBy = 'user',
+): Promise<ExecuteActionResult> {
+  // Load diagnosis with ad + account context (including ad name for audit log)
   const diagnosis = await prisma.diagnosis.findUnique({
     where: { id: diagnosisId },
     include: {
@@ -184,6 +265,29 @@ export async function executeAction(diagnosisId: string): Promise<ExecuteActionR
     await markFailed(diagnosisId, result.error ?? 'Unknown error');
   }
 
+  // Record action in the audit log (fire-and-forget — never block the result)
+  const diagForLog = diagnosis as unknown as DiagnosisWithAd;
+  try {
+    await prisma.autopilotActionLog.create({
+      data: {
+        organizationId: diagnosis.organizationId,
+        diagnosisId,
+        actionType: diagnosis.actionType,
+        triggeredBy,
+        targetEntity: 'ad',
+        targetId: metaAdId,
+        targetName: diagForLog.ad.name ?? metaAdId,
+        beforeValue: getBeforeValue(diagForLog) as never,
+        afterValue: getAfterValue(diagForLog, result) as never,
+        success: result.success,
+        errorMessage: result.success ? null : (result.error ?? null),
+      },
+    });
+  } catch (logErr) {
+    // Action log failure must never block the execution result
+    console.error('[executeAction] Failed to write action log:', logErr);
+  }
+
   return {
     success: result.success,
     diagnosisId,
@@ -192,10 +296,15 @@ export async function executeAction(diagnosisId: string): Promise<ExecuteActionR
   };
 }
 
+/**
+ * Mark a diagnosis execution as failed: revert status from APPROVED back to
+ * PENDING so it can be retried or manually re-approved, and record the error.
+ */
 async function markFailed(diagnosisId: string, errorMessage: string): Promise<void> {
   await prisma.diagnosis.update({
     where: { id: diagnosisId },
     data: {
+      status: 'PENDING',
       executionResult: { error: errorMessage } as never,
     },
   });

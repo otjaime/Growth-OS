@@ -7,7 +7,9 @@
 
 import { prisma, Prisma } from '@growth-os/database';
 import { evaluateDiagnosisRules } from '@growth-os/etl';
-import type { DiagnosisRuleInput } from '@growth-os/etl';
+import type { DiagnosisRuleInput, DiagnosisRuleConfig } from '@growth-os/etl';
+import { autoExecutePending } from './auto-execute.js';
+import type { AutoExecuteResult } from './auto-execute.js';
 
 export interface RunDiagnosisResult {
   adsEvaluated: number;
@@ -15,12 +17,25 @@ export interface RunDiagnosisResult {
   diagnosesUpdated: number;
   diagnosesExpired: number;
   durationMs: number;
+  autoActions?: AutoExecuteResult;
 }
 
 export async function runDiagnosis(organizationId: string): Promise<RunDiagnosisResult> {
   const start = Date.now();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000); // 72h from now
+
+  // Load autopilot config for dynamic thresholds
+  const autopilotConfig = await prisma.autopilotConfig.findUnique({
+    where: { organizationId },
+  });
+
+  const ruleConfig: DiagnosisRuleConfig | undefined = autopilotConfig ? {
+    targetRoas: autopilotConfig.targetRoas?.toNumber(),
+    topPerformerRoas: undefined, // Use defaults for now
+    maxFrequency: undefined,
+    minCtr: undefined,
+  } : undefined;
 
   // 1. Fetch all MetaAd records for this org (active + paused for rule 8)
   const ads = await prisma.metaAd.findMany({
@@ -64,7 +79,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
       adSetDailyBudget: ad.adSet?.dailyBudget?.toNumber() ?? null,
     };
 
-    const results = evaluateDiagnosisRules(input, now);
+    const results = evaluateDiagnosisRules(input, now, ruleConfig);
 
     for (const diag of results) {
       firedPairs.add(`${ad.id}::${diag.ruleId}`);
@@ -151,11 +166,32 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
   });
   expiredCount += expiredStale.count;
 
+  // 4. Auto-execute eligible diagnoses when autopilot mode is 'auto'
+  let autoActions: AutoExecuteResult | undefined;
+  if (autopilotConfig && autopilotConfig.mode === 'auto') {
+    try {
+      autoActions = await autoExecutePending(organizationId, {
+        mode: autopilotConfig.mode,
+        maxBudgetIncreasePct: autopilotConfig.maxBudgetIncreasePct,
+        minSpendBeforeAction: autopilotConfig.minSpendBeforeAction.toNumber(),
+      });
+    } catch (err) {
+      // Auto-execute failures must not crash the diagnosis run
+      console.error('[runDiagnosis] Auto-execute failed:', err);
+      autoActions = {
+        actionsQueued: 0,
+        actionsSkipped: 0,
+        reasons: [`Auto-execute error: ${(err as Error).message}`],
+      };
+    }
+  }
+
   return {
     adsEvaluated: ads.length,
     diagnosesCreated,
     diagnosesUpdated,
     diagnosesExpired: expiredCount,
     durationMs: Date.now() - start,
+    autoActions,
   };
 }
