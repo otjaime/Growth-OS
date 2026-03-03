@@ -109,16 +109,7 @@ vi.mock('../lib/copy-generator.js', () => ({
   ]),
 }));
 
-vi.mock('../lib/plan-guard.js', () => ({
-  requirePlan: vi.fn().mockResolvedValue(undefined),
-  PlanError: class PlanError extends Error {
-    statusCode = 403;
-    constructor(public currentPlan: string, public requiredPlan: string) {
-      super(`This feature requires the ${requiredPlan} plan or higher. Current plan: ${currentPlan}.`);
-      this.name = 'PlanError';
-    }
-  },
-}));
+// Plan guard removed from autopilot routes — no mock needed
 
 vi.mock('../jobs/execute-action.js', () => ({
   executeAction: vi.fn().mockResolvedValue({
