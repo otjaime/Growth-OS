@@ -1034,6 +1034,68 @@ export async function autopilotRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── GET /autopilot/check-permissions — verify Meta token scopes ──
+  app.get('/autopilot/check-permissions', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Check Meta token permissions',
+      description: 'Verifies the Meta access token has ads_management scope for write operations.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads', organizationId },
+    });
+
+    if (!credential) {
+      return { ok: false, error: 'No Meta Ads connector found' };
+    }
+
+    let creds: Record<string, string>;
+    try {
+      creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+    } catch {
+      return { ok: false, error: 'Failed to decrypt credentials' };
+    }
+
+    const accessToken = creds.accessToken ?? '';
+    if (!accessToken) {
+      return { ok: false, error: 'No access token in credentials' };
+    }
+
+    // Call Meta debug_token or /me/permissions to check scopes
+    try {
+      const resp = await fetch(
+        `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`,
+      );
+      const body = await resp.json() as { data?: Array<{ permission: string; status: string }> };
+      const permissions = (body.data ?? []).map((p) => ({
+        permission: p.permission,
+        status: p.status,
+      }));
+
+      const hasAdsManagement = permissions.some(
+        (p) => p.permission === 'ads_management' && p.status === 'granted',
+      );
+      const hasAdsRead = permissions.some(
+        (p) => p.permission === 'ads_read' && p.status === 'granted',
+      );
+
+      return {
+        ok: hasAdsManagement,
+        hasAdsManagement,
+        hasAdsRead,
+        permissions,
+        message: hasAdsManagement
+          ? 'Token has ads_management — write operations are allowed'
+          : 'Token is MISSING ads_management scope — cannot make changes via API. Re-generate the token with ads_management permission.',
+      };
+    } catch (err) {
+      return { ok: false, error: `Failed to check permissions: ${(err as Error).message}` };
+    }
+  });
+
   // ── GET /autopilot/history — action history ──────────────────
   app.get('/autopilot/history', {
     schema: {
