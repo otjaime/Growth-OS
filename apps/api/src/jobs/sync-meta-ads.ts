@@ -4,7 +4,7 @@
 // and upserts into MetaAdAccount / MetaCampaign / MetaAdSet / MetaAd
 // ──────────────────────────────────────────────────────────────
 
-import { prisma, decrypt, isDemoMode } from '@growth-os/database';
+import { prisma, decrypt, isDemoMode, Prisma } from '@growth-os/database';
 import { fetchMetaAdCreatives } from '@growth-os/etl';
 import type { MetaAdCreativeConfig, MetaAdInsight } from '@growth-os/etl';
 
@@ -292,6 +292,54 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
       },
     });
     snapshotsUpserted++;
+  }
+
+  // 8. Populate afterValue for recent action logs that were just synced
+  const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const pendingLogs = await prisma.autopilotActionLog.findMany({
+    where: {
+      organizationId,
+      success: true,
+      afterValue: { equals: Prisma.DbNull },
+      createdAt: { gte: cutoff48h },
+    },
+  });
+
+  if (pendingLogs.length > 0) {
+    const targetIds = [...new Set(pendingLogs.map((l) => l.targetId))];
+    const logAds = await prisma.metaAd.findMany({
+      where: { organizationId, adId: { in: targetIds } },
+      select: {
+        adId: true,
+        status: true,
+        spend7d: true,
+        roas7d: true,
+        ctr7d: true,
+        conversions7d: true,
+        adSet: { select: { dailyBudget: true } },
+      },
+    });
+
+    const adByExternalId = new Map(logAds.map((a) => [a.adId, a]));
+
+    for (const log of pendingLogs) {
+      const ad = adByExternalId.get(log.targetId);
+      if (!ad) continue;
+
+      await prisma.autopilotActionLog.update({
+        where: { id: log.id },
+        data: {
+          afterValue: {
+            status: ad.status,
+            spend7d: ad.spend7d?.toString(),
+            roas7d: ad.roas7d?.toString(),
+            ctr7d: ad.ctr7d?.toString(),
+            conversions7d: ad.conversions7d,
+            dailyBudget: ad.adSet?.dailyBudget?.toString(),
+          } as never,
+        },
+      });
+    }
   }
 
   return {

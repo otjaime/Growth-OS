@@ -16,7 +16,7 @@ function formatCurrency(value: number): string {
 function ChangeBadge({ changePct }: { changePct: number }) {
   if (Math.abs(changePct) < 0.5) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-[var(--foreground-secondary)] font-medium">
+      <span className="inline-flex items-center gap-0.5 text-caption px-1.5 py-0.5 rounded-full bg-glass-hover text-[var(--foreground-secondary)] font-medium">
         <Minus className="h-3 w-3" />
         Hold
       </span>
@@ -24,14 +24,14 @@ function ChangeBadge({ changePct }: { changePct: number }) {
   }
   if (changePct > 0) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-medium">
+      <span className="inline-flex items-center gap-0.5 text-caption px-1.5 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-medium">
         <TrendingUp className="h-3 w-3" />
         +{changePct.toFixed(0)}%
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-medium">
+    <span className="inline-flex items-center gap-0.5 text-caption px-1.5 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-medium">
       <TrendingDown className="h-3 w-3" />
       {changePct.toFixed(0)}%
     </span>
@@ -61,8 +61,15 @@ export function BudgetView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card p-4 space-y-3">
+              <div className="h-3 w-24 skeleton-shimmer" />
+              <div className="h-7 w-20 skeleton-shimmer" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -97,14 +104,14 @@ export function BudgetView() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <ReflectiveCard className="card p-4">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Daily Budget</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Daily Budget</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {formatCurrency(data.totalCurrentDailyBudget)}
           </p>
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Suggested Daily Budget</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Suggested Daily Budget</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {formatCurrency(data.totalSuggestedDailyBudget)}
           </p>
@@ -121,14 +128,14 @@ export function BudgetView() {
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Blended ROAS</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Blended ROAS</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {data.currentBlendedRoas != null ? `${data.currentBlendedRoas.toFixed(2)}x` : '--'}
           </p>
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Projected ROAS</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Projected ROAS</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {data.projectedBlendedRoas != null ? `${data.projectedBlendedRoas.toFixed(2)}x` : '--'}
           </p>
@@ -168,19 +175,19 @@ export function BudgetView() {
           <table className="w-full min-w-[600px]">
             <thead>
               <tr className="border-b border-[var(--glass-border)]">
-                <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Ad Set</th>
-                <th className="text-right text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Current</th>
-                <th className="text-center text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3 w-8" />
-                <th className="text-right text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Suggested</th>
-                <th className="text-center text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Change</th>
-                <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Reason</th>
+                <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Ad Set</th>
+                <th className="text-right text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Current</th>
+                <th className="text-center text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3 w-8" />
+                <th className="text-right text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Suggested</th>
+                <th className="text-center text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Change</th>
+                <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Reason</th>
               </tr>
             </thead>
             <tbody>
               {data.allocations.map((alloc) => (
                 <tr
                   key={alloc.adSetId}
-                  className="border-b border-[var(--glass-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors"
+                  className="table-separator last:bg-none hover:bg-glass-muted transition-colors"
                 >
                   <td className="px-4 py-3">
                     <p className="text-sm font-medium text-[var(--foreground)] truncate max-w-[200px]">

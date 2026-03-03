@@ -7,14 +7,15 @@
 // Safety checks:
 //   0a. Execution window (business hours only)
 //   0b. Circuit breaker not tripped
-//   0c. Daily action limit not exceeded
 //   1.  Only auto-executable action types (PAUSE_AD, INCREASE_BUDGET,
 //       DECREASE_BUDGET, REACTIVATE_AD)
 //   2.  Max 3 auto-actions per 24h per campaign
 //   3.  DISMISSED diagnosis blocks auto-action on that ad for 7 days
 //   4.  Budget increases respect maxBudgetIncreasePct
 //   5.  Minimum spend threshold (minSpendBeforeAction)
-//   6.  Daily budget change cap (org-level)
+//   6.  Global daily action limit (maxActionsPerDay)
+//   7.  Daily budget cap enforcement (dailyBudgetCap)
+//   8.  Minimum confidence threshold
 // ──────────────────────────────────────────────────────────────
 
 import { prisma } from '@growth-os/database';
@@ -47,11 +48,12 @@ export interface AutopilotConfigLike {
   readonly mode: string;
   readonly maxBudgetIncreasePct: number;
   readonly minSpendBeforeAction: number;
+  readonly maxActionsPerDay: number;
+  readonly dailyBudgetCap: number | null;
+  readonly minConfidence: number;
   readonly executionWindowStart: number;
   readonly executionWindowEnd: number;
   readonly executionTimezone: string;
-  readonly maxActionsPerDay: number;
-  readonly dailyBudgetChangeCap: number | null;
   readonly circuitBreakerTrippedAt: Date | null;
 }
 
@@ -68,13 +70,10 @@ function isWithinExecutionWindow(config: AutopilotConfigLike): boolean {
     const currentHour = parseInt(formatter.format(new Date()), 10);
 
     if (config.executionWindowStart <= config.executionWindowEnd) {
-      // Normal window: e.g. 9–17
       return currentHour >= config.executionWindowStart && currentHour < config.executionWindowEnd;
     }
-    // Overnight window: e.g. 22–6
     return currentHour >= config.executionWindowStart || currentHour < config.executionWindowEnd;
   } catch {
-    // If timezone is invalid, default to allowing execution
     return true;
   }
 }
@@ -116,47 +115,6 @@ export async function autoExecutePending(
     return result;
   }
 
-  // Safety 0c: Daily action limit — count today's auto-actions
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayAutoActions = await prisma.autopilotActionLog.count({
-    where: {
-      organizationId,
-      triggeredBy: 'auto',
-      createdAt: { gte: todayStart },
-    },
-  });
-
-  if (todayAutoActions >= config.maxActionsPerDay) {
-    result.reasons.push(
-      `Daily action limit reached (${todayAutoActions}/${config.maxActionsPerDay})`,
-    );
-    return result;
-  }
-
-  let remainingDailyActions = config.maxActionsPerDay - todayAutoActions;
-
-  // Safety 6 pre-calc: Daily budget change cap — sum today's budget changes
-  let dailyBudgetChangeUsed = 0;
-  if (config.dailyBudgetChangeCap !== null) {
-    const todayBudgetActions = await prisma.autopilotActionLog.findMany({
-      where: {
-        organizationId,
-        triggeredBy: 'auto',
-        success: true,
-        actionType: { in: ['INCREASE_BUDGET', 'DECREASE_BUDGET'] },
-        createdAt: { gte: todayStart },
-      },
-      select: { beforeValue: true, afterValue: true },
-    });
-
-    for (const a of todayBudgetActions) {
-      const before = (a.beforeValue as Record<string, number> | null)?.dailyBudget ?? 0;
-      const after = (a.afterValue as Record<string, number> | null)?.dailyBudget ?? 0;
-      dailyBudgetChangeUsed += Math.abs(after - before);
-    }
-  }
-
   // Fetch all PENDING diagnoses for this org, including ad info for safety checks
   const pendingDiagnoses = await prisma.diagnosis.findMany({
     where: {
@@ -171,11 +129,11 @@ export async function autoExecutePending(
           name: true,
           campaignId: true,
           spend7d: true,
-          adSet: { select: { dailyBudget: true } },
+          adSet: { select: { adSetId: true, dailyBudget: true } },
         },
       },
     },
-    orderBy: { createdAt: 'asc' }, // process oldest first
+    orderBy: { createdAt: 'asc' },
   });
 
   if (pendingDiagnoses.length === 0) {
@@ -186,6 +144,25 @@ export async function autoExecutePending(
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - DISMISSED_BLOCK_DAYS * 24 * 60 * 60 * 1000);
 
+  // Safety 6: Global daily action limit
+  const todayActionCount = await prisma.autopilotActionLog.count({
+    where: {
+      organizationId,
+      triggeredBy: 'auto',
+      createdAt: { gte: twentyFourHoursAgo },
+    },
+  });
+
+  if (todayActionCount >= config.maxActionsPerDay) {
+    result.reasons.push(
+      `Daily action limit reached (${todayActionCount}/${config.maxActionsPerDay}). All remaining diagnoses skipped.`,
+    );
+    result.actionsSkipped = pendingDiagnoses.length;
+    return result;
+  }
+
+  let actionsRemainingToday = config.maxActionsPerDay - todayActionCount;
+
   // Pre-fetch recent action logs for campaign-level rate limiting.
   // Group by campaign via the ads in this org.
   const recentActions = await prisma.autopilotActionLog.findMany({
@@ -194,14 +171,9 @@ export async function autoExecutePending(
       triggeredBy: 'auto',
       createdAt: { gte: twentyFourHoursAgo },
     },
-    select: {
-      targetId: true,
-    },
+    select: { targetId: true },
   });
 
-  // Build a map: campaignId → count of auto-actions in last 24h
-  // We need to resolve targetId (Meta external adId) → campaignId.
-  // Fetch all ads for this org to build the lookup.
   const orgAds = await prisma.metaAd.findMany({
     where: { organizationId },
     select: { adId: true, campaignId: true },
@@ -230,8 +202,27 @@ export async function autoExecutePending(
   });
   const dismissedAdIds = new Set(dismissedDiagnoses.map((d) => d.adId));
 
+  // Safety 7: Pre-compute total daily spend for budget cap
+  let totalDailySpend: number | null = null;
+  if (config.dailyBudgetCap !== null) {
+    const activeAdSets = await prisma.metaAdSet.findMany({
+      where: { organizationId, status: 'ACTIVE' },
+      select: { dailyBudget: true },
+    });
+    totalDailySpend = activeAdSets.reduce(
+      (sum, as_) => sum + (as_.dailyBudget?.toNumber() ?? 0),
+      0,
+    );
+  }
+
   // Process each pending diagnosis
   for (const diag of pendingDiagnoses) {
+    if (actionsRemainingToday <= 0) {
+      result.actionsSkipped++;
+      result.reasons.push(`Daily action limit reached. Skipping remaining diagnoses.`);
+      continue;
+    }
+
     const adName = diag.ad.name ?? diag.ad.adId;
 
     // Safety 1: Only auto-executable action types
@@ -280,6 +271,18 @@ export async function autoExecutePending(
           continue;
         }
       }
+
+      // Safety 7: Daily budget cap enforcement
+      if (config.dailyBudgetCap !== null && totalDailySpend !== null && suggested?.newBudget && currentBudget) {
+        const increase = suggested.newBudget - currentBudget;
+        if (totalDailySpend + increase > config.dailyBudgetCap) {
+          result.actionsSkipped++;
+          result.reasons.push(
+            `Skipped "${adName}" (${diag.ruleId}): budget increase would push total daily spend ($${(totalDailySpend + increase).toFixed(2)}) over cap ($${config.dailyBudgetCap})`,
+          );
+          continue;
+        }
+      }
     }
 
     // Safety 5: Minimum spend threshold
@@ -292,29 +295,11 @@ export async function autoExecutePending(
       continue;
     }
 
-    // Safety 6: Daily budget change cap (org-level)
-    if (
-      config.dailyBudgetChangeCap !== null &&
-      (diag.actionType === 'INCREASE_BUDGET' || diag.actionType === 'DECREASE_BUDGET')
-    ) {
-      const suggested = diag.suggestedValue as { newBudget?: number } | null;
-      const currentBudget = diag.ad.adSet?.dailyBudget ? Number(diag.ad.adSet.dailyBudget) : 0;
-      const proposedChange = Math.abs((suggested?.newBudget ?? 0) - currentBudget);
-
-      if (dailyBudgetChangeUsed + proposedChange > config.dailyBudgetChangeCap) {
-        result.actionsSkipped++;
-        result.reasons.push(
-          `Skipped "${adName}" (${diag.ruleId}): daily budget change cap reached ($${dailyBudgetChangeUsed.toFixed(2)} used of $${config.dailyBudgetChangeCap} cap)`,
-        );
-        continue;
-      }
-    }
-
-    // Safety 0c (mid-loop): Daily action limit
-    if (remainingDailyActions <= 0) {
-      result.actionsRemaining++;
+    // Safety 8: Minimum confidence threshold
+    if (diag.confidence !== null && diag.confidence !== undefined && diag.confidence < config.minConfidence) {
+      result.actionsSkipped++;
       result.reasons.push(
-        `Skipped "${adName}" (${diag.ruleId}): daily action limit reached`,
+        `Skipped "${adName}" (${diag.ruleId}): confidence ${diag.confidence}% below threshold ${config.minConfidence}%`,
       );
       continue;
     }
@@ -332,17 +317,28 @@ export async function autoExecutePending(
 
       if (execResult.success) {
         result.actionsQueued++;
-        remainingDailyActions--;
+        actionsRemainingToday--;
         // Increment campaign counter to enforce the per-24h limit within this run
         campaignActionCount.set(campaignId, campCount + 1);
-        // Track budget change for daily cap
-        if (
-          config.dailyBudgetChangeCap !== null &&
-          (diag.actionType === 'INCREASE_BUDGET' || diag.actionType === 'DECREASE_BUDGET')
-        ) {
+
+        // Record feedback
+        await prisma.diagnosisFeedback.create({
+          data: {
+            organizationId,
+            ruleId: diag.ruleId,
+            action: 'AUTO_EXECUTED',
+            diagnosisId: diag.id,
+            confidence: diag.confidence,
+          },
+        });
+
+        // Update running total for budget cap
+        if (diag.actionType === 'INCREASE_BUDGET' && totalDailySpend !== null) {
           const suggested = diag.suggestedValue as { newBudget?: number } | null;
           const currentBudget = diag.ad.adSet?.dailyBudget ? Number(diag.ad.adSet.dailyBudget) : 0;
-          dailyBudgetChangeUsed += Math.abs((suggested?.newBudget ?? 0) - currentBudget);
+          if (suggested?.newBudget) {
+            totalDailySpend += suggested.newBudget - currentBudget;
+          }
         }
       } else {
         result.actionsSkipped++;

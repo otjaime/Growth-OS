@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'motion/react';
 import { Target, BarChart3, Clock, DollarSign, Activity, Settings } from 'lucide-react';
 import type { AutopilotTab } from './types';
 
@@ -23,8 +24,8 @@ export function AutopilotTabBar({ activeTab, onTabChange, diagnosisCount, adsCou
 
   return (
     <div className="flex items-center gap-2" role="tablist" aria-label="Autopilot sections">
-      {/* Main tabs */}
-      <div className="flex items-center gap-1 bg-white/[0.04] rounded-xl p-1">
+      {/* Segmented control */}
+      <div className="relative flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
         {mainTabs.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
           const count = key === 'diagnoses' ? diagnosisCount : key === 'ads' ? adsCount : undefined;
@@ -35,21 +36,27 @@ export function AutopilotTabBar({ activeTab, onTabChange, diagnosisCount, adsCou
               role="tab"
               aria-selected={isActive}
               onClick={() => onTabChange(key)}
-              className={`flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-lg transition-all ease-spring ${
-                isActive
-                  ? 'bg-white/[0.08] text-[var(--foreground)]'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.04]'
-              }`}
+              className="relative z-10 flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-lg press-scale transition-colors ease-spring"
+              style={{ color: isActive ? 'var(--foreground)' : 'var(--foreground-secondary)' }}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              {count !== undefined && count > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                  isActive ? 'bg-white/[0.1] text-[var(--foreground)]' : 'bg-white/[0.06] text-[var(--foreground-secondary)]'
-                }`}>
-                  {count}
-                </span>
+              {isActive && (
+                <motion.div
+                  layoutId="active-tab"
+                  className="absolute inset-0 bg-glass-active rounded-lg"
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
               )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+                {count !== undefined && count > 0 && (
+                  <span className={`text-caption px-1.5 py-0.5 rounded-full font-semibold ${
+                    isActive ? 'bg-glass-active-strong text-[var(--foreground)]' : 'bg-glass-hover text-[var(--foreground-secondary)]'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </span>
             </button>
           );
         })}
@@ -63,10 +70,10 @@ export function AutopilotTabBar({ activeTab, onTabChange, diagnosisCount, adsCou
         role="tab"
         aria-selected={isSettingsActive}
         onClick={() => onTabChange('settings')}
-        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg transition-all ease-spring ${
+        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg press-scale transition-all ease-spring ${
           isSettingsActive
-            ? 'bg-white/[0.08] text-[var(--foreground)]'
-            : 'text-[var(--foreground-secondary)]/60 hover:text-[var(--foreground-secondary)] hover:bg-white/[0.04]'
+            ? 'bg-glass-active text-[var(--foreground)]'
+            : 'text-[var(--foreground-secondary)]/60 hover:text-[var(--foreground-secondary)] hover:bg-glass-muted'
         }`}
         title="Autopilot Settings"
       >

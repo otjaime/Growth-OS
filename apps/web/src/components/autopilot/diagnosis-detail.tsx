@@ -7,10 +7,13 @@ import {
 } from 'lucide-react';
 import { SeverityBadge } from './severity-badge';
 import { ExpiryCountdown } from './expiry-countdown';
+import { ConfidenceBadge } from './confidence-badge';
 import { AdThumbnail } from './ad-thumbnail';
 import { TrendArrow } from './trend-arrow';
 import type { Diagnosis, AdVariant } from './types';
 import { AIInsightCard } from './ai-insight-card';
+import { ConfirmationModal } from './confirmation-modal';
+import { ExecutionStatus } from './execution-status';
 import { apiFetch } from '@/lib/api';
 
 interface DiagnosisDetailProps {
@@ -58,8 +61,8 @@ function MetricPill({ label, value, change, invert }: {
   invert?: boolean;
 }) {
   return (
-    <div className="px-3 py-2 bg-white/[0.04] rounded-lg">
-      <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
+    <div className="px-3 py-2 bg-glass-muted rounded-lg">
+      <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
       <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{value}</p>
       {change !== undefined && <TrendArrow change={change ?? null} invert={invert} size="sm" />}
     </div>
@@ -87,26 +90,26 @@ function CopyVariantCard({
   return (
     <div className="card border border-[var(--glass-border)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold ${angleColor}`}>
+        <span className={`text-caption px-2 py-0.5 rounded-full uppercase font-semibold ${angleColor}`}>
           {angleName}
         </span>
         {variant.status === 'APPROVED' && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">APPROVED</span>
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">APPROVED</span>
         )}
         {variant.status === 'REJECTED' && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">REJECTED</span>
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">REJECTED</span>
         )}
       </div>
 
       {/* Before / After comparison */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2 opacity-50">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Current</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Current</p>
           <p className="text-xs font-semibold text-[var(--foreground)]">{original.headline ?? '—'}</p>
           <p className="text-xs text-[var(--foreground-secondary)] line-clamp-2">{original.primaryText ?? '—'}</p>
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] uppercase text-apple-blue/80 font-medium">Variant</p>
+          <p className="text-caption uppercase text-apple-blue/80 font-medium">Variant</p>
           <p className="text-xs font-semibold text-[var(--foreground)]">{variant.headline}</p>
           <p className="text-xs text-[var(--foreground-secondary)] line-clamp-2">{variant.primaryText}</p>
         </div>
@@ -141,6 +144,13 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
   const [dismissing, setDismissing] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveResult, setApproveResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    detail?: string;
+    confirmLabel: string;
+    confirmColor: 'red' | 'green' | 'yellow' | 'blue';
+  } | null>(null);
 
   const d = diagnosis;
   const ad = d.ad;
@@ -197,6 +207,50 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
     }
   };
 
+  const requestApprove = () => {
+    const sv = d.suggestedValue ?? {};
+
+    switch (d.actionType) {
+      case 'PAUSE_AD':
+        setConfirmModal({
+          title: `Pause "${ad.name}"?`,
+          message: `This ad generated $${Number(ad.spend7d).toFixed(0)} spend with ${ad.roas7d != null ? Number(ad.roas7d).toFixed(2) + 'x ROAS' : 'unknown ROAS'} this week.`,
+          detail: 'The ad will be paused immediately in Meta Ads Manager.',
+          confirmLabel: 'Pause Ad',
+          confirmColor: 'red',
+        });
+        break;
+      case 'INCREASE_BUDGET':
+        setConfirmModal({
+          title: 'Increase Budget?',
+          message: `Scale from $${sv.currentBudget ?? '?'}/day to $${sv.suggestedBudget ?? '?'}/day.`,
+          detail: `Additional weekly spend: ~$${((Number(sv.suggestedBudget) || 0) - (Number(sv.currentBudget) || 0)) * 7}/week.`,
+          confirmLabel: 'Scale Budget',
+          confirmColor: 'green',
+        });
+        break;
+      case 'DECREASE_BUDGET':
+        setConfirmModal({
+          title: 'Decrease Budget?',
+          message: 'Reduce budget to limit exposure on this underperforming ad.',
+          confirmLabel: 'Reduce Budget',
+          confirmColor: 'yellow',
+        });
+        break;
+      case 'REACTIVATE_AD':
+        setConfirmModal({
+          title: `Reactivate "${ad.name}"?`,
+          message: `This paused ad had ${(sv.previousRoas as number)?.toFixed(2) ?? '?'}x ROAS. It will be set to ACTIVE in Meta.`,
+          confirmLabel: 'Reactivate',
+          confirmColor: 'green',
+        });
+        break;
+      default:
+        handleApprove();
+        break;
+    }
+  };
+
   const handleVariantAction = async (variantId: string, status: 'APPROVED' | 'REJECTED') => {
     try {
       const res = await apiFetch(`/api/autopilot/variants/${variantId}`, {
@@ -219,8 +273,9 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
         <div className="flex items-center gap-2 mb-2">
           <SeverityBadge severity={d.severity} />
           <ExpiryCountdown expiresAt={d.expiresAt} />
+          {d.confidence !== null && <ConfidenceBadge confidence={d.confidence} />}
         </div>
-        <h2 className="text-lg font-bold text-[var(--foreground)]">{d.title}</h2>
+        <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">{d.title}</h2>
         <p className="text-sm text-[var(--foreground-secondary)] mt-1">{d.message}</p>
       </div>
 
@@ -239,12 +294,12 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
               {ad.campaign.name} &rsaquo; {ad.adSet.name}
             </p>
             <div className="flex items-center gap-2 mt-1.5">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                ad.status === 'ACTIVE' ? 'text-apple-green bg-[var(--tint-green)]' : 'text-[var(--foreground-secondary)] bg-white/[0.06]'
+              <span className={`text-caption px-1.5 py-0.5 rounded font-medium ${
+                ad.status === 'ACTIVE' ? 'text-apple-green bg-[var(--tint-green)]' : 'text-[var(--foreground-secondary)] bg-glass-hover'
               }`}>
                 {ad.status}
               </span>
-              <span className="text-[10px] text-[var(--foreground-secondary)]/60 uppercase">{ad.creativeType}</span>
+              <span className="text-caption text-[var(--foreground-secondary)]/60 uppercase">{ad.creativeType}</span>
             </div>
           </div>
         </div>
@@ -284,7 +339,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
 
           {d.actionType === 'PAUSE_AD' && d.status === 'PENDING' && !approveResult?.success && (
             <button
-              onClick={handleApprove}
+              onClick={requestApprove}
               disabled={approving}
               className="flex items-center gap-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
@@ -295,7 +350,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
 
           {d.actionType === 'REACTIVATE_AD' && d.status === 'PENDING' && !approveResult?.success && (
             <button
-              onClick={handleApprove}
+              onClick={requestApprove}
               disabled={approving}
               className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
@@ -306,7 +361,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
 
           {d.actionType === 'INCREASE_BUDGET' && d.status === 'PENDING' && !approveResult?.success && (
             <button
-              onClick={handleApprove}
+              onClick={requestApprove}
               disabled={approving}
               className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
@@ -317,7 +372,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
 
           {d.actionType === 'DECREASE_BUDGET' && d.status === 'PENDING' && !approveResult?.success && (
             <button
-              onClick={handleApprove}
+              onClick={requestApprove}
               disabled={approving}
               className="flex items-center gap-1.5 text-xs font-medium text-apple-yellow bg-[var(--tint-yellow)] hover:bg-apple-yellow/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
@@ -330,7 +385,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={handleDismiss}
               disabled={dismissing}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-white/[0.06] hover:bg-white/[0.1] px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-hover hover:bg-glass-active-strong px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
               {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
               Dismiss
@@ -353,6 +408,14 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
               : <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />}
             {approveResult.message}
           </div>
+        )}
+
+        {d.status === 'APPROVED' && (
+          <ExecutionStatus
+            diagnosisId={d.id}
+            status={d.status}
+            onExecuted={onRefresh}
+          />
         )}
       </div>
 
@@ -378,6 +441,21 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
           ))}
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        open={!!confirmModal}
+        title={confirmModal?.title ?? ''}
+        message={confirmModal?.message ?? ''}
+        detail={confirmModal?.detail}
+        confirmLabel={confirmModal?.confirmLabel ?? 'Confirm'}
+        confirmColor={confirmModal?.confirmColor ?? 'blue'}
+        onConfirm={() => {
+          setConfirmModal(null);
+          handleApprove();
+        }}
+        onCancel={() => setConfirmModal(null)}
+      />
     </div>
   );
 }

@@ -12,7 +12,7 @@ const config: Record<DiagnosisSeverity, { icon: typeof AlertTriangle; color: str
 export function SeverityBadge({ severity }: { severity: DiagnosisSeverity }) {
   const c = config[severity];
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold tracking-wide ${c.bg} ${c.text}`}>
+    <span className={`text-caption px-2 py-0.5 rounded-full uppercase font-semibold tracking-wide ${c.bg} ${c.text}`}>
       {severity}
     </span>
   );

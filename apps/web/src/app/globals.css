@@ -74,6 +74,17 @@
   --transition-fast: 150ms var(--ease-spring);
   --transition-normal: 250ms var(--ease-spring);
 
+  /* ── Interactive Glass States ─────────────── */
+  --glass-hover: rgba(255, 255, 255, 0.06);
+  --glass-active: rgba(255, 255, 255, 0.08);
+  --glass-active-strong: rgba(255, 255, 255, 0.10);
+  --glass-muted: rgba(255, 255, 255, 0.04);
+  --glass-skeleton: rgba(255, 255, 255, 0.06);
+
+  /* ── Separators ─────────────────────────── */
+  --separator: rgba(255, 255, 255, 0.04);
+  --separator-strong: rgba(255, 255, 255, 0.06);
+
   /* ── Chart Tokens ─────────────────────────── */
   --chart-grid: rgba(255, 255, 255, 0.06);
   --chart-axis: rgba(255, 255, 255, 0.35);
@@ -211,6 +222,62 @@ body {
    ========================================================== */
 .card:hover {
   border-color: var(--glass-border-hover);
+}
+
+/* ==========================================================
+   TAHOE UTILITY CLASSES
+   ========================================================== */
+
+/* Gradient table separator (replaces hard border-b on rows) */
+.table-separator {
+  border-bottom: none;
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    var(--separator) 10%,
+    var(--separator) 90%,
+    transparent
+  );
+  background-size: 100% 1px;
+  background-position: bottom;
+  background-repeat: no-repeat;
+}
+
+/* Press feedback for interactive elements */
+.press-scale {
+  transition: transform 0.1s var(--ease-spring);
+}
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+/* Shimmer skeleton (replaces animate-pulse) */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--glass-skeleton) 25%,
+    rgba(255, 255, 255, 0.10) 50%,
+    var(--glass-skeleton) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Global focus ring */
+*:focus-visible {
+  outline: 2px solid var(--accent, #0a84ff);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .press-scale:active { transform: none; }
+  .skeleton-shimmer { animation: none; background: var(--glass-skeleton); }
 }
 
 /* ==========================================================

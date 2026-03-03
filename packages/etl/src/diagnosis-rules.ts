@@ -54,6 +54,7 @@ export interface DiagnosisResult {
   message: string;
   actionType: DiagnosisActionType;
   suggestedValue: Record<string, unknown> | null;
+  confidence: number; // 0-100
 }
 
 export interface DiagnosisRuleConfig {
@@ -64,6 +65,20 @@ export interface DiagnosisRuleConfig {
 }
 
 // ── Rule Definitions ─────────────────────────────────────────
+
+/** Calculate confidence score based on data quality factors. */
+function computeConfidence(base: number, input: DiagnosisRuleInput): number {
+  let score = base;
+  // Penalize low impression count
+  if (input.impressions7d < 500) score -= 30;
+  else if (input.impressions7d < 1000) score -= 20;
+  // Penalize high week-over-week variance
+  if (input.roas7d !== null && input.roas14d !== null && input.roas14d > 0) {
+    const variance = Math.abs(input.roas7d - input.roas14d) / input.roas14d;
+    if (variance > 0.5) score -= 15;
+  }
+  return Math.max(0, Math.min(100, score));
+}
 
 /**
  * Rule 7: Learning Phase (checked FIRST — blocks all other rules)
@@ -81,8 +96,8 @@ function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisR
   const isNew = ageHours < 48;
   const lowImpressions = input.impressions7d < 500;
 
-  // Both must be true: new AND low impressions
-  if (isNew && lowImpressions) {
+  // Either condition triggers learning phase
+  if (isNew || lowImpressions) {
     return {
       ruleId: 'learning_phase',
       severity: 'INFO',
@@ -90,6 +105,7 @@ function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisR
       message: `${input.adName}: Ad is ${Math.round(ageHours)}h old with only ${input.impressions7d} impressions. Wait for more data before making changes.`,
       actionType: 'NONE',
       suggestedValue: null,
+      confidence: 50,
     };
   }
   return null;
@@ -115,6 +131,7 @@ function evaluateCreativeFatigue(input: DiagnosisRuleInput, config?: DiagnosisRu
     message: `${input.adName}: Frequency at ${input.frequency7d.toFixed(1)}x and CTR dropped ${(ctrDrop * 100).toFixed(0)}% (${(input.ctr14d * 100).toFixed(2)}% → ${(input.ctr7d * 100).toFixed(2)}%). Audience is seeing this ad too often with declining engagement.`,
     actionType: 'GENERATE_COPY_VARIANTS',
     suggestedValue: { currentFrequency: input.frequency7d, ctrDrop: Math.round(ctrDrop * 100) },
+    confidence: computeConfidence(70, input),
   };
 }
 
@@ -134,6 +151,7 @@ function evaluateNegativeRoas(input: DiagnosisRuleInput): DiagnosisResult | null
     message: `${input.adName}: ROAS is ${input.roas7d.toFixed(2)}x on $${input.spend7d.toFixed(0)} spend (7d). This ad is unprofitable and burning budget.`,
     actionType: 'PAUSE_AD',
     suggestedValue: { currentRoas: input.roas7d, spend7d: input.spend7d },
+    confidence: computeConfidence(90, input),
   };
 }
 
@@ -162,6 +180,7 @@ function evaluateWinnerNotScaled(input: DiagnosisRuleInput, config?: DiagnosisRu
       message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x with low frequency (${input.frequency7d.toFixed(1)}x). There's headroom to scale this ad set from $${input.adSetDailyBudget}/day to $${suggestedBudget}/day.`,
       actionType: 'INCREASE_BUDGET',
       suggestedValue: { currentBudget: input.adSetDailyBudget, suggestedBudget, currentRoas: input.roas7d },
+      confidence: computeConfidence(75, input),
     };
   }
 
@@ -175,6 +194,7 @@ function evaluateWinnerNotScaled(input: DiagnosisRuleInput, config?: DiagnosisRu
     message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x with low frequency (${input.frequency7d.toFixed(1)}x). Currently spending ~$${estimatedDaily}/day — consider increasing to ~$${suggestedDaily}/day to capture more conversions.`,
     actionType: 'INCREASE_BUDGET',
     suggestedValue: { estimatedDailySpend: estimatedDaily, suggestedBudget: suggestedDaily, currentRoas: input.roas7d },
+    confidence: computeConfidence(75, input),
   };
 }
 
@@ -196,6 +216,7 @@ function evaluateWastedBudget(input: DiagnosisRuleInput): DiagnosisResult | null
     message: `${input.adName}: Spent $${input.spend7d.toFixed(0)} in 7 days with only ${input.conversions7d} conversion(s). Consider pausing and reallocating budget to better-performing ads.`,
     actionType: 'PAUSE_AD',
     suggestedValue: { spend7d: input.spend7d, conversions7d: input.conversions7d },
+    confidence: computeConfidence(85, input),
   };
 }
 
@@ -217,6 +238,7 @@ function evaluateLowCtr(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig)
     message: `${input.adName}: CTR at ${(input.ctr7d * 100).toFixed(2)}% on ${input.impressions7d.toLocaleString()} impressions. The creative isn't resonating — consider new copy variants.`,
     actionType: 'GENERATE_COPY_VARIANTS',
     suggestedValue: { currentCtr: input.ctr7d, impressions7d: input.impressions7d },
+    confidence: computeConfidence(65, input),
   };
 }
 
@@ -239,6 +261,7 @@ function evaluateClickNoBuy(input: DiagnosisRuleInput): DiagnosisResult | null {
     message: `${input.adName}: CTR is strong at ${(input.ctr7d * 100).toFixed(2)}% but conversion rate is only ${(conversionRate * 100).toFixed(2)}%. The ad attracts clicks but the landing page or offer isn't converting. Refresh the creative to better align expectations.`,
     actionType: 'REFRESH_CREATIVE',
     suggestedValue: { currentCtr: input.ctr7d, conversionRate, clicks7d: input.clicks7d, conversions7d: input.conversions7d },
+    confidence: computeConfidence(70, input),
   };
 }
 
@@ -260,6 +283,7 @@ function evaluatePausedPositive(input: DiagnosisRuleInput): DiagnosisResult | nu
     message: `${input.adName}: This ad was paused but had ${input.roas14d.toFixed(2)}x ROAS on $${input.spend14d.toFixed(0)} spend. Consider reactivating it.`,
     actionType: 'REACTIVATE_AD',
     suggestedValue: { previousRoas: input.roas14d, previousSpend: input.spend14d },
+    confidence: computeConfidence(60, input),
   };
 }
 
@@ -284,13 +308,99 @@ function evaluateTopPerformer(input: DiagnosisRuleInput, config?: DiagnosisRuleC
   const roasImproving = input.roas14d !== null && input.roas7d >= input.roas14d;
   const trend = roasImproving ? 'improving' : 'stable';
 
+  const budgetSuggestion: Record<string, unknown> = { currentRoas: input.roas7d, revenue7d: input.revenue7d, spend7d: input.spend7d, trend };
+  if (input.adSetDailyBudget !== null && input.adSetDailyBudget > 0) {
+    // Suggest a % increase based on ROAS headroom: ROAS 2-3 → 20% increase, 3+ → 30%
+    const pctIncrease = input.roas7d >= 3.0 ? 30 : 20;
+    const newBudget = Math.round(input.adSetDailyBudget * (1 + pctIncrease / 100));
+    budgetSuggestion.currentBudget = input.adSetDailyBudget;
+    budgetSuggestion.newBudget = newBudget;
+    budgetSuggestion.increasePct = pctIncrease;
+  }
+
   return {
     ruleId: 'top_performer',
     severity: 'INFO',
     title: 'Top Performer — Double Down',
     message: `${input.adName}: ROAS at ${input.roas7d.toFixed(2)}x generating $${input.revenue7d.toFixed(0)} revenue on $${input.spend7d.toFixed(0)} spend this week${roasImproving ? ' (trending up)' : ''}. This ad is profitable — consider increasing spend to maximize returns.`,
     actionType: 'INCREASE_BUDGET',
-    suggestedValue: { currentRoas: input.roas7d, revenue7d: input.revenue7d, spend7d: input.spend7d, trend },
+    suggestedValue: budgetSuggestion,
+    confidence: computeConfidence(80, input),
+  };
+}
+
+/**
+ * Rule 10: Budget Pacing (under-delivery detection)
+ * Trigger: status = ACTIVE AND adSetDailyBudget known AND spend7d / 7 < 50% of budget
+ * Indicates under-delivery — the ad set isn't spending its full budget.
+ */
+function evaluateBudgetPacing(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.adSetDailyBudget === null || input.adSetDailyBudget <= 0) return null;
+
+  const avgDailySpend = input.spend7d / 7;
+  const pacing = avgDailySpend / input.adSetDailyBudget;
+  if (pacing >= 0.5) return null;
+  // Need minimum impressions to be meaningful
+  if (input.impressions7d < 200) return null;
+
+  return {
+    ruleId: 'budget_pacing',
+    severity: 'WARNING',
+    title: 'Under-Delivering — Budget Not Fully Spent',
+    message: `${input.adName}: Only spending ~$${avgDailySpend.toFixed(0)}/day of $${input.adSetDailyBudget.toFixed(0)}/day budget (${(pacing * 100).toFixed(0)}% pacing). The ad set is under-delivering — check audience size and bid strategy.`,
+    actionType: 'NONE',
+    suggestedValue: { avgDailySpend: Math.round(avgDailySpend), dailyBudget: input.adSetDailyBudget, pacing: Math.round(pacing * 100) },
+    confidence: computeConfidence(75, input),
+  };
+}
+
+/**
+ * Rule 11: Audience Saturation
+ * Trigger: frequency > 3.0 AND CTR declining (7d vs 14d) but not as severe as creative_fatigue
+ * Different from creative_fatigue (freq>4 + CTR drop>20%): this catches earlier-stage saturation.
+ */
+function evaluateAudienceSaturation(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.frequency7d === null || input.frequency7d <= 3.0) return null;
+  // Don't overlap with creative_fatigue (which requires freq>4 and CTR drop>20%)
+  if (input.frequency7d > 4 && input.ctr7d !== null && input.ctr14d !== null && input.ctr14d > 0) {
+    const ctrDrop = (input.ctr14d - input.ctr7d) / input.ctr14d;
+    if (ctrDrop > 0.20) return null; // creative_fatigue will handle this
+  }
+  if (input.impressions7d < 1000) return null;
+
+  return {
+    ruleId: 'audience_saturation',
+    severity: 'WARNING',
+    title: 'Audience Saturation Risk',
+    message: `${input.adName}: Frequency at ${input.frequency7d.toFixed(1)}x — audience is seeing this ad frequently. Consider refreshing creative or broadening targeting before performance declines.`,
+    actionType: 'REFRESH_CREATIVE',
+    suggestedValue: { currentFrequency: input.frequency7d },
+    confidence: computeConfidence(65, input),
+  };
+}
+
+/**
+ * Rule 12: Cost Spike (CPC increase WoW)
+ * Trigger: CPC increased > 30% (7d vs 14d) AND spend > $50
+ */
+function evaluateCostSpike(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.cpc7d === null || input.cpc14d === null || input.cpc14d === 0) return null;
+  if (input.spend7d <= 50) return null;
+
+  const cpcIncrease = (input.cpc7d - input.cpc14d) / input.cpc14d;
+  if (cpcIncrease <= 0.30) return null;
+
+  return {
+    ruleId: 'cost_spike',
+    severity: 'WARNING',
+    title: 'Cost Per Click Spiking',
+    message: `${input.adName}: CPC increased ${(cpcIncrease * 100).toFixed(0)}% ($${input.cpc14d.toFixed(2)} → $${input.cpc7d.toFixed(2)}). Rising costs indicate audience fatigue or increased competition. Consider reducing budget until costs stabilize.`,
+    actionType: 'DECREASE_BUDGET',
+    suggestedValue: { cpc7d: input.cpc7d, cpc14d: input.cpc14d, cpcIncreasePct: Math.round(cpcIncrease * 100) },
+    confidence: computeConfidence(75, input),
   };
 }
 
@@ -334,6 +444,15 @@ export function evaluateDiagnosisRules(
 
   const clickNoBuy = evaluateClickNoBuy(input);
   if (clickNoBuy) results.push(clickNoBuy);
+
+  const pacing = evaluateBudgetPacing(input);
+  if (pacing) results.push(pacing);
+
+  const saturation = evaluateAudienceSaturation(input);
+  if (saturation) results.push(saturation);
+
+  const costSpike = evaluateCostSpike(input);
+  if (costSpike) results.push(costSpike);
 
   // Paused ad rule (8)
   const paused = evaluatePausedPositive(input);

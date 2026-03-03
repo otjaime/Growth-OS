@@ -24,10 +24,10 @@ export function SeverityGroupHeader({ severity, count }: SeverityGroupHeaderProp
   return (
     <div className={`flex items-center gap-2 py-2 mt-2 first:mt-0 ${accents[severity]}`}>
       <SeverityIcon severity={severity} className="h-3.5 w-3.5" />
-      <span className="text-[11px] uppercase font-semibold text-[var(--foreground-secondary)] tracking-wide">
+      <span className="text-label uppercase font-semibold text-[var(--foreground-secondary)] tracking-wide">
         {labels[severity]}
       </span>
-      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-[var(--foreground-secondary)] font-medium">
+      <span className="text-caption px-1.5 py-0.5 rounded-full bg-glass-hover text-[var(--foreground-secondary)] font-medium">
         {count}
       </span>
     </div>

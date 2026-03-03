@@ -11,6 +11,7 @@ import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
 import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
+import { rollbackAction } from '../jobs/rollback-action.js';
 import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
 import { isAIConfigured } from '../lib/ai.js';
 import {
@@ -26,6 +27,7 @@ import type {
   MetricSeries,
   DailySnapshot,
 } from '@growth-os/etl';
+import { computeRuleHealth } from '../lib/rule-tuner.js';
 
 /**
  * Ensure at least one Organization exists. When using Bearer-token auth
@@ -498,6 +500,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'DISMISSED' },
     });
 
+    // Record feedback for rule tuning
+    await prisma.diagnosisFeedback.create({
+      data: {
+        organizationId: diagnosis.organizationId,
+        ruleId: diagnosis.ruleId,
+        action: 'DISMISSED',
+        diagnosisId: id,
+        confidence: diagnosis.confidence,
+      },
+    });
+
     return updated;
   });
 
@@ -868,6 +881,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'APPROVED' },
     });
 
+    // Record feedback for rule tuning
+    await prisma.diagnosisFeedback.create({
+      data: {
+        organizationId,
+        ruleId: diagnosis.ruleId,
+        action: 'APPROVED',
+        diagnosisId: id,
+        confidence: diagnosis.confidence,
+      },
+    });
+
     // Execute in background
     const jobRun = await prisma.jobRun.create({
       data: {
@@ -1070,22 +1094,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
       maxCpa: config.maxCpa?.toNumber() ?? null,
       dailyBudgetCap: config.dailyBudgetCap?.toNumber() ?? null,
       maxBudgetIncreasePct: config.maxBudgetIncreasePct,
+      maxActionsPerDay: config.maxActionsPerDay,
       minSpendBeforeAction: config.minSpendBeforeAction.toNumber(),
+      minConfidence: config.minConfidence,
       // Mask webhook URL — only show whether it's set (never expose full URL)
       slackWebhookUrl: config.slackWebhookUrl ? '••••••' + config.slackWebhookUrl.slice(-8) : null,
       hasSlackWebhook: !!config.slackWebhookUrl,
       notifyOnCritical: config.notifyOnCritical,
       notifyOnAutoAction: config.notifyOnAutoAction,
-      notifyOnPendingApproval: config.notifyOnPendingApproval,
-      executionWindowStart: config.executionWindowStart,
-      executionWindowEnd: config.executionWindowEnd,
-      executionTimezone: config.executionTimezone,
-      dailyBudgetChangeCap: config.dailyBudgetChangeCap?.toNumber() ?? null,
-      maxActionsPerDay: config.maxActionsPerDay,
-      circuitBreakerEnabled: config.circuitBreakerEnabled,
-      circuitBreakerWindowH: config.circuitBreakerWindowH,
-      circuitBreakerThreshold: config.circuitBreakerThreshold,
-      circuitBreakerTrippedAt: config.circuitBreakerTrippedAt,
     };
   });
 
@@ -1137,9 +1153,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       const v = safeNumber(body.maxBudgetIncreasePct);
       data.maxBudgetIncreasePct = v !== null ? Math.max(10, Math.min(200, v)) : 50;
     }
+    if (body.maxActionsPerDay !== undefined) {
+      const v = safeNumber(body.maxActionsPerDay);
+      data.maxActionsPerDay = v !== null ? Math.max(1, Math.min(100, Math.round(v))) : 10;
+    }
     if (body.minSpendBeforeAction !== undefined) {
       const v = safeNumber(body.minSpendBeforeAction);
       data.minSpendBeforeAction = v !== null ? Math.max(0, v) : 0;
+    }
+    if (body.minConfidence !== undefined) {
+      const v = safeNumber(body.minConfidence);
+      data.minConfidence = v !== null ? Math.max(0, Math.min(100, Math.round(v))) : 70;
     }
     if (body.slackWebhookUrl !== undefined) {
       // Accept null to clear, or a non-empty string to set
@@ -1147,35 +1171,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
     if (body.notifyOnCritical !== undefined) data.notifyOnCritical = Boolean(body.notifyOnCritical);
     if (body.notifyOnAutoAction !== undefined) data.notifyOnAutoAction = Boolean(body.notifyOnAutoAction);
-    if (body.notifyOnPendingApproval !== undefined) data.notifyOnPendingApproval = Boolean(body.notifyOnPendingApproval);
-    if (body.executionWindowStart !== undefined) {
-      const v = safeNumber(body.executionWindowStart);
-      data.executionWindowStart = v !== null ? Math.max(0, Math.min(23, Math.round(v))) : 9;
-    }
-    if (body.executionWindowEnd !== undefined) {
-      const v = safeNumber(body.executionWindowEnd);
-      data.executionWindowEnd = v !== null ? Math.max(0, Math.min(23, Math.round(v))) : 17;
-    }
-    if (body.executionTimezone !== undefined) {
-      data.executionTimezone = body.executionTimezone ? String(body.executionTimezone) : 'America/New_York';
-    }
-    if (body.dailyBudgetChangeCap !== undefined) {
-      const v = safeNumber(body.dailyBudgetChangeCap);
-      data.dailyBudgetChangeCap = v !== null && v >= 0 ? v : null;
-    }
-    if (body.maxActionsPerDay !== undefined) {
-      const v = safeNumber(body.maxActionsPerDay);
-      data.maxActionsPerDay = v !== null ? Math.max(1, Math.min(100, Math.round(v))) : 10;
-    }
-    if (body.circuitBreakerEnabled !== undefined) data.circuitBreakerEnabled = Boolean(body.circuitBreakerEnabled);
-    if (body.circuitBreakerWindowH !== undefined) {
-      const v = safeNumber(body.circuitBreakerWindowH);
-      data.circuitBreakerWindowH = v !== null ? Math.max(12, Math.min(168, Math.round(v))) : 48;
-    }
-    if (body.circuitBreakerThreshold !== undefined) {
-      const v = safeNumber(body.circuitBreakerThreshold);
-      data.circuitBreakerThreshold = v !== null ? Math.max(1, Math.min(20, Math.round(v))) : 3;
-    }
 
     const updated = await prisma.autopilotConfig.update({
       where: { organizationId },
@@ -1188,7 +1183,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
       maxCpa: updated.maxCpa?.toNumber() ?? null,
       dailyBudgetCap: updated.dailyBudgetCap?.toNumber() ?? null,
       maxBudgetIncreasePct: updated.maxBudgetIncreasePct,
+      maxActionsPerDay: updated.maxActionsPerDay,
       minSpendBeforeAction: updated.minSpendBeforeAction.toNumber(),
+      minConfidence: updated.minConfidence,
       slackWebhookUrl: updated.slackWebhookUrl ? '••••••' + updated.slackWebhookUrl.slice(-8) : null,
       hasSlackWebhook: !!updated.slackWebhookUrl,
       notifyOnCritical: updated.notifyOnCritical,
@@ -1560,86 +1557,227 @@ export async function autopilotRoutes(app: FastifyInstance) {
     };
   });
 
-  // ── POST /autopilot/diagnoses/batch — batch approve/dismiss ──
-  app.post('/autopilot/diagnoses/batch', {
+  // ── POST /autopilot/actions/:id/rollback — undo an action ───
+  app.post('/autopilot/actions/:id/rollback', {
     schema: {
       tags: ['autopilot'],
-      summary: 'Batch approve or dismiss diagnoses',
-      description: 'Batch approve or dismiss multiple diagnoses. Approved diagnoses are executed via Meta API.',
+      summary: 'Rollback an executed action',
+      description: 'Performs the inverse of a previously executed action via the Meta API. Only successful, non-rollback actions less than 7 days old can be rolled back.',
     },
   }, async (request, reply) => {
-    const { ids, action, notes } = request.body as {
-      ids: string[];
-      action: 'approve' | 'dismiss';
-      notes?: string;
-    };
+    const { id } = request.params as { id: string };
+    const organizationId = await resolveOrgId(request);
 
+    // Verify the action log belongs to this org
+    const actionLog = await prisma.autopilotActionLog.findFirst({
+      where: { id, organizationId },
+    });
+
+    if (!actionLog) {
+      reply.status(404);
+      return { error: 'Action log not found' };
+    }
+
+    const result = await rollbackAction(id);
+    if (!result.success) {
+      reply.status(400);
+    }
+    return result;
+  });
+
+  // ── POST /autopilot/bulk-approve — bulk approve diagnoses ────
+  app.post('/autopilot/bulk-approve', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Bulk approve diagnoses',
+      description: 'Approves multiple diagnoses and queues them for execution. Requires STARTER plan.',
+    },
+  }, async (request, reply) => {
+    const { ids } = request.body as { ids?: string[] };
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return reply.status(400).send({ error: 'ids must be a non-empty array' });
+      reply.status(400);
+      return { error: 'ids must be a non-empty array of diagnosis IDs' };
     }
-    if (!action || !['approve', 'dismiss'].includes(action)) {
-      return reply.status(400).send({ error: 'action must be "approve" or "dismiss"' });
-    }
+
     if (ids.length > 50) {
-      return reply.status(400).send({ error: 'Maximum 50 diagnoses per batch' });
+      reply.status(400);
+      return { error: 'Maximum 50 diagnoses per bulk operation' };
     }
 
     const organizationId = await resolveOrgId(request);
 
-    if (action === 'approve') {
-      try {
-        await requirePlan(organizationId, 'STARTER');
-      } catch (err) {
-        if (err instanceof PlanError) {
-          return reply.status(403).send({ error: err.message });
-        }
-        throw err;
+    // Plan gate: STARTER+
+    try {
+      await requirePlan(organizationId, 'STARTER');
+    } catch (err) {
+      if (err instanceof PlanError) {
+        reply.status(403);
+        return { error: err.message };
       }
+      throw err;
     }
 
+    // Verify Meta credentials exist
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads', organizationId },
+    });
+    if (!credential) {
+      reply.status(400);
+      return { error: 'No Meta Ads connection found. Connect Meta Ads in Settings first.' };
+    }
+
+    // Fetch all diagnoses and validate
     const diagnoses = await prisma.diagnosis.findMany({
       where: { id: { in: ids }, organizationId, status: 'PENDING' },
-      select: { id: true, actionType: true },
+      select: { id: true, actionType: true, adId: true, ruleId: true, confidence: true },
     });
 
     const foundIds = new Set(diagnoses.map((d) => d.id));
     const skipped = ids.filter((id) => !foundIds.has(id));
-    const succeeded: string[] = [];
-    const failed: Array<{ id: string; error: string }> = [];
 
-    if (action === 'dismiss') {
+    // Approve all valid diagnoses
+    if (diagnoses.length > 0) {
       await prisma.diagnosis.updateMany({
-        where: { id: { in: diagnoses.map((d) => d.id) }, organizationId },
-        data: { status: 'DISMISSED' },
+        where: { id: { in: diagnoses.map((d) => d.id) } },
+        data: { status: 'APPROVED' },
       });
-      succeeded.push(...diagnoses.map((d) => d.id));
-    } else {
+
+      // Record feedback
       for (const diag of diagnoses) {
-        try {
-          await prisma.diagnosis.update({
-            where: { id: diag.id },
-            data: { status: 'APPROVED' },
-          });
-          const result = await executeAction(diag.id, 'user');
-          if (result.success) {
-            succeeded.push(diag.id);
-          } else {
-            failed.push({ id: diag.id, error: result.error ?? 'Execution failed' });
-          }
-        } catch (err) {
-          failed.push({ id: diag.id, error: (err as Error).message });
-        }
+        await prisma.diagnosisFeedback.create({
+          data: {
+            organizationId,
+            ruleId: diag.ruleId,
+            action: 'APPROVED',
+            diagnosisId: diag.id,
+            confidence: diag.confidence,
+          },
+        });
       }
     }
 
+    // Queue executions (non-blocking, with 2s delay between each)
+    const results: Array<{ id: string; status: string }> = [];
+    for (const diag of diagnoses) {
+      results.push({ id: diag.id, status: 'queued' });
+    }
+
+    // Execute sequentially in background with delay
+    (async () => {
+      for (let i = 0; i < diagnoses.length; i++) {
+        const diag = diagnoses[i];
+        if (!diag) continue;
+        if (i > 0) await new Promise((r) => setTimeout(r, 2000));
+        try {
+          await executeAction(diag.id);
+        } catch (err) {
+          app.log.error({ diagnosisId: diag.id, error: String(err) }, 'Bulk execution failed');
+        }
+      }
+    })().catch(() => {});
+
     return {
-      action,
-      total: ids.length,
-      succeeded: succeeded.length,
-      failed: failed.length,
+      approved: diagnoses.length,
       skipped: skipped.length,
       skippedIds: skipped,
-      failures: failed,
+      results,
+    };
+  });
+
+  // ── POST /autopilot/bulk-dismiss — bulk dismiss diagnoses ────
+  app.post('/autopilot/bulk-dismiss', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Bulk dismiss diagnoses',
+      description: 'Dismisses multiple diagnoses at once.',
+    },
+  }, async (request, reply) => {
+    const { ids } = request.body as { ids?: string[] };
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      reply.status(400);
+      return { error: 'ids must be a non-empty array of diagnosis IDs' };
+    }
+
+    if (ids.length > 50) {
+      reply.status(400);
+      return { error: 'Maximum 50 diagnoses per bulk operation' };
+    }
+
+    const organizationId = await resolveOrgId(request);
+
+    // Fetch diagnoses for feedback recording
+    const diagnosesToDismiss = await prisma.diagnosis.findMany({
+      where: { id: { in: ids }, organizationId, status: 'PENDING' },
+      select: { id: true, ruleId: true, confidence: true },
+    });
+
+    const result = await prisma.diagnosis.updateMany({
+      where: { id: { in: ids }, organizationId, status: 'PENDING' },
+      data: { status: 'DISMISSED' },
+    });
+
+    // Record feedback
+    for (const diag of diagnosesToDismiss) {
+      await prisma.diagnosisFeedback.create({
+        data: {
+          organizationId,
+          ruleId: diag.ruleId,
+          action: 'DISMISSED',
+          diagnosisId: diag.id,
+          confidence: diag.confidence,
+        },
+      });
+    }
+
+    return {
+      dismissed: result.count,
+      total: ids.length,
+    };
+  });
+
+  // ── GET /autopilot/rule-health — rule effectiveness stats ────
+  app.get('/autopilot/rule-health', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Rule health statistics',
+      description: 'Returns effectiveness metrics for each diagnosis rule based on 30-day feedback history.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+    const stats = await computeRuleHealth(organizationId);
+    return { rules: stats };
+  });
+
+  // ── POST /autopilot/emergency-stop — halt all automation ────
+  app.post('/autopilot/emergency-stop', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Emergency stop',
+      description: 'Switches autopilot to monitor mode and cancels all pending/approved diagnoses.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    // Set config.mode = 'monitor'
+    await prisma.autopilotConfig.upsert({
+      where: { organizationId },
+      update: { mode: 'monitor' },
+      create: { organizationId, mode: 'monitor' },
+    });
+
+    // Cancel all PENDING and APPROVED diagnoses
+    const expireResult = await prisma.diagnosis.updateMany({
+      where: {
+        organizationId,
+        status: { in: [DiagnosisStatus.PENDING, DiagnosisStatus.APPROVED] },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    return {
+      success: true,
+      mode: 'monitor',
+      diagnosesExpired: expireResult.count,
     };
   });
 
@@ -1701,119 +1839,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
       succeeded: succeeded.length,
       failed: failed.length,
       failures: failed,
-    };
-  });
-
-  // ── POST /autopilot/actions/:id/undo — undo an action ──────
-  app.post('/autopilot/actions/:id/undo', {
-    schema: {
-      tags: ['autopilot'],
-      summary: 'Undo an executed action',
-      description: 'Reverses an executed action by restoring the previous state. Only allowed within 24h of execution.',
-    },
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const organizationId = await resolveOrgId(request);
-
-    try {
-      await requirePlan(organizationId, 'STARTER');
-    } catch (err) {
-      if (err instanceof PlanError) {
-        return reply.status(403).send({ error: err.message });
-      }
-      throw err;
-    }
-
-    const actionLog = await prisma.autopilotActionLog.findFirst({
-      where: { id, organizationId },
-    });
-
-    if (!actionLog) return reply.status(404).send({ error: 'Action not found' });
-    if (!actionLog.success) return reply.status(400).send({ error: 'Cannot undo a failed action' });
-    if (actionLog.undoneAt) return reply.status(400).send({ error: 'Action has already been undone' });
-
-    const UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
-    if (Date.now() - actionLog.createdAt.getTime() > UNDO_WINDOW_MS) {
-      return reply.status(400).send({ error: 'Undo window has expired (24h limit)' });
-    }
-
-    const undoableActions = new Set(['PAUSE_AD', 'REACTIVATE_AD', 'INCREASE_BUDGET', 'DECREASE_BUDGET']);
-    if (!undoableActions.has(actionLog.actionType)) {
-      return reply.status(400).send({ error: `Action type ${actionLog.actionType} cannot be undone` });
-    }
-
-    const credential = await prisma.connectorCredential.findFirst({
-      where: { connectorType: 'meta_ads', organizationId },
-    });
-    if (!credential) return reply.status(400).send({ error: 'No Meta Ads connection found' });
-
-    let creds: Record<string, string>;
-    try {
-      creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
-    } catch {
-      return reply.status(400).send({ error: 'Failed to read Meta Ads credentials' });
-    }
-
-    const accessToken = creds.accessToken ?? '';
-    if (!accessToken) return reply.status(400).send({ error: 'No access token in Meta Ads credentials' });
-
-    const { pauseAd: pauseAdFn, reactivateAd: reactivateAdFn, updateAdSetBudget: updateBudgetFn } = await import('../lib/meta-executor.js');
-    const beforeValue = actionLog.beforeValue as Record<string, unknown> | null;
-    let undoResult: { success: boolean; error?: string };
-
-    switch (actionLog.actionType) {
-      case 'PAUSE_AD':
-        undoResult = await reactivateAdFn(accessToken, actionLog.targetId);
-        break;
-      case 'REACTIVATE_AD':
-        undoResult = await pauseAdFn(accessToken, actionLog.targetId);
-        break;
-      case 'INCREASE_BUDGET':
-      case 'DECREASE_BUDGET': {
-        const prevBudget = beforeValue?.dailyBudget as number | null;
-        if (!prevBudget || prevBudget <= 0) {
-          return reply.status(400).send({ error: 'Cannot undo: previous budget value is unknown' });
-        }
-        const ad = await prisma.metaAd.findFirst({
-          where: { adId: actionLog.targetId, organizationId },
-          include: { adSet: { select: { adSetId: true } } },
-        });
-        if (!ad) return reply.status(400).send({ error: 'Ad not found for budget undo' });
-        undoResult = await updateBudgetFn(accessToken, ad.adSet.adSetId, Math.round(prevBudget * 100));
-        break;
-      }
-      default:
-        return reply.status(400).send({ error: `Cannot undo action type: ${actionLog.actionType}` });
-    }
-
-    const undoLog = await prisma.autopilotActionLog.create({
-      data: {
-        organizationId,
-        diagnosisId: actionLog.diagnosisId,
-        actionType: `UNDO_${actionLog.actionType}`,
-        triggeredBy: 'user',
-        targetEntity: actionLog.targetEntity,
-        targetId: actionLog.targetId,
-        targetName: actionLog.targetName,
-        beforeValue: actionLog.afterValue as never,
-        afterValue: actionLog.beforeValue as never,
-        success: undoResult.success,
-        errorMessage: undoResult.success ? null : (undoResult.error ?? null),
-      },
-    });
-
-    if (undoResult.success) {
-      await prisma.autopilotActionLog.update({
-        where: { id: actionLog.id },
-        data: { undoneAt: new Date(), undoneByLogId: undoLog.id },
-      });
-    }
-
-    return {
-      success: undoResult.success,
-      undoLogId: undoLog.id,
-      originalActionId: actionLog.id,
-      error: undoResult.success ? undefined : undoResult.error,
     };
   });
 

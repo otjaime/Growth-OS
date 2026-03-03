@@ -26,7 +26,9 @@ export interface AutopilotConfig {
   maxCpa: number | null;
   dailyBudgetCap: number | null;
   maxBudgetIncreasePct: number;
+  maxActionsPerDay: number;
   minSpendBeforeAction: number;
+  minConfidence: number;
   slackWebhookUrl: string | null;
   notifyOnCritical: boolean;
   notifyOnAutoAction: boolean;
@@ -110,6 +112,7 @@ export interface Diagnosis {
   actionType: DiagnosisAction;
   status: DiagnosisStatus;
   suggestedValue: Record<string, unknown> | null;
+  confidence: number | null;
   expiresAt: string | null;
   createdAt: string;
   updatedAt: string;

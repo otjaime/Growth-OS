@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings, Shield, Bell, Save, Loader2, AlertTriangle, Eye, Lightbulb, Zap } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { EmergencyStop } from './emergency-stop';
+import { RuleHealth } from './rule-health';
 import type { AutopilotConfig, AutopilotMode } from './types';
 
 const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye; description: string }[] = [
@@ -18,7 +20,9 @@ const DEFAULT_CONFIG: AutopilotConfig = {
   maxCpa: null,
   dailyBudgetCap: null,
   maxBudgetIncreasePct: 50,
+  maxActionsPerDay: 10,
   minSpendBeforeAction: 100,
+  minConfidence: 70,
   slackWebhookUrl: null,
   notifyOnCritical: true,
   notifyOnAutoAction: true,
@@ -146,7 +150,7 @@ export function ConfigPanel() {
                 className={`text-left p-3 rounded-lg border transition-all ease-spring ${
                   isActive
                     ? 'border-apple-blue bg-[var(--tint-blue)]'
-                    : 'border-[var(--glass-border)] bg-white/[0.02] hover:bg-white/[0.04]'
+                    : 'border-[var(--glass-border)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)]'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1.5">
@@ -155,7 +159,7 @@ export function ConfigPanel() {
                     {label}
                   </span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-[var(--foreground-secondary)]">{description}</p>
+                <p className="text-label leading-relaxed text-[var(--foreground-secondary)]">{description}</p>
               </button>
             );
           })}
@@ -171,7 +175,7 @@ export function ConfigPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Target ROAS */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Target ROAS
             </label>
             <input
@@ -181,13 +185,13 @@ export function ConfigPanel() {
               placeholder="e.g. 2.5"
               value={config.targetRoas ?? ''}
               onChange={(e) => updateField('targetRoas', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
           {/* Max CPA */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Max CPA ($)
             </label>
             <input
@@ -197,13 +201,13 @@ export function ConfigPanel() {
               placeholder="e.g. 50"
               value={config.maxCpa ?? ''}
               onChange={(e) => updateField('maxCpa', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
           {/* Daily Budget Cap */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Daily Budget Cap ($)
             </label>
             <input
@@ -213,13 +217,13 @@ export function ConfigPanel() {
               placeholder="e.g. 5000"
               value={config.dailyBudgetCap ?? ''}
               onChange={(e) => updateField('dailyBudgetCap', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
           {/* Max Budget Increase % */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Max Budget Increase %
             </label>
             <div className="flex items-center gap-3">
@@ -238,9 +242,25 @@ export function ConfigPanel() {
             </div>
           </div>
 
+          {/* Max Actions Per Day */}
+          <div>
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+              Max Actions Per Day
+            </label>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              max="50"
+              value={config.maxActionsPerDay}
+              onChange={(e) => updateField('maxActionsPerDay', Number(e.target.value) || 10)}
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+            />
+          </div>
+
           {/* Min Spend Before Action */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Min Spend Before Action ($)
             </label>
             <input
@@ -250,7 +270,25 @@ export function ConfigPanel() {
               placeholder="e.g. 100"
               value={config.minSpendBeforeAction}
               onChange={(e) => updateField('minSpendBeforeAction', Number(e.target.value) || 0)}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+            />
+          </div>
+
+          {/* Min Confidence for Auto-Execute */}
+          <div>
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+              Min Confidence for Auto-Execute
+            </label>
+            <p className="text-caption text-[var(--foreground-secondary)]/60 mt-0.5 mb-1.5">
+              Only auto-execute diagnoses above this confidence level (0-100)
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={config.minConfidence}
+              onChange={(e) => updateField('minConfidence', parseInt(e.target.value) || 0)}
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
         </div>
@@ -265,7 +303,7 @@ export function ConfigPanel() {
         <div className="space-y-4">
           {/* Slack Webhook */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Slack Webhook URL
             </label>
             <input
@@ -276,7 +314,7 @@ export function ConfigPanel() {
                 updateField('slackWebhookUrl', e.target.value || null);
                 setWebhookModified(true);
               }}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -292,7 +330,7 @@ export function ConfigPanel() {
               aria-label="Notify on critical diagnoses"
               onClick={() => updateField('notifyOnCritical', !config.notifyOnCritical)}
               className={`relative w-10 h-6 rounded-full transition-colors ease-spring ${
-                config.notifyOnCritical ? 'bg-apple-green' : 'bg-white/[0.1]'
+                config.notifyOnCritical ? 'bg-apple-green' : 'bg-[var(--glass-bg)]'
               }`}
             >
               <span
@@ -315,7 +353,7 @@ export function ConfigPanel() {
               aria-label="Notify on auto actions"
               onClick={() => updateField('notifyOnAutoAction', !config.notifyOnAutoAction)}
               className={`relative w-10 h-6 rounded-full transition-colors ease-spring ${
-                config.notifyOnAutoAction ? 'bg-apple-green' : 'bg-white/[0.1]'
+                config.notifyOnAutoAction ? 'bg-apple-green' : 'bg-[var(--glass-bg)]'
               }`}
             >
               <span
@@ -350,6 +388,20 @@ export function ConfigPanel() {
           <span className="text-xs text-apple-green font-medium">Saved successfully</span>
         )}
       </div>
+
+      {/* Rule Effectiveness */}
+      <div className="pt-4 border-t border-[var(--glass-border)]">
+        <RuleHealth />
+      </div>
+
+      {/* Emergency Stop — visible only in auto or suggest modes */}
+      {(config.mode === 'auto' || config.mode === 'suggest') && (
+        <div className="pt-2 border-t border-[var(--glass-border)]">
+          <EmergencyStop onStopped={() => {
+            setConfig(prev => ({ ...prev, mode: 'monitor' }));
+          }} />
+        </div>
+      )}
     </div>
   );
 }

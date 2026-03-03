@@ -68,6 +68,7 @@ model Organization {
   diagnoses            Diagnosis[]
   autopilotConfig      AutopilotConfig?
   autopilotActionLogs  AutopilotActionLog[]
+  diagnosisFeedback    DiagnosisFeedback[]
 
   @@map("organizations")
 }
@@ -908,6 +909,7 @@ model Diagnosis {
   executionResult  Json?              @map("execution_result")
   aiInsight        Json?              @map("ai_insight")       // cached AI analysis (rootCause, recommendations)
   aiInsightAt      DateTime?          @map("ai_insight_at")    // when AI insight was last generated
+  confidence       Int?             // 0-100 confidence score for this diagnosis
   expiresAt        DateTime           @map("expires_at")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
@@ -1007,12 +1009,29 @@ model AutopilotConfig {
 
   // Safety limits for auto-mode
   maxBudgetIncreasePct Int          @default(50) @map("max_budget_increase_pct")
+  maxActionsPerDay     Int          @default(10) @map("max_actions_per_day")
   minSpendBeforeAction Decimal      @default(50) @map("min_spend_before_action") @db.Decimal(12, 2)
+  minConfidence        Int          @default(70) @map("min_confidence") // Minimum confidence for auto-execution
+
+  // Execution window
+  executionWindowStart Int          @default(9) @map("execution_window_start")
+  executionWindowEnd   Int          @default(17) @map("execution_window_end")
+  executionTimezone    String       @default("America/New_York") @map("execution_timezone")
+
+  // Daily guardrails
+  dailyBudgetChangeCap Decimal?     @map("daily_budget_change_cap") @db.Decimal(12, 2)
+
+  // Circuit breaker
+  circuitBreakerEnabled  Boolean    @default(true) @map("circuit_breaker_enabled")
+  circuitBreakerWindowH  Int        @default(48) @map("circuit_breaker_window_hours")
+  circuitBreakerThreshold Int       @default(3) @map("circuit_breaker_threshold")
+  circuitBreakerTrippedAt DateTime? @map("circuit_breaker_tripped_at")
 
   // Notification preferences
   slackWebhookUrl      String?      @map("slack_webhook_url")
   notifyOnCritical     Boolean      @default(true) @map("notify_on_critical")
   notifyOnAutoAction   Boolean      @default(true) @map("notify_on_auto_action")
+  notifyOnPendingApproval Boolean   @default(true) @map("notify_on_pending_approval")
 
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
@@ -1038,11 +1057,33 @@ model AutopilotActionLog {
   afterValue     Json?        @map("after_value")
   success        Boolean
   errorMessage   String?      @map("error_message")
+  rollbackOfId   String?      @map("rollback_of_id")
+  undoneAt       DateTime?    @map("undone_at")
+  undoneByLogId  String?      @map("undone_by_log_id")
   createdAt      DateTime     @default(now()) @map("created_at")
 
   @@index([organizationId, createdAt])
   @@index([targetId])
   @@map("autopilot_action_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// DIAGNOSIS FEEDBACK — Tracks approve/dismiss patterns per rule
+// ══════════════════════════════════════════════════════════════
+
+model DiagnosisFeedback {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  ruleId         String       @map("rule_id")
+  action         String       // APPROVED | DISMISSED | EXPIRED | AUTO_EXECUTED
+  diagnosisId    String?      @map("diagnosis_id")
+  confidence     Int?         // confidence score at time of action
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, ruleId])
+  @@index([ruleId, action])
+  @@map("diagnosis_feedback")
 }
 
 // ══════════════════════════════════════════════════════════════
