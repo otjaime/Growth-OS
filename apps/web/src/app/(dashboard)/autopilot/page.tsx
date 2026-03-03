@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Zap, RefreshCw, Loader2, X, Eye, Lightbulb, CheckSquare,
   Settings, ChevronDown, ChevronUp, HelpCircle,
+  BarChart3, DollarSign, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
@@ -31,6 +32,7 @@ import { UndoToastProvider } from '@/components/autopilot/undo-toast';
 import { HelpDrawer } from '@/components/autopilot/help-drawer';
 import { AdsSearchBar } from '@/components/autopilot/ads-search-bar';
 import { AdDetailSheet } from '@/components/autopilot/ad-detail-sheet';
+import { ReflectiveCard } from '@/components/ui/reflective-card';
 import { AnimatePresence, motion } from 'motion/react';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
@@ -41,6 +43,12 @@ const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye }[] = 
   { key: 'suggest', label: MODE_LABELS.suggest.label, icon: Lightbulb },
   { key: 'auto', label: MODE_LABELS.auto.label, icon: Zap },
 ];
+
+function formatCompact(num: number): string {
+  if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
+  return `$${num.toFixed(0)}`;
+}
 
 export default function AutopilotPage() {
   // ── Core state ────────────────────────────────────────────────
@@ -436,7 +444,68 @@ export default function AutopilotPage() {
         </div>
       )}
 
-      {/* ═══ 3. Health Banner ════════════════════════════════════ */}
+      {/* ═══ 3. Hero KPI Cards ═══════════════════════════════════ */}
+      {autopilotStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ReflectiveCard className="card p-4" intensity="subtle">
+            <div className="flex items-center gap-2 mb-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-apple-blue" />
+              <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Active Ads</p>
+            </div>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{autopilotStats.activeAds}</p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">of {autopilotStats.totalAds} total</p>
+          </ReflectiveCard>
+
+          <ReflectiveCard className="card p-4" intensity="subtle">
+            <div className="flex items-center gap-2 mb-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-apple-purple" />
+              <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Spent / 7d</p>
+            </div>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatCompact(autopilotStats.metrics7d.totalSpend)}</p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">{formatCompact(autopilotStats.metrics7d.totalRevenue)} revenue</p>
+          </ReflectiveCard>
+
+          <ReflectiveCard className="card p-4" intensity="subtle">
+            <div className="flex items-center gap-2 mb-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-apple-green" />
+              <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Return</p>
+            </div>
+            <p className={`text-2xl font-bold ${
+              autopilotStats.metrics7d.blendedRoas != null && autopilotStats.metrics7d.blendedRoas >= 2
+                ? 'text-apple-green'
+                : autopilotStats.metrics7d.blendedRoas != null && autopilotStats.metrics7d.blendedRoas >= 1
+                  ? 'text-apple-yellow'
+                  : 'text-[var(--foreground)]'
+            }`}>
+              {autopilotStats.metrics7d.blendedRoas != null ? `${autopilotStats.metrics7d.blendedRoas.toFixed(2)}x` : '--'}
+            </p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">for every $1 spent</p>
+          </ReflectiveCard>
+
+          <ReflectiveCard className="card p-4" intensity="subtle">
+            <div className="flex items-center gap-2 mb-1.5">
+              <AlertTriangle className={`h-3.5 w-3.5 ${
+                (stats?.critical ?? 0) > 0 ? 'text-apple-red' : (stats?.total ?? 0) > 0 ? 'text-apple-yellow' : 'text-apple-green'
+              }`} />
+              <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Issues</p>
+            </div>
+            <p className={`text-2xl font-bold ${
+              (stats?.critical ?? 0) > 0 ? 'text-apple-red' : (stats?.total ?? 0) > 0 ? 'text-apple-yellow' : 'text-apple-green'
+            }`}>
+              {stats?.total ?? 0}
+            </p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">
+              {(stats?.critical ?? 0) > 0
+                ? `${stats?.critical} need attention now`
+                : (stats?.total ?? 0) > 0
+                  ? 'worth reviewing'
+                  : 'all clear'}
+            </p>
+          </ReflectiveCard>
+        </div>
+      )}
+
+      {/* ═══ 4. Health Banner ════════════════════════════════════ */}
       <HealthBanner
         autopilotStats={autopilotStats}
         diagnosisStats={stats}

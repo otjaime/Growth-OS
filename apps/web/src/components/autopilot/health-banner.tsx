@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { CheckCircle, AlertTriangle, BarChart3, DollarSign, TrendingUp } from 'lucide-react';
+import { CheckCircle, AlertTriangle } from 'lucide-react';
 import type { AutopilotStats, DiagnosisStats, Diagnosis } from './types';
 
 interface HealthBannerProps {
@@ -52,53 +52,30 @@ export function HealthBanner({ autopilotStats, diagnosisStats, diagnoses }: Heal
 
   const total = diagnosisStats?.total ?? 0;
   const critical = diagnosisStats?.critical ?? 0;
-  const roas = autopilotStats.metrics7d.blendedRoas;
-
   const level: BannerLevel = critical > 0 ? 'red' : total > 0 ? 'yellow' : 'green';
 
   return (
-    <div className={`card px-5 py-3.5 flex items-center gap-4 flex-wrap ${bannerStyles(level)}`}>
-      {/* Status icon + message */}
-      <div className="flex items-center gap-2.5 flex-1 min-w-[200px]">
-        {level === 'green' ? (
-          <CheckCircle className={`h-5 w-5 shrink-0 ${bannerIconColor(level)}`} />
-        ) : (
-          <AlertTriangle className={`h-5 w-5 shrink-0 ${bannerIconColor(level)}`} />
+    <div className={`card px-5 py-3.5 flex items-center gap-3 ${bannerStyles(level)}`}>
+      {level === 'green' ? (
+        <CheckCircle className={`h-5 w-5 shrink-0 ${bannerIconColor(level)}`} />
+      ) : (
+        <AlertTriangle className={`h-5 w-5 shrink-0 ${bannerIconColor(level)}`} />
+      )}
+      <div>
+        {level === 'green' && (
+          <p className="text-sm font-semibold text-[var(--foreground)]">
+            All clear — your ads are performing well
+          </p>
         )}
-        <div>
-          {level === 'green' && (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              All clear — {autopilotStats.activeAds} active ads performing well
-            </p>
-          )}
-          {level === 'yellow' && (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              {total} issue{total !== 1 ? 's' : ''} found — review recommended
-            </p>
-          )}
-          {level === 'red' && (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              {critical} critical issue{critical !== 1 ? 's' : ''} — {formatCompact(atRiskSpend)} at risk
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Inline secondary stats */}
-      <div className="flex items-center gap-5 text-xs text-[var(--foreground-secondary)]">
-        <span className="inline-flex items-center gap-1">
-          <BarChart3 className="h-3.5 w-3.5" />
-          {autopilotStats.activeAds} ads
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <DollarSign className="h-3.5 w-3.5" />
-          {formatCompact(autopilotStats.metrics7d.totalSpend)} / 7d
-        </span>
-        {roas != null && (
-          <span className="inline-flex items-center gap-1">
-            <TrendingUp className="h-3.5 w-3.5" />
-            {roas.toFixed(2)}x return
-          </span>
+        {level === 'yellow' && (
+          <p className="text-sm font-semibold text-[var(--foreground)]">
+            {total} issue{total !== 1 ? 's' : ''} found — review recommended
+          </p>
+        )}
+        {level === 'red' && (
+          <p className="text-sm font-semibold text-[var(--foreground)]">
+            {critical} critical issue{critical !== 1 ? 's' : ''} — {formatCompact(atRiskSpend)} at risk
+          </p>
         )}
       </div>
     </div>
@@ -107,16 +84,9 @@ export function HealthBanner({ autopilotStats, diagnosisStats, diagnoses }: Heal
 
 export function HealthBannerSkeleton(): JSX.Element {
   return (
-    <div className="card px-5 py-3.5 flex items-center gap-4">
+    <div className="card px-5 py-3.5 flex items-center gap-3">
       <div className="h-5 w-5 rounded-full skeleton-shimmer" />
-      <div className="flex-1 space-y-1">
-        <div className="h-4 w-64 skeleton-shimmer" />
-      </div>
-      <div className="flex items-center gap-5">
-        <div className="h-3 w-16 skeleton-shimmer" />
-        <div className="h-3 w-20 skeleton-shimmer" />
-        <div className="h-3 w-16 skeleton-shimmer" />
-      </div>
+      <div className="h-4 w-64 skeleton-shimmer" />
     </div>
   );
 }
