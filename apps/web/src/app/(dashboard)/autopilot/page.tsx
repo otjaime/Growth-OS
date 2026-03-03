@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb } from 'lucide-react';
+import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb, Settings, CheckSquare } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
@@ -20,6 +20,8 @@ import {
   ConfigPanel,
   BudgetView,
   CampaignHealthView,
+  ImpactSummary,
+  BulkActionsBar,
 } from '@/components/autopilot';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
@@ -52,6 +54,10 @@ export default function AutopilotPage() {
   // ── Diagnosis filters (scoped to diagnoses tab) ───────────────
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('PENDING');
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('ALL');
+
+  // ── Bulk selection state ────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // ── Lazy-loaded data for other tabs ───────────────────────────
   const [allAds, setAllAds] = useState<MetaAdWithTrends[]>([]);
@@ -199,6 +205,30 @@ export default function AutopilotPage() {
     setHistoryLoaded(false);
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIds(new Set(diagnoses.map((d) => d.id)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkComplete = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setHistoryLoaded(false);
+    fetchData();
+  };
+
   const selected = diagnoses.find((d) => d.id === selectedId) ?? null;
 
   // ── Mode badge ──────────────────────────────────────────────
@@ -275,6 +305,9 @@ export default function AutopilotPage() {
         diagnoses={diagnoses}
       />
 
+      {/* Impact Summary */}
+      {activeTab !== 'settings' && <ImpactSummary />}
+
       {/* Tab Bar */}
       <AutopilotTabBar
         activeTab={activeTab}
@@ -318,6 +351,20 @@ export default function AutopilotPage() {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => {
+                setSelectionMode(!selectionMode);
+                if (selectionMode) setSelectedIds(new Set());
+              }}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ease-spring ${
+                selectionMode
+                  ? 'text-apple-blue bg-[var(--tint-blue)]'
+                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-white/[0.04]'
+              }`}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              {selectionMode ? 'Cancel Select' : 'Select'}
+            </button>
           </div>
 
           {/* Two-column layout */}
@@ -328,6 +375,11 @@ export default function AutopilotPage() {
                 diagnoses={diagnoses}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onSelectAll={handleSelectAll}
+                onDeselectAll={handleDeselectAll}
               />
             </GlassSurface>
 
@@ -386,6 +438,19 @@ export default function AutopilotPage() {
       {/* ═══ Settings Tab ═══════════════════════════════════════ */}
       {activeTab === 'settings' && (
         <ConfigPanel />
+      )}
+
+      {/* Bulk Actions Floating Bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedIds.size}
+          selectedIds={selectedIds}
+          onComplete={handleBulkComplete}
+          onCancel={() => {
+            setSelectionMode(false);
+            setSelectedIds(new Set());
+          }}
+        />
       )}
     </div>
   );

@@ -107,6 +107,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
               message: diag.message,
               actionType: diag.actionType,
               suggestedValue: diag.suggestedValue as never,
+              confidence: diag.confidence,
               expiresAt,
               ...(insightChanged ? { aiInsight: Prisma.DbNull, aiInsightAt: null } : {}),
             },
@@ -124,6 +125,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
             message: diag.message,
             actionType: diag.actionType,
             suggestedValue: diag.suggestedValue as never,
+            confidence: diag.confidence,
             expiresAt,
           },
         });
@@ -153,6 +155,22 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
       data: { status: 'EXPIRED' },
     });
     expiredCount = result.count;
+
+    // Record feedback for expired diagnoses
+    const expiredDiags = await prisma.diagnosis.findMany({
+      where: { id: { in: toExpireIds } },
+      select: { ruleId: true, confidence: true },
+    });
+    for (const d of expiredDiags) {
+      await prisma.diagnosisFeedback.create({
+        data: {
+          organizationId,
+          ruleId: d.ruleId,
+          action: 'EXPIRED',
+          confidence: d.confidence,
+        },
+      });
+    }
   }
 
   // Also expire any remaining stale PENDING diagnoses older than 72h
@@ -166,7 +184,55 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
   });
   expiredCount += expiredStale.count;
 
-  // 4. Auto-execute eligible diagnoses when autopilot mode is 'auto'
+  // 4. Detect and resolve conflicting diagnoses on the same ad
+  const pendingByAd = new Map<string, Array<{ id: string; actionType: string; severity: string; ruleId: string }>>();
+  const allPending = await prisma.diagnosis.findMany({
+    where: { organizationId, status: 'PENDING' },
+    select: { id: true, adId: true, actionType: true, severity: true, ruleId: true },
+  });
+
+  for (const d of allPending) {
+    const existing = pendingByAd.get(d.adId) ?? [];
+    existing.push(d);
+    pendingByAd.set(d.adId, existing);
+  }
+
+  const SEVERITY_ORDER: Record<string, number> = { CRITICAL: 3, WARNING: 2, INFO: 1 };
+  const conflictExpireIds: string[] = [];
+
+  for (const [, diags] of pendingByAd) {
+    if (diags.length <= 1) continue;
+
+    const hasPause = diags.some((d) => d.actionType === 'PAUSE_AD');
+    const hasIncrease = diags.some((d) => d.actionType === 'INCREASE_BUDGET');
+    const hasReactivate = diags.some((d) => d.actionType === 'REACTIVATE_AD');
+
+    if (hasPause && hasIncrease) {
+      const pauseDiag = diags.find((d) => d.actionType === 'PAUSE_AD')!;
+      const increaseDiag = diags.find((d) => d.actionType === 'INCREASE_BUDGET')!;
+      const pauseSev = SEVERITY_ORDER[pauseDiag.severity] ?? 0;
+      const incSev = SEVERITY_ORDER[increaseDiag.severity] ?? 0;
+      conflictExpireIds.push(pauseSev >= incSev ? increaseDiag.id : pauseDiag.id);
+    }
+
+    if (hasReactivate && hasPause) {
+      const reactDiag = diags.find((d) => d.actionType === 'REACTIVATE_AD')!;
+      const pauseDiag = diags.find((d) => d.actionType === 'PAUSE_AD')!;
+      const reactSev = SEVERITY_ORDER[reactDiag.severity] ?? 0;
+      const pauseSev = SEVERITY_ORDER[pauseDiag.severity] ?? 0;
+      conflictExpireIds.push(reactSev >= pauseSev ? pauseDiag.id : reactDiag.id);
+    }
+  }
+
+  if (conflictExpireIds.length > 0) {
+    const conflictResult = await prisma.diagnosis.updateMany({
+      where: { id: { in: conflictExpireIds } },
+      data: { status: 'EXPIRED' },
+    });
+    expiredCount += conflictResult.count;
+  }
+
+  // 5. Auto-execute eligible diagnoses when autopilot mode is 'auto'
   let autoActions: AutoExecuteResult | undefined;
   if (autopilotConfig && autopilotConfig.mode === 'auto') {
     try {
@@ -174,6 +240,9 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
         mode: autopilotConfig.mode,
         maxBudgetIncreasePct: autopilotConfig.maxBudgetIncreasePct,
         minSpendBeforeAction: autopilotConfig.minSpendBeforeAction.toNumber(),
+        maxActionsPerDay: autopilotConfig.maxActionsPerDay,
+        dailyBudgetCap: autopilotConfig.dailyBudgetCap?.toNumber() ?? null,
+        minConfidence: autopilotConfig.minConfidence,
       });
     } catch (err) {
       // Auto-execute failures must not crash the diagnosis run

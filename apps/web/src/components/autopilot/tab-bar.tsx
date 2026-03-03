@@ -16,6 +16,7 @@ const mainTabs: { key: AutopilotTab; label: string; icon: typeof Target }[] = [
   { key: 'budget', label: 'Budget', icon: DollarSign },
   { key: 'health', label: 'Health', icon: Activity },
   { key: 'history', label: 'History', icon: Clock },
+  { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export function AutopilotTabBar({ activeTab, onTabChange, diagnosisCount, adsCount }: AutopilotTabBarProps) {

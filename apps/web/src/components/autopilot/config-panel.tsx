@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings, Shield, Bell, Save, Loader2, AlertTriangle, Eye, Lightbulb, Zap } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { EmergencyStop } from './emergency-stop';
+import { RuleHealth } from './rule-health';
 import type { AutopilotConfig, AutopilotMode } from './types';
 
 const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye; description: string }[] = [
@@ -18,7 +20,9 @@ const DEFAULT_CONFIG: AutopilotConfig = {
   maxCpa: null,
   dailyBudgetCap: null,
   maxBudgetIncreasePct: 50,
+  maxActionsPerDay: 10,
   minSpendBeforeAction: 100,
+  minConfidence: 70,
   slackWebhookUrl: null,
   notifyOnCritical: true,
   notifyOnAutoAction: true,
@@ -238,6 +242,22 @@ export function ConfigPanel() {
             </div>
           </div>
 
+          {/* Max Actions Per Day */}
+          <div>
+            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+              Max Actions Per Day
+            </label>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              max="50"
+              value={config.maxActionsPerDay}
+              onChange={(e) => updateField('maxActionsPerDay', Number(e.target.value) || 10)}
+              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+            />
+          </div>
+
           {/* Min Spend Before Action */}
           <div>
             <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
@@ -250,6 +270,24 @@ export function ConfigPanel() {
               placeholder="e.g. 100"
               value={config.minSpendBeforeAction}
               onChange={(e) => updateField('minSpendBeforeAction', Number(e.target.value) || 0)}
+              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+            />
+          </div>
+
+          {/* Min Confidence for Auto-Execute */}
+          <div>
+            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+              Min Confidence for Auto-Execute
+            </label>
+            <p className="text-[10px] text-[var(--foreground-secondary)]/60 mt-0.5 mb-1.5">
+              Only auto-execute diagnoses above this confidence level (0-100)
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={config.minConfidence}
+              onChange={(e) => updateField('minConfidence', parseInt(e.target.value) || 0)}
               className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
@@ -350,6 +388,20 @@ export function ConfigPanel() {
           <span className="text-xs text-apple-green font-medium">Saved successfully</span>
         )}
       </div>
+
+      {/* Rule Effectiveness */}
+      <div className="pt-4 border-t border-[var(--glass-border)]">
+        <RuleHealth />
+      </div>
+
+      {/* Emergency Stop — visible only in auto or suggest modes */}
+      {(config.mode === 'auto' || config.mode === 'suggest') && (
+        <div className="pt-2 border-t border-[var(--glass-border)]">
+          <EmergencyStop onStopped={() => {
+            setConfig(prev => ({ ...prev, mode: 'monitor' }));
+          }} />
+        </div>
+      )}
     </div>
   );
 }

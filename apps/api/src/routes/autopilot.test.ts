@@ -60,6 +60,10 @@ const mockPrisma = vi.hoisted(() => ({
     findFirst: vi.fn().mockResolvedValue({ id: 'org-1' }),
     create: vi.fn().mockResolvedValue({ id: 'org-auto' }),
   },
+  diagnosisFeedback: {
+    create: vi.fn().mockResolvedValue({}),
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 const mockIsDemoMode = vi.hoisted(() => vi.fn().mockResolvedValue(true));

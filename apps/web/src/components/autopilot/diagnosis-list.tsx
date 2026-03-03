@@ -6,6 +6,7 @@ import { SeverityDot } from './severity-badge';
 import { SeverityGroupHeader } from './severity-group';
 import { ExpiryCountdown } from './expiry-countdown';
 import { AdThumbnail } from './ad-thumbnail';
+import { ConfidenceBadge } from './confidence-badge';
 import { AnimatedList } from '@/components/ui/animated-list';
 import type { Diagnosis, DiagnosisSeverity } from './types';
 
@@ -13,6 +14,11 @@ interface DiagnosisListProps {
   diagnoses: Diagnosis[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
 }
 
 function actionLabel(actionType: string): string {
@@ -41,7 +47,7 @@ function actionColor(actionType: string): string {
 
 const severityOrder: DiagnosisSeverity[] = ['CRITICAL', 'WARNING', 'INFO'];
 
-export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisListProps) {
+export function DiagnosisList({ diagnoses, selectedId, onSelect, selectionMode, selectedIds, onToggleSelect, onSelectAll, onDeselectAll }: DiagnosisListProps) {
   // Group diagnoses by severity
   const grouped = useMemo(() => {
     const map = new Map<DiagnosisSeverity, Diagnosis[]>();
@@ -67,6 +73,25 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisList
 
   return (
     <div className="space-y-1">
+      {selectionMode && diagnoses.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--glass-border)]">
+          <input
+            type="checkbox"
+            checked={selectedIds?.size === diagnoses.length && diagnoses.length > 0}
+            onChange={() => {
+              if (selectedIds?.size === diagnoses.length) {
+                onDeselectAll?.();
+              } else {
+                onSelectAll?.();
+              }
+            }}
+            className="h-3.5 w-3.5 rounded border-[var(--glass-border)] accent-apple-blue"
+          />
+          <span className="text-xs text-[var(--foreground-secondary)]">
+            {selectedIds?.size === diagnoses.length ? 'Deselect all' : `Select all (${diagnoses.length})`}
+          </span>
+        </div>
+      )}
       {severityOrder.map((severity) => {
         const items = grouped.get(severity) ?? [];
         if (items.length === 0) return null;
@@ -91,6 +116,18 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisList
                     )}
                   >
                     <div className="flex items-start gap-2.5">
+                      {selectionMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds?.has(diag.id) ?? false}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            onToggleSelect?.(diag.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-3.5 w-3.5 rounded border-[var(--glass-border)] accent-apple-blue flex-shrink-0 mt-1"
+                        />
+                      )}
                       <AdThumbnail
                         thumbnailUrl={diag.ad.thumbnailUrl}
                         imageUrl={diag.ad.imageUrl}
@@ -118,6 +155,7 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect }: DiagnosisList
                               wasting ${spend.toLocaleString()}
                             </span>
                           )}
+                          {diag.confidence !== null && <ConfidenceBadge confidence={diag.confidence} />}
                         </div>
                       </div>
                     </div>

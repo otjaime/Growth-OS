@@ -11,6 +11,7 @@ import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
 import { requirePlan, PlanError } from '../lib/plan-guard.js';
 import { executeAction } from '../jobs/execute-action.js';
+import { rollbackAction } from '../jobs/rollback-action.js';
 import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
 import { isAIConfigured } from '../lib/ai.js';
 import {
@@ -26,6 +27,7 @@ import type {
   MetricSeries,
   DailySnapshot,
 } from '@growth-os/etl';
+import { computeRuleHealth } from '../lib/rule-tuner.js';
 
 /**
  * Ensure at least one Organization exists. When using Bearer-token auth
@@ -498,6 +500,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'DISMISSED' },
     });
 
+    // Record feedback for rule tuning
+    await prisma.diagnosisFeedback.create({
+      data: {
+        organizationId: diagnosis.organizationId,
+        ruleId: diagnosis.ruleId,
+        action: 'DISMISSED',
+        diagnosisId: id,
+        confidence: diagnosis.confidence,
+      },
+    });
+
     return updated;
   });
 
@@ -868,6 +881,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'APPROVED' },
     });
 
+    // Record feedback for rule tuning
+    await prisma.diagnosisFeedback.create({
+      data: {
+        organizationId,
+        ruleId: diagnosis.ruleId,
+        action: 'APPROVED',
+        diagnosisId: id,
+        confidence: diagnosis.confidence,
+      },
+    });
+
     // Execute in background
     const jobRun = await prisma.jobRun.create({
       data: {
@@ -1070,7 +1094,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
       maxCpa: config.maxCpa?.toNumber() ?? null,
       dailyBudgetCap: config.dailyBudgetCap?.toNumber() ?? null,
       maxBudgetIncreasePct: config.maxBudgetIncreasePct,
+      maxActionsPerDay: config.maxActionsPerDay,
       minSpendBeforeAction: config.minSpendBeforeAction.toNumber(),
+      minConfidence: config.minConfidence,
       // Mask webhook URL — only show whether it's set (never expose full URL)
       slackWebhookUrl: config.slackWebhookUrl ? '••••••' + config.slackWebhookUrl.slice(-8) : null,
       hasSlackWebhook: !!config.slackWebhookUrl,
@@ -1127,9 +1153,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       const v = safeNumber(body.maxBudgetIncreasePct);
       data.maxBudgetIncreasePct = v !== null ? Math.max(10, Math.min(200, v)) : 50;
     }
+    if (body.maxActionsPerDay !== undefined) {
+      const v = safeNumber(body.maxActionsPerDay);
+      data.maxActionsPerDay = v !== null ? Math.max(1, Math.min(100, Math.round(v))) : 10;
+    }
     if (body.minSpendBeforeAction !== undefined) {
       const v = safeNumber(body.minSpendBeforeAction);
       data.minSpendBeforeAction = v !== null ? Math.max(0, v) : 0;
+    }
+    if (body.minConfidence !== undefined) {
+      const v = safeNumber(body.minConfidence);
+      data.minConfidence = v !== null ? Math.max(0, Math.min(100, Math.round(v))) : 70;
     }
     if (body.slackWebhookUrl !== undefined) {
       // Accept null to clear, or a non-empty string to set
@@ -1149,7 +1183,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
       maxCpa: updated.maxCpa?.toNumber() ?? null,
       dailyBudgetCap: updated.dailyBudgetCap?.toNumber() ?? null,
       maxBudgetIncreasePct: updated.maxBudgetIncreasePct,
+      maxActionsPerDay: updated.maxActionsPerDay,
       minSpendBeforeAction: updated.minSpendBeforeAction.toNumber(),
+      minConfidence: updated.minConfidence,
       slackWebhookUrl: updated.slackWebhookUrl ? '••••••' + updated.slackWebhookUrl.slice(-8) : null,
       hasSlackWebhook: !!updated.slackWebhookUrl,
       notifyOnCritical: updated.notifyOnCritical,
@@ -1518,6 +1554,230 @@ export async function autopilotRoutes(app: FastifyInstance) {
         cpc: s.cpc?.toNumber() ?? null,
         frequency: s.frequency?.toNumber() ?? null,
       })),
+    };
+  });
+
+  // ── POST /autopilot/actions/:id/rollback — undo an action ───
+  app.post('/autopilot/actions/:id/rollback', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Rollback an executed action',
+      description: 'Performs the inverse of a previously executed action via the Meta API. Only successful, non-rollback actions less than 7 days old can be rolled back.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const organizationId = await resolveOrgId(request);
+
+    // Verify the action log belongs to this org
+    const actionLog = await prisma.autopilotActionLog.findFirst({
+      where: { id, organizationId },
+    });
+
+    if (!actionLog) {
+      reply.status(404);
+      return { error: 'Action log not found' };
+    }
+
+    const result = await rollbackAction(id);
+    if (!result.success) {
+      reply.status(400);
+    }
+    return result;
+  });
+
+  // ── POST /autopilot/bulk-approve — bulk approve diagnoses ────
+  app.post('/autopilot/bulk-approve', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Bulk approve diagnoses',
+      description: 'Approves multiple diagnoses and queues them for execution. Requires STARTER plan.',
+    },
+  }, async (request, reply) => {
+    const { ids } = request.body as { ids?: string[] };
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      reply.status(400);
+      return { error: 'ids must be a non-empty array of diagnosis IDs' };
+    }
+
+    if (ids.length > 50) {
+      reply.status(400);
+      return { error: 'Maximum 50 diagnoses per bulk operation' };
+    }
+
+    const organizationId = await resolveOrgId(request);
+
+    // Plan gate: STARTER+
+    try {
+      await requirePlan(organizationId, 'STARTER');
+    } catch (err) {
+      if (err instanceof PlanError) {
+        reply.status(403);
+        return { error: err.message };
+      }
+      throw err;
+    }
+
+    // Verify Meta credentials exist
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads', organizationId },
+    });
+    if (!credential) {
+      reply.status(400);
+      return { error: 'No Meta Ads connection found. Connect Meta Ads in Settings first.' };
+    }
+
+    // Fetch all diagnoses and validate
+    const diagnoses = await prisma.diagnosis.findMany({
+      where: { id: { in: ids }, organizationId, status: 'PENDING' },
+      select: { id: true, actionType: true, adId: true, ruleId: true, confidence: true },
+    });
+
+    const foundIds = new Set(diagnoses.map((d) => d.id));
+    const skipped = ids.filter((id) => !foundIds.has(id));
+
+    // Approve all valid diagnoses
+    if (diagnoses.length > 0) {
+      await prisma.diagnosis.updateMany({
+        where: { id: { in: diagnoses.map((d) => d.id) } },
+        data: { status: 'APPROVED' },
+      });
+
+      // Record feedback
+      for (const diag of diagnoses) {
+        await prisma.diagnosisFeedback.create({
+          data: {
+            organizationId,
+            ruleId: diag.ruleId,
+            action: 'APPROVED',
+            diagnosisId: diag.id,
+            confidence: diag.confidence,
+          },
+        });
+      }
+    }
+
+    // Queue executions (non-blocking, with 2s delay between each)
+    const results: Array<{ id: string; status: string }> = [];
+    for (const diag of diagnoses) {
+      results.push({ id: diag.id, status: 'queued' });
+    }
+
+    // Execute sequentially in background with delay
+    (async () => {
+      for (let i = 0; i < diagnoses.length; i++) {
+        const diag = diagnoses[i];
+        if (!diag) continue;
+        if (i > 0) await new Promise((r) => setTimeout(r, 2000));
+        try {
+          await executeAction(diag.id);
+        } catch (err) {
+          app.log.error({ diagnosisId: diag.id, error: String(err) }, 'Bulk execution failed');
+        }
+      }
+    })().catch(() => {});
+
+    return {
+      approved: diagnoses.length,
+      skipped: skipped.length,
+      skippedIds: skipped,
+      results,
+    };
+  });
+
+  // ── POST /autopilot/bulk-dismiss — bulk dismiss diagnoses ────
+  app.post('/autopilot/bulk-dismiss', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Bulk dismiss diagnoses',
+      description: 'Dismisses multiple diagnoses at once.',
+    },
+  }, async (request, reply) => {
+    const { ids } = request.body as { ids?: string[] };
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      reply.status(400);
+      return { error: 'ids must be a non-empty array of diagnosis IDs' };
+    }
+
+    if (ids.length > 50) {
+      reply.status(400);
+      return { error: 'Maximum 50 diagnoses per bulk operation' };
+    }
+
+    const organizationId = await resolveOrgId(request);
+
+    // Fetch diagnoses for feedback recording
+    const diagnosesToDismiss = await prisma.diagnosis.findMany({
+      where: { id: { in: ids }, organizationId, status: 'PENDING' },
+      select: { id: true, ruleId: true, confidence: true },
+    });
+
+    const result = await prisma.diagnosis.updateMany({
+      where: { id: { in: ids }, organizationId, status: 'PENDING' },
+      data: { status: 'DISMISSED' },
+    });
+
+    // Record feedback
+    for (const diag of diagnosesToDismiss) {
+      await prisma.diagnosisFeedback.create({
+        data: {
+          organizationId,
+          ruleId: diag.ruleId,
+          action: 'DISMISSED',
+          diagnosisId: diag.id,
+          confidence: diag.confidence,
+        },
+      });
+    }
+
+    return {
+      dismissed: result.count,
+      total: ids.length,
+    };
+  });
+
+  // ── GET /autopilot/rule-health — rule effectiveness stats ────
+  app.get('/autopilot/rule-health', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Rule health statistics',
+      description: 'Returns effectiveness metrics for each diagnosis rule based on 30-day feedback history.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+    const stats = await computeRuleHealth(organizationId);
+    return { rules: stats };
+  });
+
+  // ── POST /autopilot/emergency-stop — halt all automation ────
+  app.post('/autopilot/emergency-stop', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Emergency stop',
+      description: 'Switches autopilot to monitor mode and cancels all pending/approved diagnoses.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    // Set config.mode = 'monitor'
+    await prisma.autopilotConfig.upsert({
+      where: { organizationId },
+      update: { mode: 'monitor' },
+      create: { organizationId, mode: 'monitor' },
+    });
+
+    // Cancel all PENDING and APPROVED diagnoses
+    const expireResult = await prisma.diagnosis.updateMany({
+      where: {
+        organizationId,
+        status: { in: [DiagnosisStatus.PENDING, DiagnosisStatus.APPROVED] },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    return {
+      success: true,
+      mode: 'monitor',
+      diagnosesExpired: expireResult.count,
     };
   });
 }

@@ -261,8 +261,45 @@ export async function executeAction(
         executionResult: result as never,
       },
     });
+
+    // Audit log
+    await prisma.autopilotActionLog.create({
+      data: {
+        organizationId: diagnosis.organizationId,
+        diagnosisId,
+        actionType: diagnosis.actionType,
+        triggeredBy,
+        targetEntity: 'ad',
+        targetId: diagnosis.ad.adId,
+        targetName: diagnosis.ad.name ?? diagnosis.ad.adId,
+        beforeValue: {
+          status: diagnosis.ad.status,
+          spend7d: diagnosis.ad.spend7d?.toString(),
+          roas7d: diagnosis.ad.roas7d?.toString(),
+          ctr7d: diagnosis.ad.ctr7d?.toString(),
+          conversions7d: diagnosis.ad.conversions7d,
+          dailyBudget: diagnosis.ad.adSet?.dailyBudget?.toString(),
+        } as never,
+        success: true,
+      },
+    });
   } else {
     await markFailed(diagnosisId, result.error ?? 'Unknown error');
+
+    // Audit log for failure
+    await prisma.autopilotActionLog.create({
+      data: {
+        organizationId: diagnosis.organizationId,
+        diagnosisId,
+        actionType: diagnosis.actionType,
+        triggeredBy,
+        targetEntity: 'ad',
+        targetId: diagnosis.ad.adId,
+        targetName: diagnosis.ad.name ?? diagnosis.ad.adId,
+        success: false,
+        errorMessage: result.error ?? 'Unknown error',
+      },
+    });
   }
 
   // Record action in the audit log (fire-and-forget — never block the result)
