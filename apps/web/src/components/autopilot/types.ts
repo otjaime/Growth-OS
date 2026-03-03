@@ -14,7 +14,7 @@ export type DiagnosisAction =
   | 'REFRESH_CREATIVE'
   | 'NONE';
 
-export type AutopilotTab = 'diagnoses' | 'ads' | 'budget' | 'health' | 'history' | 'settings';
+export type AutopilotTab = 'ads' | 'diagnoses' | 'history';
 
 // ── Autopilot v2 mode & config ──────────────────────────────
 
