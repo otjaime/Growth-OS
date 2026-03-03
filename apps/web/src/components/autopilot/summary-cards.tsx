@@ -3,8 +3,6 @@
 import { useMemo } from 'react';
 import { BarChart3, Activity, Target, DollarSign } from 'lucide-react';
 import { CounterTicker } from '@/components/ui/counter-ticker';
-import { ReflectiveCard } from '@/components/ui/reflective-card';
-import { GlassSurface } from '@/components/ui/glass-surface';
 import type { AutopilotStats, DiagnosisStats, Diagnosis } from './types';
 
 interface AutopilotSummaryCardsProps {
@@ -34,77 +32,69 @@ export function AutopilotSummaryCards({ stats, diagnosisStats, diagnoses }: Auto
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Active Ads */}
-      <GlassSurface intensity="subtle" className="card p-0">
-        <ReflectiveCard className="p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3 className="h-4 w-4 text-apple-blue" />
-            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Active Ads</p>
-          </div>
-          <CounterTicker value={stats.activeAds} className="text-2xl font-bold text-[var(--foreground)]" />
-          <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{stats.totalAds} total</p>
-        </ReflectiveCard>
-      </GlassSurface>
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <BarChart3 className="h-4 w-4 text-apple-blue" />
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Active Ads</p>
+        </div>
+        <CounterTicker value={stats.activeAds} className="text-2xl font-bold text-[var(--foreground)]" />
+        <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{stats.totalAds} total</p>
+      </div>
 
       {/* Spend (7d) + ROAS */}
-      <GlassSurface intensity="subtle" className="card p-0">
-        <ReflectiveCard className="p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Activity className="h-4 w-4 text-apple-green" />
-            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Spend (7d)</p>
-          </div>
-          <p className="text-2xl font-bold text-[var(--foreground)]">
-            ${stats.metrics7d.totalSpend.toLocaleString()}
-          </p>
-          <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
-            {roas ? `${roas.toFixed(2)}x ROAS` : 'No ROAS data'}
-          </p>
-        </ReflectiveCard>
-      </GlassSurface>
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Activity className="h-4 w-4 text-apple-green" />
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Spend (7d)</p>
+        </div>
+        <p className="text-2xl font-bold text-[var(--foreground)]">
+          ${stats.metrics7d.totalSpend.toLocaleString()}
+        </p>
+        <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
+          {roas ? `${roas.toFixed(2)}x ROAS` : 'No ROAS data'}
+        </p>
+      </div>
 
       {/* Diagnoses with dollar impact */}
-      <GlassSurface intensity="subtle" className="card p-0">
-        <ReflectiveCard className="p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="h-4 w-4 text-apple-purple" />
-            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Diagnoses</p>
-          </div>
-          <CounterTicker value={diagnosisStats?.total ?? 0} className="text-2xl font-bold text-[var(--foreground)]" />
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {(diagnosisStats?.critical ?? 0) > 0 && (
-              <span className="text-caption px-1.5 py-0.5 rounded-lg bg-[var(--tint-red)] text-apple-red font-medium">
-                {diagnosisStats!.critical} critical
-              </span>
-            )}
-            {(diagnosisStats?.warning ?? 0) > 0 && (
-              <span className="text-caption px-1.5 py-0.5 rounded-lg bg-[var(--tint-yellow)] text-apple-yellow font-medium">
-                {diagnosisStats!.warning} warning
-              </span>
-            )}
-          </div>
-        </ReflectiveCard>
-      </GlassSurface>
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Target className="h-4 w-4 text-apple-purple" />
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Diagnoses</p>
+        </div>
+        <CounterTicker value={diagnosisStats?.total ?? 0} className="text-2xl font-bold text-[var(--foreground)]" />
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {(diagnosisStats?.critical ?? 0) > 0 && (
+            <span className="text-caption px-1.5 py-0.5 rounded-lg bg-[var(--tint-red)] text-apple-red font-medium">
+              {diagnosisStats!.critical} critical
+            </span>
+          )}
+          {(diagnosisStats?.warning ?? 0) > 0 && (
+            <span className="text-caption px-1.5 py-0.5 rounded-lg bg-[var(--tint-yellow)] text-apple-yellow font-medium">
+              {diagnosisStats!.warning} warning
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* At Risk / Revenue */}
-      <GlassSurface intensity="subtle" className="card p-0">
-        <ReflectiveCard className="p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="h-4 w-4 text-apple-yellow" />
-            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Revenue (7d)</p>
-          </div>
-          <p className="text-2xl font-bold text-[var(--foreground)]">
-            ${stats.metrics7d.totalRevenue.toLocaleString()}
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <DollarSign className="h-4 w-4 text-apple-yellow" />
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Revenue (7d)</p>
+        </div>
+        <p className="text-2xl font-bold text-[var(--foreground)]">
+          ${stats.metrics7d.totalRevenue.toLocaleString()}
+        </p>
+        {atRiskSpend > 0 ? (
+          <p className="text-xs text-apple-red mt-0.5 font-medium">
+            ${atRiskSpend.toLocaleString()} at risk
           </p>
-          {atRiskSpend > 0 ? (
-            <p className="text-xs text-apple-red mt-0.5 font-medium">
-              ${atRiskSpend.toLocaleString()} at risk
-            </p>
-          ) : (
-            <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
-              {stats.metrics7d.totalConversions} conversions
-            </p>
-          )}
-        </ReflectiveCard>
-      </GlassSurface>
+        ) : (
+          <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
+            {stats.metrics7d.totalConversions} conversions
+          </p>
+        )}
+      </div>
     </div>
   );
 }
