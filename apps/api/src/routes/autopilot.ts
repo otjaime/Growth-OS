@@ -9,7 +9,7 @@ import { getOrgId } from '../lib/tenant.js';
 import { syncMetaAds } from '../jobs/sync-meta-ads.js';
 import { runDiagnosis } from '../jobs/run-diagnosis.js';
 import { generateCopyVariants } from '../lib/copy-generator.js';
-import { requirePlan, PlanError } from '../lib/plan-guard.js';
+// Plan guard removed — autopilot actions available on all plans
 import { executeAction } from '../jobs/execute-action.js';
 import { rollbackAction } from '../jobs/rollback-action.js';
 import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
@@ -649,22 +649,11 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Generate copy variants',
-      description: 'Uses AI to generate 3 copy variants (benefit, pain_point, urgency) for a diagnosis. Requires STARTER plan or higher.',
+      description: 'Uses AI to generate 3 copy variants (benefit, pain_point, urgency) for a diagnosis. ',
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const organizationId = await resolveOrgId(request);
-
-    // Plan gate: STARTER+
-    try {
-      await requirePlan(organizationId, 'STARTER');
-    } catch (err) {
-      if (err instanceof PlanError) {
-        reply.status(403);
-        return { error: err.message };
-      }
-      throw err;
-    }
 
     const diagnosis = await prisma.diagnosis.findFirst({
       where: { id, organizationId },
@@ -807,22 +796,11 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Approve and execute diagnosis',
-      description: 'Validates PENDING status, checks plan, marks APPROVED, then queues execution via Meta API. Requires STARTER plan or higher.',
+      description: 'Validates PENDING status, checks plan, marks APPROVED, then queues execution via Meta API. ',
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const organizationId = await resolveOrgId(request);
-
-    // Plan gate: STARTER+
-    try {
-      await requirePlan(organizationId, 'STARTER');
-    } catch (err) {
-      if (err instanceof PlanError) {
-        reply.status(403);
-        return { error: err.message };
-      }
-      throw err;
-    }
 
     const diagnosis = await prisma.diagnosis.findFirst({
       where: { id, organizationId },
@@ -1590,7 +1568,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Bulk approve diagnoses',
-      description: 'Approves multiple diagnoses and queues them for execution. Requires STARTER plan.',
+      description: 'Approves multiple diagnoses and queues them for execution. ',
     },
   }, async (request, reply) => {
     const { ids } = request.body as { ids?: string[] };
@@ -1605,17 +1583,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     const organizationId = await resolveOrgId(request);
-
-    // Plan gate: STARTER+
-    try {
-      await requirePlan(organizationId, 'STARTER');
-    } catch (err) {
-      if (err instanceof PlanError) {
-        reply.status(403);
-        return { error: err.message };
-      }
-      throw err;
-    }
 
     // Verify Meta credentials exist
     const credential = await prisma.connectorCredential.findFirst({
@@ -1796,15 +1763,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     const organizationId = await resolveOrgId(request);
-
-    try {
-      await requirePlan(organizationId, 'STARTER');
-    } catch (err) {
-      if (err instanceof PlanError) {
-        return reply.status(403).send({ error: err.message });
-      }
-      throw err;
-    }
 
     const pending = await prisma.diagnosis.findMany({
       where: { organizationId, status: 'PENDING', severity: severity.toUpperCase() as 'CRITICAL' | 'WARNING' | 'INFO' },
