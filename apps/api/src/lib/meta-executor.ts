@@ -232,14 +232,24 @@ function handleMetaError(error: MetaErrorResponse | undefined, httpStatus: numbe
   // Meta error code classification
   // 190: Expired/invalid token → not retryable, user must re-auth
   // 32: Rate limit → retryable with backoff
-  // 200: Permission error → not retryable
+  // 200: Permission error → not retryable (missing ads_management scope)
   // 1487: Ad account suspended → not retryable
   // 2: Temporary error → retryable
   const retryable = code === 32 || code === 2;
 
+  // Provide actionable error messages for common issues
+  let userMessage = `Meta API error (${code}): ${message}`;
+  if (code === 200) {
+    userMessage = 'Missing ads_management permission — re-generate your Meta token with ads_management scope enabled. Go to Data Connections → Meta Ads to update.';
+  } else if (code === 190) {
+    userMessage = 'Meta access token expired or invalid — re-connect Meta Ads in Data Connections.';
+  } else if (code === 1487) {
+    userMessage = 'Meta ad account is suspended — contact Meta support to restore access.';
+  }
+
   return {
     success: false,
-    error: `Meta API error (${code}): ${message}`,
+    error: userMessage,
     errorCode: code,
     retryable,
   };
