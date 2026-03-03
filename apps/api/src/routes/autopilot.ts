@@ -1034,6 +1034,72 @@ export async function autopilotRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── POST /autopilot/debug-meta-write — test a Meta write call ───
+  app.post('/autopilot/debug-meta-write', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Debug Meta API write',
+      description: 'Tests a write call to Meta API and returns full error response.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+    const { campaignId: extCampaignId } = request.body as { campaignId?: string };
+
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads', organizationId },
+    });
+    if (!credential) return { error: 'No Meta Ads connector found' };
+
+    let creds: Record<string, string>;
+    try {
+      creds = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+    } catch {
+      return { error: 'Failed to decrypt credentials' };
+    }
+
+    const accessToken = creds.accessToken ?? '';
+    if (!accessToken) return { error: 'No access token' };
+
+    // Use provided campaignId or get first active campaign
+    let targetId = extCampaignId;
+    if (!targetId) {
+      const camp = await prisma.metaCampaign.findFirst({
+        where: { organizationId, status: 'ACTIVE' },
+        select: { campaignId: true, name: true, dailyBudget: true },
+      });
+      if (!camp) return { error: 'No active campaigns' };
+      targetId = camp.campaignId;
+    }
+
+    // Step 1: Read campaign from Meta to verify access
+    const readResp = await fetch(
+      `https://graph.facebook.com/v21.0/${targetId}?fields=id,name,daily_budget,status,budget_remaining&access_token=${accessToken}`,
+    );
+    const readBody = await readResp.json();
+
+    // Step 2: Try a write (update to SAME daily_budget, so no actual change)
+    const currentBudget = (readBody as Record<string, unknown>).daily_budget;
+    let writeResult: unknown = null;
+    if (currentBudget) {
+      const writeResp = await fetch(`https://graph.facebook.com/v21.0/${targetId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ daily_budget: Number(currentBudget) }),
+      });
+      writeResult = await writeResp.json();
+    }
+
+    return {
+      campaignId: targetId,
+      readResponse: readBody,
+      writeResponse: writeResult,
+      currentBudget,
+    };
+  });
+
   // ── GET /autopilot/check-permissions — verify Meta token scopes ──
   app.get('/autopilot/check-permissions', {
     schema: {
