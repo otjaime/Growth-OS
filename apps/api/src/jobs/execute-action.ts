@@ -302,28 +302,8 @@ export async function executeAction(
     });
   }
 
-  // Record action in the audit log (fire-and-forget — never block the result)
-  const diagForLog = diagnosis as unknown as DiagnosisWithAd;
-  try {
-    await prisma.autopilotActionLog.create({
-      data: {
-        organizationId: diagnosis.organizationId,
-        diagnosisId,
-        actionType: diagnosis.actionType,
-        triggeredBy,
-        targetEntity: 'ad',
-        targetId: metaAdId,
-        targetName: diagForLog.ad.name ?? metaAdId,
-        beforeValue: getBeforeValue(diagForLog) as never,
-        afterValue: getAfterValue(diagForLog, result) as never,
-        success: result.success,
-        errorMessage: result.success ? null : (result.error ?? null),
-      },
-    });
-  } catch (logErr) {
-    // Action log failure must never block the execution result
-    console.error('[executeAction] Failed to write action log:', logErr);
-  }
+  // NOTE: Audit log is already written above (success at line 266, failure at line 290).
+  // Do NOT duplicate the write here.
 
   return {
     success: result.success,
@@ -334,15 +314,18 @@ export async function executeAction(
 }
 
 /**
- * Mark a diagnosis execution as failed: revert status from APPROVED back to
- * PENDING so it can be retried or manually re-approved, and record the error.
+ * Mark a diagnosis execution as failed: keep status as APPROVED so the
+ * expiration sweep doesn't expire it, but record the error in executionResult.
+ * The user can retry or dismiss from the UI.
  */
 async function markFailed(diagnosisId: string, errorMessage: string): Promise<void> {
   await prisma.diagnosis.update({
     where: { id: diagnosisId },
     data: {
-      status: 'PENDING',
-      executionResult: { error: errorMessage } as never,
+      // Keep APPROVED — do NOT revert to PENDING.
+      // Reverting to PENDING causes the next sync to expire it,
+      // losing the user's approval signal.
+      executionResult: { error: errorMessage, failedAt: new Date().toISOString() } as never,
     },
   });
 }
