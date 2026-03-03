@@ -61,7 +61,7 @@ function MetricPill({ label, value, change, invert }: {
   invert?: boolean;
 }) {
   return (
-    <div className="px-3 py-2 bg-glass-muted rounded-lg">
+    <div className="px-3 py-2.5 glass-thin rounded-xl">
       <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
       <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{value}</p>
       {change !== undefined && <TrendArrow change={change ?? null} invert={invert} size="sm" />}
@@ -88,7 +88,7 @@ function CopyVariantCard({
   const isActioned = variant.status !== 'DRAFT';
 
   return (
-    <div className="card border border-[var(--glass-border)] p-4 space-y-3">
+    <div className="glass-thin rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className={`text-caption px-2 py-0.5 rounded-full uppercase font-semibold ${angleColor}`}>
           {angleName}
@@ -280,7 +280,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
       </div>
 
       {/* Ad Context */}
-      <div className="card border border-[var(--glass-border)] p-4">
+      <div className="glass-thin rounded-xl p-4">
         <div className="flex items-start gap-3">
           <AdThumbnail
             thumbnailUrl={ad.thumbnailUrl}
@@ -294,7 +294,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
               {ad.campaign.name} &rsaquo; {ad.adSet.name}
             </p>
             <div className="flex items-center gap-2 mt-1.5">
-              <span className={`text-caption px-1.5 py-0.5 rounded font-medium ${
+              <span className={`text-caption px-1.5 py-0.5 rounded-lg font-medium ${
                 ad.status === 'ACTIVE' ? 'text-apple-green bg-[var(--tint-green)]' : 'text-[var(--foreground-secondary)] bg-glass-hover'
               }`}>
                 {ad.status}
@@ -317,7 +317,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
       <AIInsightCard diagnosisId={d.id} />
 
       {/* Recommended Action */}
-      <div className="card border border-[var(--glass-border)] p-4">
+      <div className="glass-thin rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <ActionIcon actionType={d.actionType} />
           <p className="text-xs uppercase font-semibold text-[var(--foreground-secondary)]">Recommended Action</p>
@@ -330,7 +330,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="flex items-center gap-1.5 text-xs font-medium text-apple-purple bg-[var(--tint-purple)] hover:bg-apple-purple/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-purple bg-[var(--tint-purple)] hover:bg-apple-purple/20 px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               {generating ? 'Generating...' : 'Generate Copy Variants'}
@@ -341,7 +341,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={requestApprove}
               disabled={approving}
-              className="flex items-center gap-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
               {approving ? 'Pausing...' : 'Pause Ad'}
@@ -352,7 +352,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={requestApprove}
               disabled={approving}
-              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               {approving ? 'Reactivating...' : 'Reactivate Ad'}
@@ -363,7 +363,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={requestApprove}
               disabled={approving}
-              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TrendingUp className="h-3.5 w-3.5" />}
               {approving ? 'Scaling...' : `Scale Budget to $${(d.suggestedValue?.suggestedBudget as number) ?? '?'}/day`}
@@ -374,7 +374,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={requestApprove}
               disabled={approving}
-              className="flex items-center gap-1.5 text-xs font-medium text-apple-yellow bg-[var(--tint-yellow)] hover:bg-apple-yellow/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-apple-yellow bg-[var(--tint-yellow)] hover:bg-apple-yellow/20 px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TrendingDown className="h-3.5 w-3.5" />}
               {approving ? 'Reducing...' : 'Reduce Budget'}
@@ -385,7 +385,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={handleDismiss}
               disabled={dismissing}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-hover hover:bg-glass-active-strong px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-hover hover:bg-glass-active-strong px-4 py-2 rounded-xl transition-all ease-spring disabled:opacity-50"
             >
               {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
               Dismiss

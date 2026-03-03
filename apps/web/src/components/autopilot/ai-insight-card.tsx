@@ -51,7 +51,7 @@ function RecommendationRow({
 
 function SkeletonLoader() {
   return (
-    <div className="card border border-[var(--glass-border)] p-4 space-y-4">
+    <div className="glass-thin rounded-xl p-4 space-y-4">
       <div className="flex items-center gap-2">
         <div className="h-4 w-4 rounded skeleton-shimmer" />
         <div className="h-3 w-32 rounded skeleton-shimmer" />
@@ -107,7 +107,7 @@ export function AIInsightCard({ diagnosisId }: AIInsightCardProps) {
 
   if (error) {
     return (
-      <div className="card border border-[var(--glass-border)] p-4">
+      <div className="glass-thin rounded-xl p-4">
         <div className="flex items-center gap-2 text-apple-yellow">
           <AlertTriangle className="h-4 w-4" />
           <p className="text-xs font-medium">{error}</p>
@@ -119,7 +119,7 @@ export function AIInsightCard({ diagnosisId }: AIInsightCardProps) {
   if (!insight) return null;
 
   return (
-    <div className="card border border-[var(--glass-border)] p-4 space-y-1">
+    <div className="glass-thin rounded-xl p-4 space-y-1">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Brain className="h-4 w-4 text-apple-purple" />
@@ -127,7 +127,7 @@ export function AIInsightCard({ diagnosisId }: AIInsightCardProps) {
       </div>
 
       {/* Root Cause */}
-      <div className="rounded-lg bg-glass-muted px-3 py-2.5 mb-3">
+      <div className="rounded-xl bg-glass-muted px-3 py-2.5 mb-3">
         <p className="text-caption uppercase font-semibold text-apple-purple/80 mb-1">Root Cause</p>
         <p className="text-sm text-[var(--foreground)] leading-relaxed">{insight.rootCause}</p>
       </div>
