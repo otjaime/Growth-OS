@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Activity, DollarSign, ArrowUpDown, Users } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface ImpactData {
   actionsTaken7d: number;
@@ -19,13 +18,13 @@ function formatCurrencyCompact(num: number): string {
 
 function SkeletonCard(): JSX.Element {
   return (
-    <GlassSurface intensity="subtle" className="card p-4">
+    <div className="card p-4">
       <div className="space-y-3">
         <div className="h-4 w-24 skeleton-shimmer" />
         <div className="h-6 w-16 skeleton-shimmer" />
         <div className="h-3 w-20 skeleton-shimmer" />
       </div>
-    </GlassSurface>
+    </div>
   );
 }
 
@@ -108,7 +107,7 @@ export function ImpactSummary(): JSX.Element {
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <GlassSurface key={card.label} intensity="subtle" className="card p-4">
+          <div key={card.label} className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -120,7 +119,7 @@ export function ImpactSummary(): JSX.Element {
             </div>
             <p className="text-lg font-bold text-[var(--foreground)]">{card.value}</p>
             <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">{card.subtitle}</p>
-          </GlassSurface>
+          </div>
         );
       })}
     </div>

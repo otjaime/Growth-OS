@@ -121,85 +121,6 @@ body {
 }
 
 /* ==========================================================
-   LIQUID GLASS (ReactBits-inspired SVG displacement)
-   ========================================================== */
-.liquid-glass {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  overflow: hidden;
-  transition: opacity 0.26s ease-out;
-}
-
-.liquid-glass__filter {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  z-index: -1;
-}
-
-.liquid-glass__content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  border-radius: inherit;
-  position: relative;
-  z-index: 1;
-}
-
-/* SVG-path — real displacement refraction */
-.liquid-glass--svg {
-  background: hsl(0 0% 0% / var(--glass-frost, 0));
-  backdrop-filter: var(--filter-id, none) saturate(var(--glass-saturation, 1));
-  -webkit-backdrop-filter: var(--filter-id, none) saturate(var(--glass-saturation, 1));
-  box-shadow:
-    0 0 2px 1px color-mix(in oklch, white, transparent 65%) inset,
-    0 0 10px 4px color-mix(in oklch, white, transparent 85%) inset,
-    0px 4px 16px rgba(0, 0, 0, 0.12),
-    0px 8px 24px rgba(0, 0, 0, 0.10),
-    0px 4px 16px rgba(0, 0, 0, 0.08) inset;
-}
-
-/* Fallback — standard backdrop blur for Safari/Firefox/mobile */
-.liquid-glass--fallback {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    var(--shadow-glass),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
-    inset 0 -1px 0 0 rgba(255, 255, 255, 0.04);
-}
-
-/* Specular top-edge shine on liquid glass */
-.liquid-glass--svg::before,
-.liquid-glass--fallback::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.10) 0%,
-    rgba(255, 255, 255, 0.02) 12%,
-    rgba(255, 255, 255, 0) 35%
-  );
-  pointer-events: none;
-  z-index: 2;
-}
-
-.liquid-glass:focus-visible {
-  outline: 2px solid var(--accent, #0a84ff);
-  outline-offset: 2px;
-}
-
-/* ==========================================================
    GLASS VARIANTS
    ========================================================== */
 
@@ -381,13 +302,13 @@ body {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .glass-thick, .glass-thin, .glass-elevated, .liquid-glass {
+  .glass-thick, .glass-thin, .glass-elevated {
     background: white !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
   }
-  .glass-specular::before, .liquid-glass--svg::before, .liquid-glass--fallback::before { display: none !important; }
+  .glass-specular::before { display: none !important; }
 
   /* ── Typography Reset ──────────────────── */
   h1, h2, h3, p, span, div { color: black !important; }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb, Settings, CheckSquare } from 'lucide-react';
+import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb, CheckSquare } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
@@ -23,8 +23,7 @@ import {
   ImpactSummary,
   BulkActionsBar,
 } from '@/components/autopilot';
-import { GlassSurface } from '@/components/ui/glass-surface';
-import { AnimatePresence, motion, LayoutGroup } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
@@ -342,85 +341,70 @@ export default function AutopilotPage() {
           {/* ═══ Diagnoses Tab ═══════════════════════════════════════ */}
           {activeTab === 'diagnoses' && (
             <>
-              {/* Filter Bar — animated segmented controls */}
-              <LayoutGroup id="diagnosis-filters">
-                <div className="flex items-center gap-3 flex-wrap">
-                  {/* Status filter segment */}
-                  <div className="relative flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
-                    {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => {
-                      const isActive = filterStatus === s;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => setFilterStatus(s)}
-                          className="relative z-10 text-xs px-3 py-1.5 rounded-lg font-medium press-scale transition-colors ease-spring"
-                          style={{ color: isActive ? 'var(--foreground)' : 'var(--foreground-secondary)' }}
-                        >
-                          {isActive && (
-                            <motion.div
-                              layoutId="status-pill"
-                              className="absolute inset-0 bg-glass-active rounded-lg"
-                              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">
-                            {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Severity filter segment */}
-                  <div className="relative flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
-                    {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => {
-                      const isActive = filterSeverity === s;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => setFilterSeverity(s)}
-                          className="relative z-10 text-xs px-3 py-1.5 rounded-lg font-medium press-scale transition-colors ease-spring"
-                          style={{ color: isActive ? 'var(--foreground)' : 'var(--foreground-secondary)' }}
-                        >
-                          {isActive && (
-                            <motion.div
-                              layoutId="severity-pill"
-                              className="absolute inset-0 bg-glass-active rounded-lg"
-                              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">
-                            {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Select toggle */}
-                  <button
-                    onClick={() => {
-                      setSelectionMode(!selectionMode);
-                      if (selectionMode) setSelectedIds(new Set());
-                    }}
-                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl press-scale transition-all ease-spring ${
-                      selectionMode
-                        ? 'text-apple-blue bg-[var(--tint-blue)]'
-                        : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-muted'
-                    }`}
-                  >
-                    <CheckSquare className="h-3.5 w-3.5" />
-                    {selectionMode ? 'Cancel Select' : 'Select'}
-                  </button>
+              {/* Filter Bar — segmented controls */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Status filter segment */}
+                <div className="flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
+                  {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => {
+                    const isActive = filterStatus === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setFilterStatus(s)}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-medium press-scale transition-colors ease-spring ${
+                          isActive
+                            ? 'bg-glass-active text-[var(--foreground)]'
+                            : 'text-[var(--foreground-secondary)]'
+                        }`}
+                      >
+                        {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+                      </button>
+                    );
+                  })}
                 </div>
-              </LayoutGroup>
+
+                {/* Severity filter segment */}
+                <div className="flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
+                  {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => {
+                    const isActive = filterSeverity === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setFilterSeverity(s)}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-medium press-scale transition-colors ease-spring ${
+                          isActive
+                            ? 'bg-glass-active text-[var(--foreground)]'
+                            : 'text-[var(--foreground-secondary)]'
+                        }`}
+                      >
+                        {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Select toggle */}
+                <button
+                  onClick={() => {
+                    setSelectionMode(!selectionMode);
+                    if (selectionMode) setSelectedIds(new Set());
+                  }}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl press-scale transition-all ease-spring ${
+                    selectionMode
+                      ? 'text-apple-blue bg-[var(--tint-blue)]'
+                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-muted'
+                  }`}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  {selectionMode ? 'Cancel Select' : 'Select'}
+                </button>
+              </div>
 
               {/* Two-column layout */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6" style={{ minHeight: '60vh' }}>
                 {/* Left — Diagnosis List */}
-                <GlassSurface
+                <div
                   className="col-span-full lg:col-span-4 card p-3 overflow-y-auto"
-                  intensity="medium"
                   style={{ maxHeight: '70vh' }}
                 >
                   <DiagnosisList
@@ -433,12 +417,11 @@ export default function AutopilotPage() {
                     onSelectAll={handleSelectAll}
                     onDeselectAll={handleDeselectAll}
                   />
-                </GlassSurface>
+                </div>
 
                 {/* Right — Detail Panel */}
-                <GlassSurface
+                <div
                   className="col-span-full lg:col-span-8 card p-6 overflow-y-auto"
-                  intensity="medium"
                   style={{ maxHeight: '70vh' }}
                 >
                   {selected ? (
@@ -458,7 +441,7 @@ export default function AutopilotPage() {
                       </p>
                     </div>
                   )}
-                </GlassSurface>
+                </div>
               </div>
             </>
           )}
