@@ -100,7 +100,8 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
       });
 
       if (existing) {
-        // Only update if the existing diagnosis is still PENDING
+        // Only update if the existing diagnosis is still PENDING.
+        // APPROVED, EXECUTED, DISMISSED diagnoses must NOT be overwritten.
         if (existing.status === 'PENDING') {
           // Clear cached AI insight if the message changed (metrics shifted)
           const insightChanged = existing.message !== diag.message;
