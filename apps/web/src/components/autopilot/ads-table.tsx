@@ -132,13 +132,13 @@ export function AdsTable({ ads, loading, diagnosisByAdId, healthByCampaignId, on
               <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3 w-10" />
               <SortHeader label="Ad" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} align="left" />
               <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Status</th>
-              <SortHeader label="Spend 7d" sortKey="spend7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Spent 7d" sortKey="spend7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortHeader label="Revenue" sortKey="revenue7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="ROAS" sortKey="roas7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="CTR" sortKey="ctr7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="CPC" sortKey="cpc7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Freq" sortKey="frequency7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Conv" sortKey="conversions7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Return" sortKey="roas7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Click rate" sortKey="ctr7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Cost/click" sortKey="cpc7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Views/person" sortKey="frequency7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Sales" sortKey="conversions7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <th className="text-center text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Health</th>
             </tr>
           </thead>

@@ -49,7 +49,7 @@ export function SettingsSlideout({ open, onClose }: SettingsSlideoutProps): JSX.
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--glass-border)]">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">Autopilot Settings</h2>
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">Copilot Settings</h2>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg hover:bg-glass-hover transition-colors press-scale"

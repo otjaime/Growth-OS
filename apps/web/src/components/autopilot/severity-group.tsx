@@ -9,9 +9,9 @@ interface SeverityGroupHeaderProps {
 }
 
 const labels: Record<DiagnosisSeverity, string> = {
-  CRITICAL: 'Critical Issues',
-  WARNING: 'Warnings',
-  INFO: 'Info',
+  CRITICAL: 'Needs attention now',
+  WARNING: 'Worth reviewing',
+  INFO: 'Good to know',
 };
 
 const accents: Record<DiagnosisSeverity, string> = {

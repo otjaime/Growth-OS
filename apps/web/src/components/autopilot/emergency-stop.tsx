@@ -6,13 +6,14 @@ import { apiFetch } from '@/lib/api';
 
 interface EmergencyStopProps {
   onStopped?: () => void;
+  variant?: 'full' | 'compact';
 }
 
 interface StopResult {
   expiredCount: number;
 }
 
-export function EmergencyStop({ onStopped }: EmergencyStopProps) {
+export function EmergencyStop({ onStopped, variant = 'full' }: EmergencyStopProps) {
   const [holding, setHolding] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<StopResult | null>(null);
@@ -82,16 +83,50 @@ export function EmergencyStop({ onStopped }: EmergencyStopProps) {
   }, [holding]);
 
   if (result) {
+    if (variant === 'compact') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--tint-green)] text-xs font-medium text-apple-green">
+          <CheckCircle className="h-3 w-3" />
+          Stopped
+        </span>
+      );
+    }
     return (
       <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--tint-green)] border border-apple-green/30">
         <CheckCircle className="h-4 w-4 text-apple-green shrink-0" />
         <div>
-          <p className="text-sm font-medium text-apple-green">Autopilot stopped</p>
+          <p className="text-sm font-medium text-apple-green">All automated actions paused</p>
           <p className="text-xs text-apple-green/80 mt-0.5">
-            {result.expiredCount} diagnos{result.expiredCount === 1 ? 'is' : 'es'} expired. Mode set to Monitor.
+            Your ads are safe. Mode set to Watch Only.
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (variant === 'compact') {
+    return (
+      <button
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
+        onMouseLeave={handlePressEnd}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
+        disabled={executing}
+        className="relative overflow-hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--tint-red)] hover:bg-apple-red/20 text-apple-red text-xs font-semibold press-scale transition-all ease-spring disabled:opacity-50 select-none"
+      >
+        {executing ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <ShieldAlert className="h-3 w-3" />
+        )}
+        {executing ? 'Stopping...' : holding ? 'Hold...' : 'Stop'}
+        <div
+          ref={progressRef}
+          className="absolute bottom-0 left-0 h-0.5 bg-apple-red transition-all duration-[2000ms] ease-linear"
+          style={{ width: '0%' }}
+        />
+      </button>
     );
   }
 

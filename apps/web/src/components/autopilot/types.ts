@@ -14,7 +14,25 @@ export type DiagnosisAction =
   | 'REFRESH_CREATIVE'
   | 'NONE';
 
-export type AutopilotTab = 'ads' | 'diagnoses' | 'history';
+export type AutopilotTab = 'overview' | 'actions' | 'ads';
+
+// ── Human-readable label types ───────────────────────────────
+
+export interface HumanAction {
+  readonly verb: string;
+  readonly description: string;
+  readonly buttonLabel: string;
+  readonly activeLabel: string;
+  readonly icon: string;
+}
+
+export type MetricKey = 'roas' | 'ctr' | 'cpc' | 'frequency' | 'spend' | 'conversions' | 'revenue';
+
+export interface MetricExplanation {
+  readonly label: string;
+  readonly tooltip: string;
+  readonly format: (v: number) => string;
+}
 
 // ── Autopilot v2 mode & config ──────────────────────────────
 

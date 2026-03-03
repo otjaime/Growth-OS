@@ -84,7 +84,7 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
           className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-xl press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          Approve ({selectedCount})
+          Apply {selectedCount} change{selectedCount !== 1 ? 's' : ''}
         </button>
 
         <button
@@ -93,7 +93,7 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
           className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] bg-glass-muted hover:bg-glass-active px-4 py-2 rounded-xl press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'dismiss' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-          Dismiss ({selectedCount})
+          Skip {selectedCount} item{selectedCount !== 1 ? 's' : ''}
         </button>
 
         <button

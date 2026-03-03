@@ -1,28 +1,28 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { BarChart3, Target, Clock } from 'lucide-react';
+import { LayoutDashboard, Target, CreditCard } from 'lucide-react';
 import type { AutopilotTab } from './types';
 
 interface AutopilotTabBarProps {
   activeTab: AutopilotTab;
   onTabChange: (tab: AutopilotTab) => void;
-  diagnosisCount: number;
+  actionCount: number;
 }
 
-const mainTabs: { key: AutopilotTab; label: string; icon: typeof Target }[] = [
-  { key: 'ads', label: 'All Ads', icon: BarChart3 },
-  { key: 'diagnoses', label: 'Diagnoses', icon: Target },
-  { key: 'history', label: 'History', icon: Clock },
+const tabs: { key: AutopilotTab; label: string; icon: typeof Target }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'actions', label: 'Actions', icon: Target },
+  { key: 'ads', label: 'Your Ads', icon: CreditCard },
 ];
 
-export function AutopilotTabBar({ activeTab, onTabChange, diagnosisCount }: AutopilotTabBarProps) {
+export function AutopilotTabBar({ activeTab, onTabChange, actionCount }: AutopilotTabBarProps): JSX.Element {
   return (
-    <div className="flex items-center" role="tablist" aria-label="Autopilot sections">
+    <div className="flex items-center" role="tablist" aria-label="Copilot sections">
       <div className="relative flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
-        {mainTabs.map(({ key, label, icon: Icon }) => {
+        {tabs.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
-          const count = key === 'diagnoses' ? diagnosisCount : undefined;
+          const count = key === 'actions' ? actionCount : undefined;
 
           return (
             <button

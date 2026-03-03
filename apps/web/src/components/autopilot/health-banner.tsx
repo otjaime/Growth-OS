@@ -97,7 +97,7 @@ export function HealthBanner({ autopilotStats, diagnosisStats, diagnoses }: Heal
         {roas != null && (
           <span className="inline-flex items-center gap-1">
             <TrendingUp className="h-3.5 w-3.5" />
-            {roas.toFixed(2)}x ROAS
+            {roas.toFixed(2)}x return
           </span>
         )}
       </div>

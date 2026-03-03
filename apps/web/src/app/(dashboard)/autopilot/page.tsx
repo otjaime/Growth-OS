@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Zap, RefreshCw, Loader2, X, Eye, Lightbulb, CheckSquare, Settings, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  Zap, RefreshCw, Loader2, X, Eye, Lightbulb, CheckSquare,
+  Settings, ChevronDown, ChevronUp, HelpCircle,
+} from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import {
   type Diagnosis,
@@ -12,25 +15,31 @@ import {
   type MetaAdWithTrends,
   type HistoryItem,
   type CampaignHealthScore,
-  DiagnosisList,
-  DiagnosisDetail,
   AutopilotTabBar,
   AdsTable,
   HistoryTable,
   BudgetView,
   BulkActionsBar,
 } from '@/components/autopilot';
+import { OverviewTab } from '@/components/autopilot/overview-tab';
+import { ActionCard } from '@/components/autopilot/action-card';
 import { HealthBanner, HealthBannerSkeleton } from '@/components/autopilot/health-banner';
 import { SettingsSlideout } from '@/components/autopilot/settings-slideout';
+import { EmergencyStop } from '@/components/autopilot/emergency-stop';
+import { MODE_LABELS } from '@/components/autopilot/human-labels';
+import { UndoToastProvider } from '@/components/autopilot/undo-toast';
+import { HelpDrawer } from '@/components/autopilot/help-drawer';
+import { AdsSearchBar } from '@/components/autopilot/ads-search-bar';
+import { AdDetailSheet } from '@/components/autopilot/ad-detail-sheet';
 import { AnimatePresence, motion } from 'motion/react';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
 
 const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye }[] = [
-  { key: 'monitor', label: 'Monitor', icon: Eye },
-  { key: 'suggest', label: 'Suggest', icon: Lightbulb },
-  { key: 'auto', label: 'Auto', icon: Zap },
+  { key: 'monitor', label: MODE_LABELS.monitor.label, icon: Eye },
+  { key: 'suggest', label: MODE_LABELS.suggest.label, icon: Lightbulb },
+  { key: 'auto', label: MODE_LABELS.auto.label, icon: Zap },
 ];
 
 export default function AutopilotPage() {
@@ -38,7 +47,6 @@ export default function AutopilotPage() {
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [stats, setStats] = useState<DiagnosisStats | null>(null);
   const [autopilotStats, setAutopilotStats] = useState<AutopilotStats | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -48,17 +56,25 @@ export default function AutopilotPage() {
   const [autopilotMode, setAutopilotMode] = useState<AutopilotMode>('monitor');
   const [modeUpdating, setModeUpdating] = useState(false);
 
-  // ── Tab state — default to ads ────────────────────────────────
-  const [activeTab, setActiveTab] = useState<AutopilotTab>('ads');
-  const hasAutoSwitched = useRef(false);
+  // ── Tab state — default to overview ───────────────────────────
+  const [activeTab, setActiveTab] = useState<AutopilotTab>('overview');
 
   // ── Settings slideout ─────────────────────────────────────────
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // ── Budget view toggle (inside All Ads tab) ───────────────────
+  // ── Help drawer ─────────────────────────────────────────────
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // ── Ad detail sheet (drill-down) ────────────────────────────
+  const [selectedAdId, setSelectedAdId] = useState<string | null>(null);
+
+  // ── Filtered ads (from search bar) ──────────────────────────
+  const [filteredAds, setFilteredAds] = useState<MetaAdWithTrends[]>([]);
+
+  // ── Budget view toggle (inside Ads tab) ───────────────────────
   const [budgetExpanded, setBudgetExpanded] = useState(false);
 
-  // ── Diagnosis filters (scoped to diagnoses tab) ───────────────
+  // ── Diagnosis filters (scoped to actions tab) ─────────────────
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('PENDING');
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('ALL');
 
@@ -79,6 +95,12 @@ export default function AutopilotPage() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // ── History visibility in Actions tab ─────────────────────────
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  // ── Smart tab switch ref ──────────────────────────────────────
+  const hasAutoSwitched = useRef(false);
 
   // ── Fetch core diagnosis data ─────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -117,9 +139,9 @@ export default function AutopilotPage() {
       setAutopilotStats(apStatsData);
       setLoadError(null);
 
-      // Smart default: auto-switch to diagnoses tab if there are issues (once)
-      if (!hasAutoSwitched.current && statsData.total > 0) {
-        setActiveTab('diagnoses');
+      // Smart default: if there are critical issues, nudge user to Actions (once)
+      if (!hasAutoSwitched.current && statsData.critical > 0) {
+        setActiveTab('actions');
         hasAutoSwitched.current = true;
       }
     } catch (err) {
@@ -134,7 +156,7 @@ export default function AutopilotPage() {
     fetchData();
   }, [fetchData]);
 
-  // ── Eager-load ads + campaign health on mount ──────────────────
+  // ── Eager-load ads + campaign health on mount ─────────────────
   useEffect(() => {
     if (!adsLoaded && !adsLoading) {
       setAdsLoading(true);
@@ -148,16 +170,16 @@ export default function AutopilotPage() {
           setAdsLoaded(true);
         })
         .catch((err: unknown) => {
-          console.error('[Autopilot] Failed to load ads:', err);
+          console.error('[Copilot] Failed to load ads:', err);
           setAdsLoaded(true);
         })
         .finally(() => setAdsLoading(false));
     }
   }, [adsLoaded, adsLoading]);
 
-  // ── Lazy load history when tab opens ──────────────────────────
+  // ── Lazy load history when actions tab opens with history expanded
   useEffect(() => {
-    if (activeTab === 'history' && !historyLoaded && !historyLoading) {
+    if (activeTab === 'actions' && historyExpanded && !historyLoaded && !historyLoading) {
       setHistoryLoading(true);
       apiFetch('/api/autopilot/history?limit=50')
         .then((r) => (r.ok ? r.json() : null))
@@ -169,12 +191,12 @@ export default function AutopilotPage() {
           setHistoryLoaded(true);
         })
         .catch((err: unknown) => {
-          console.error('[Autopilot] Failed to load history:', err);
+          console.error('[Copilot] Failed to load history:', err);
           setHistoryLoaded(true);
         })
         .finally(() => setHistoryLoading(false));
     }
-  }, [activeTab, historyLoaded, historyLoading]);
+  }, [activeTab, historyExpanded, historyLoaded, historyLoading]);
 
   // ── Cross-reference diagnoses by ad ID ────────────────────────
   const diagnosisByAdId = useMemo(() => {
@@ -196,6 +218,25 @@ export default function AutopilotPage() {
     return map;
   }, [campaignHealth]);
 
+  // ── Selected ad for detail sheet ────────────────────────────
+  const selectedAd = useMemo(() => {
+    if (!selectedAdId) return null;
+    return allAds.find((a) => a.id === selectedAdId) ?? null;
+  }, [selectedAdId, allAds]);
+
+  const selectedAdDiagnoses = useMemo(() => {
+    if (!selectedAdId) return [];
+    return diagnosisByAdId.get(selectedAdId) ?? [];
+  }, [selectedAdId, diagnosisByAdId]);
+
+  const selectedAdHealth = useMemo(() => {
+    if (!selectedAd) return null;
+    return healthByCampaignId.get(selectedAd.campaign.id) ?? null;
+  }, [selectedAd, healthByCampaignId]);
+
+  // ── Ads table display list (filtered or full) ───────────────
+  const displayAds = filteredAds;
+
   // ── Mode change handler ───────────────────────────────────────
   const handleModeChange = async (mode: AutopilotMode) => {
     const prev = autopilotMode;
@@ -207,11 +248,9 @@ export default function AutopilotPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      if (!res.ok) {
-        setAutopilotMode(prev); // rollback
-      }
+      if (!res.ok) setAutopilotMode(prev);
     } catch {
-      setAutopilotMode(prev); // rollback
+      setAutopilotMode(prev);
     } finally {
       setModeUpdating(false);
     }
@@ -235,7 +274,7 @@ export default function AutopilotPage() {
       const diagRes = await apiFetch('/api/autopilot/run-diagnosis', { method: 'POST' });
       if (!diagRes.ok) {
         const body = await diagRes.json().catch(() => ({ error: diagRes.statusText }));
-        setSyncError(`Diagnosis run failed: ${body.error ?? diagRes.statusText}`);
+        setSyncError(`Check failed: ${body.error ?? diagRes.statusText}`);
       }
 
       setAdsLoaded(false);
@@ -250,7 +289,6 @@ export default function AutopilotPage() {
 
   const handleDismiss = (id: string) => {
     setDiagnoses((prev) => prev.filter((d) => d.id !== id));
-    if (selectedId === id) setSelectedId(null);
     setHistoryLoaded(false);
   };
 
@@ -263,13 +301,8 @@ export default function AutopilotPage() {
     });
   };
 
-  const handleSelectAll = () => {
-    setSelectedIds(new Set(diagnoses.map((d) => d.id)));
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedIds(new Set());
-  };
+  const handleSelectAll = () => setSelectedIds(new Set(diagnoses.map((d) => d.id)));
+  const handleDeselectAll = () => setSelectedIds(new Set());
 
   const handleBulkComplete = () => {
     setSelectionMode(false);
@@ -277,8 +310,6 @@ export default function AutopilotPage() {
     setHistoryLoaded(false);
     fetchData();
   };
-
-  const selected = diagnoses.find((d) => d.id === selectedId) ?? null;
 
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
@@ -300,9 +331,9 @@ export default function AutopilotPage() {
   if (loadError) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Copilot</h1>
         <div className="card border-apple-red/50 flex flex-col items-center justify-center h-64 gap-2">
-          <p className="text-apple-red">Failed to load autopilot data.</p>
+          <p className="text-apple-red">Failed to load data.</p>
           <p className="text-xs text-[var(--foreground-secondary)] max-w-md text-center">{loadError}</p>
         </div>
       </div>
@@ -318,14 +349,25 @@ export default function AutopilotPage() {
             <Zap className="h-5 w-5 text-apple-purple" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Meta Autopilot</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Meta Copilot</h1>
             <p className="text-xs text-[var(--foreground-secondary)]">
-              AI-powered ad diagnosis &amp; optimization
+              Helping you get more from every ad dollar
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Emergency Stop — compact, in header when mode != monitor */}
+          {autopilotMode !== 'monitor' && (
+            <EmergencyStop
+              variant="compact"
+              onStopped={() => {
+                setAutopilotMode('monitor');
+                fetchData();
+              }}
+            />
+          )}
+
           {/* Mode toggle — segmented control */}
           <div className="relative flex items-center gap-0.5 bg-glass-muted rounded-xl p-1">
             {MODE_OPTIONS.map(({ key, label, icon: Icon }) => {
@@ -354,13 +396,22 @@ export default function AutopilotPage() {
             })}
           </div>
 
-          {/* Gear icon → Settings */}
+          {/* Gear → Settings */}
           <button
             onClick={() => setSettingsOpen(true)}
             className="p-2 rounded-xl hover:bg-glass-hover transition-colors press-scale"
-            title="Autopilot Settings"
+            title="Settings"
           >
             <Settings className="h-4 w-4 text-[var(--foreground-secondary)]" />
+          </button>
+
+          {/* ? → Help */}
+          <button
+            onClick={() => setHelpOpen(true)}
+            className="p-2 rounded-xl hover:bg-glass-hover transition-colors press-scale"
+            title="Help"
+          >
+            <HelpCircle className="h-4 w-4 text-[var(--foreground-secondary)]" />
           </button>
 
           {/* Sync button */}
@@ -370,7 +421,7 @@ export default function AutopilotPage() {
             className="flex items-center gap-1.5 text-xs font-medium text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20 px-4 py-2 rounded-xl press-scale transition-all ease-spring disabled:opacity-50"
           >
             {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            {syncing ? 'Syncing...' : 'Sync & Diagnose'}
+            {syncing ? 'Checking...' : 'Check for updates'}
           </button>
         </div>
       </div>
@@ -396,7 +447,7 @@ export default function AutopilotPage() {
       <AutopilotTabBar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        diagnosisCount={stats?.total ?? 0}
+        actionCount={stats?.total ?? 0}
       />
 
       {/* ═══ 5. Tab Content ═════════════════════════════════════ */}
@@ -408,40 +459,30 @@ export default function AutopilotPage() {
           exit={{ opacity: 0, y: -4 }}
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         >
-          {/* ── All Ads Tab ──────────────────────────────────── */}
-          {activeTab === 'ads' && (
-            <div className="space-y-4">
-              {/* Collapsible Budget Optimization */}
-              <button
-                onClick={() => setBudgetExpanded(!budgetExpanded)}
-                className="flex items-center gap-2 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors press-scale"
-              >
-                {budgetExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                Budget Optimization
-              </button>
-              {budgetExpanded && <BudgetView />}
-
-              <AdsTable
-                ads={allAds}
-                loading={adsLoading}
-                diagnosisByAdId={diagnosisByAdId}
-                healthByCampaignId={healthByCampaignId}
-              />
-            </div>
+          {/* ── Overview Tab ───────────────────────────────────── */}
+          {activeTab === 'overview' && (
+            <OverviewTab
+              diagnoses={diagnoses}
+              stats={stats}
+              autopilotStats={autopilotStats}
+              campaignHealth={campaignHealth}
+              onDismiss={handleDismiss}
+              onRefresh={fetchData}
+              onNavigate={setActiveTab}
+            />
           )}
 
-          {/* ── Diagnoses Tab ────────────────────────────────── */}
-          {activeTab === 'diagnoses' && (
+          {/* ── Actions Tab ────────────────────────────────────── */}
+          {activeTab === 'actions' && (
             <>
               {diagnoses.length === 0 ? (
-                /* Compact empty state */
                 <div className="card px-6 py-8 text-center">
                   <div className="w-12 h-12 rounded-full bg-[var(--tint-green)] flex items-center justify-center mx-auto mb-3">
                     <span className="text-apple-green text-xl">&#10003;</span>
                   </div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">All Clear</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">All clear!</p>
                   <p className="text-xs text-[var(--foreground-secondary)] mt-1">
-                    No pending diagnoses — your ads are performing well
+                    Your ads are performing well. We&apos;ll let you know if anything changes.
                   </p>
                 </div>
               ) : (
@@ -480,7 +521,7 @@ export default function AutopilotPage() {
                                 : 'text-[var(--foreground-secondary)]'
                             }`}
                           >
-                            {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
+                            {s === 'ALL' ? 'All' : s === 'CRITICAL' ? 'Urgent' : s === 'WARNING' ? 'Review' : 'Info'}
                           </button>
                         );
                       })}
@@ -498,63 +539,85 @@ export default function AutopilotPage() {
                       }`}
                     >
                       <CheckSquare className="h-3.5 w-3.5" />
-                      {selectionMode ? 'Cancel Select' : 'Select'}
+                      {selectionMode ? 'Cancel' : 'Select multiple'}
                     </button>
                   </div>
 
-                  {/* Two-column layout */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6" style={{ minHeight: '60vh' }}>
-                    <div
-                      className="col-span-full lg:col-span-4 card p-3 overflow-y-auto"
-                      style={{ maxHeight: '70vh' }}
-                    >
-                      <DiagnosisList
-                        diagnoses={diagnoses}
-                        selectedId={selectedId}
-                        onSelect={setSelectedId}
-                        selectionMode={selectionMode}
-                        selectedIds={selectedIds}
-                        onToggleSelect={handleToggleSelect}
-                        onSelectAll={handleSelectAll}
-                        onDeselectAll={handleDeselectAll}
-                      />
-                    </div>
-
-                    <div
-                      className="col-span-full lg:col-span-8 card p-6 overflow-y-auto"
-                      style={{ maxHeight: '70vh' }}
-                    >
-                      {selected ? (
-                        <DiagnosisDetail
-                          diagnosis={selected}
+                  {/* Action Cards Feed */}
+                  <div className="space-y-2 mt-4">
+                    {diagnoses.map((d, i) => (
+                      <motion.div
+                        key={d.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 30, delay: i * 0.03 }}
+                      >
+                        <ActionCard
+                          diagnosis={d}
                           onDismiss={handleDismiss}
                           onRefresh={fetchData}
+                          selectionMode={selectionMode}
+                          isSelected={selectedIds.has(d.id)}
+                          onToggleSelect={handleToggleSelect}
                         />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                          <Zap className="h-12 w-12 text-[var(--foreground-secondary)]/20 mb-4" />
-                          <p className="text-sm font-medium text-[var(--foreground-secondary)]">
-                            Select a diagnosis to view details
-                          </p>
-                          <p className="text-xs text-[var(--foreground-secondary)]/60 mt-1">
-                            Click any item in the list to see the full diagnosis and take action
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Collapsed History Section */}
+                  <div className="mt-6">
+                    <button
+                      onClick={() => {
+                        setHistoryExpanded(!historyExpanded);
+                      }}
+                      className="flex items-center gap-2 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors press-scale"
+                    >
+                      {historyExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      Recent history {historyTotal > 0 && `(${historyTotal})`}
+                    </button>
+                    {historyExpanded && (
+                      <div className="mt-3">
+                        <HistoryTable
+                          items={historyItems}
+                          total={historyTotal}
+                          loading={historyLoading}
+                        />
+                      </div>
+                    )}
                   </div>
                 </>
               )}
             </>
           )}
 
-          {/* ── History Tab ──────────────────────────────────── */}
-          {activeTab === 'history' && (
-            <HistoryTable
-              items={historyItems}
-              total={historyTotal}
-              loading={historyLoading}
-            />
+          {/* ── Your Ads Tab ───────────────────────────────────── */}
+          {activeTab === 'ads' && (
+            <div className="space-y-4">
+              {/* Collapsible Budget Optimization */}
+              <button
+                onClick={() => setBudgetExpanded(!budgetExpanded)}
+                className="flex items-center gap-2 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors press-scale"
+              >
+                {budgetExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                Budget Optimization
+              </button>
+              {budgetExpanded && <BudgetView />}
+
+              {/* Search & Filter */}
+              <AdsSearchBar
+                ads={allAds}
+                healthByCampaignId={healthByCampaignId}
+                onFiltered={setFilteredAds}
+              />
+
+              <AdsTable
+                ads={displayAds}
+                loading={adsLoading}
+                diagnosisByAdId={diagnosisByAdId}
+                healthByCampaignId={healthByCampaignId}
+                onAdClick={(adId) => setSelectedAdId(adId)}
+              />
+            </div>
           )}
         </motion.div>
       </AnimatePresence>
@@ -562,7 +625,25 @@ export default function AutopilotPage() {
       {/* ═══ 6. Settings Slideout ═══════════════════════════════ */}
       <SettingsSlideout open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* ═══ 7. Bulk Actions Bar ════════════════════════════════ */}
+      {/* ═══ 7. Help Drawer ═══════════════════════════════════ */}
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* ═══ 8. Ad Detail Sheet ══════════════════════════════ */}
+      <AdDetailSheet
+        ad={selectedAd}
+        diagnoses={selectedAdDiagnoses}
+        campaignHealth={selectedAdHealth}
+        onClose={() => setSelectedAdId(null)}
+        onActionClick={() => {
+          setSelectedAdId(null);
+          setActiveTab('actions');
+        }}
+      />
+
+      {/* ═══ 9. Undo Toast Provider ══════════════════════════ */}
+      <UndoToastProvider />
+
+      {/* ═══ 10. Bulk Actions Bar ═════════════════════════════ */}
       {selectionMode && selectedIds.size > 0 && (
         <BulkActionsBar
           selectedCount={selectedIds.size}

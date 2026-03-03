@@ -18,6 +18,9 @@ export type {
   ActionLogItem,
   MetaAdWithTrends,
   HistoryItem,
+  HumanAction,
+  MetricKey,
+  MetricExplanation,
 } from './types';
 export { SeverityBadge, SeverityIcon, SeverityDot } from './severity-badge';
 export { ExpiryCountdown } from './expiry-countdown';
@@ -43,3 +46,23 @@ export { BudgetView } from './budget-view';
 export { CampaignHealthView } from './campaign-health-view';
 export { HealthBanner, HealthBannerSkeleton } from './health-banner';
 export { SettingsSlideout } from './settings-slideout';
+export { ActionCard } from './action-card';
+export { OverviewTab } from './overview-tab';
+export { MetricTooltip, MetricValue } from './metric-tooltip';
+export { TrustIndicator } from './trust-indicator';
+export { UndoToastProvider, showUndoToast } from './undo-toast';
+export { HelpDrawer } from './help-drawer';
+export { AdsSearchBar } from './ads-search-bar';
+export { AdDetailSheet } from './ad-detail-sheet';
+export {
+  ACTION_LABELS,
+  SEVERITY_LABELS,
+  MODE_LABELS,
+  RULE_LABELS,
+  METRIC_LABELS,
+  ANGLE_LABELS,
+  getActionLabel,
+  getSeverityLabel,
+  getRuleLabel,
+  getRuleExplanation,
+} from './human-labels';
