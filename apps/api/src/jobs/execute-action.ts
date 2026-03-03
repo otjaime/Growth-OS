@@ -198,8 +198,15 @@ export async function executeAction(
 
       case 'INCREASE_BUDGET':
       case 'DECREASE_BUDGET': {
-        const suggested = diagnosis.suggestedValue as { newBudget?: number } | null;
-        const newBudgetDollars = suggested?.newBudget;
+        // Diagnosis rules use different field names for the suggested budget:
+        //   Rule 3 (winner_not_scaled): suggestedBudget
+        //   Rule 9 (top_performer):     newBudget
+        // Accept both to avoid silent failures.
+        const suggested = diagnosis.suggestedValue as {
+          newBudget?: number;
+          suggestedBudget?: number;
+        } | null;
+        const newBudgetDollars = suggested?.newBudget ?? suggested?.suggestedBudget;
         if (!newBudgetDollars || newBudgetDollars <= 0) {
           result = { success: false, error: 'No valid budget in suggestedValue', retryable: false };
           break;
