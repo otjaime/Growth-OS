@@ -315,6 +315,16 @@ function evaluateTopPerformer(input: DiagnosisRuleInput, config?: DiagnosisRuleC
     const newBudget = Math.round(input.adSetDailyBudget * (1 + pctIncrease / 100));
     budgetSuggestion.currentBudget = input.adSetDailyBudget;
     budgetSuggestion.newBudget = newBudget;
+    budgetSuggestion.suggestedBudget = newBudget; // executor also checks this field
+    budgetSuggestion.increasePct = pctIncrease;
+  } else {
+    // No daily budget known — estimate from 7d spend (same approach as winner_not_scaled)
+    const estimatedDaily = Math.round(input.spend7d / 7);
+    const pctIncrease = input.roas7d >= 3.0 ? 30 : 20;
+    const suggestedBudget = Math.round(estimatedDaily * (1 + pctIncrease / 100));
+    budgetSuggestion.estimatedDailySpend = estimatedDaily;
+    budgetSuggestion.suggestedBudget = suggestedBudget;
+    budgetSuggestion.newBudget = suggestedBudget;
     budgetSuggestion.increasePct = pctIncrease;
   }
 
