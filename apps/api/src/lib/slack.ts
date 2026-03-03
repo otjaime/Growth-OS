@@ -170,6 +170,173 @@ export async function sendWBRToSlack(payload: WBRSlackPayload): Promise<boolean>
   }
 }
 
+// ── Autopilot Slack Notifications ─────────────────────────
+
+export interface AutopilotPendingPayload {
+  total: number;
+  critical: number;
+  warning: number;
+  info: number;
+  dashboardUrl: string;
+}
+
+export async function sendAutopilotPendingToSlack(
+  payload: AutopilotPendingPayload,
+): Promise<boolean> {
+  if (!isSlackConfigured() || payload.total === 0) return false;
+
+  const severityParts: string[] = [];
+  if (payload.critical > 0) severityParts.push(`${payload.critical} critical`);
+  if (payload.warning > 0) severityParts.push(`${payload.warning} warning`);
+  if (payload.info > 0) severityParts.push(`${payload.info} info`);
+
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:bell: *Autopilot — ${payload.total} diagnosis${payload.total !== 1 ? 'es' : ''} pending approval*\n${severityParts.join(', ')}`,
+      },
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `<${payload.dashboardUrl}/autopilot|:arrow_right: Review in Growth OS>`,
+      },
+    },
+  ];
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocks }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface AutopilotActionsPayload {
+  total: number;
+  actions: ReadonlyArray<{
+    actionType: string;
+    adName: string;
+    before: string;
+    after: string;
+  }>;
+  dashboardUrl: string;
+}
+
+export async function sendAutopilotActionsToSlack(
+  payload: AutopilotActionsPayload,
+): Promise<boolean> {
+  if (!isSlackConfigured() || payload.total === 0) return false;
+
+  const actionLines = payload.actions
+    .slice(0, 10) // Cap at 10 to avoid Slack block limits
+    .map((a) => `• *${a.actionType}* on _${a.adName}_ — ${a.before} :arrow_right: ${a.after}`)
+    .join('\n');
+
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:zap: *Autopilot executed ${payload.total} action${payload.total !== 1 ? 's' : ''}*`,
+      },
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: actionLines },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `<${payload.dashboardUrl}/autopilot|:arrow_right: View details & undo in Growth OS>`,
+      },
+    },
+  ];
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocks }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface AutopilotDigestPayload {
+  period: string;
+  actionsAutoCount: number;
+  actionsManualCount: number;
+  netBudgetChange: number;
+  adsPaused: number;
+  adsReactivated: number;
+  pendingApprovals: number;
+  circuitBreakerTripped: boolean;
+  dashboardUrl: string;
+}
+
+export async function sendAutopilotDigestToSlack(
+  payload: AutopilotDigestPayload,
+): Promise<boolean> {
+  if (!isSlackConfigured()) return false;
+
+  const totalActions = payload.actionsAutoCount + payload.actionsManualCount;
+
+  const statLines = [
+    `*Actions*: ${totalActions} (${payload.actionsAutoCount} auto, ${payload.actionsManualCount} manual)`,
+    `*Ads paused*: ${payload.adsPaused} | *Reactivated*: ${payload.adsReactivated}`,
+    `*Net budget change*: ${payload.netBudgetChange >= 0 ? '+' : ''}$${payload.netBudgetChange.toFixed(2)}/day`,
+    `*Pending approvals*: ${payload.pendingApprovals}`,
+  ];
+
+  if (payload.circuitBreakerTripped) {
+    statLines.push(':rotating_light: *Circuit breaker is TRIPPED* — auto mode suspended');
+  }
+
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `:robot_face: Autopilot Daily Digest — ${payload.period}`, emoji: true },
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: statLines.join('\n') },
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `<${payload.dashboardUrl}/autopilot|:arrow_right: View full autopilot report in Growth OS>`,
+      },
+    },
+  ];
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocks }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendTestSlackMessage(): Promise<boolean> {
   if (!isSlackConfigured()) return false;
 

@@ -1013,10 +1013,25 @@ model AutopilotConfig {
   minSpendBeforeAction Decimal      @default(50) @map("min_spend_before_action") @db.Decimal(12, 2)
   minConfidence        Int          @default(70) @map("min_confidence") // Minimum confidence for auto-execution
 
+  // Execution window
+  executionWindowStart Int          @default(9) @map("execution_window_start")
+  executionWindowEnd   Int          @default(17) @map("execution_window_end")
+  executionTimezone    String       @default("America/New_York") @map("execution_timezone")
+
+  // Daily guardrails
+  dailyBudgetChangeCap Decimal?     @map("daily_budget_change_cap") @db.Decimal(12, 2)
+
+  // Circuit breaker
+  circuitBreakerEnabled  Boolean    @default(true) @map("circuit_breaker_enabled")
+  circuitBreakerWindowH  Int        @default(48) @map("circuit_breaker_window_hours")
+  circuitBreakerThreshold Int       @default(3) @map("circuit_breaker_threshold")
+  circuitBreakerTrippedAt DateTime? @map("circuit_breaker_tripped_at")
+
   // Notification preferences
   slackWebhookUrl      String?      @map("slack_webhook_url")
   notifyOnCritical     Boolean      @default(true) @map("notify_on_critical")
   notifyOnAutoAction   Boolean      @default(true) @map("notify_on_auto_action")
+  notifyOnPendingApproval Boolean   @default(true) @map("notify_on_pending_approval")
 
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
@@ -1043,6 +1058,8 @@ model AutopilotActionLog {
   success        Boolean
   errorMessage   String?      @map("error_message")
   rollbackOfId   String?      @map("rollback_of_id")
+  undoneAt       DateTime?    @map("undone_at")
+  undoneByLogId  String?      @map("undone_by_log_id")
   createdAt      DateTime     @default(now()) @map("created_at")
 
   @@index([organizationId, createdAt])

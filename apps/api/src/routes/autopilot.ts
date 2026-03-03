@@ -1780,4 +1780,175 @@ export async function autopilotRoutes(app: FastifyInstance) {
       diagnosesExpired: expireResult.count,
     };
   });
+
+  // ── POST /autopilot/diagnoses/approve-by-severity — shortcut ──
+  app.post('/autopilot/diagnoses/approve-by-severity', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Approve all diagnoses by severity',
+      description: 'Approves and executes all PENDING diagnoses with the given severity level.',
+    },
+  }, async (request, reply) => {
+    const { severity } = request.body as { severity?: string };
+
+    if (!severity || !['CRITICAL', 'WARNING', 'INFO'].includes(severity.toUpperCase())) {
+      return reply.status(400).send({ error: 'severity must be CRITICAL, WARNING, or INFO' });
+    }
+
+    const organizationId = await resolveOrgId(request);
+
+    try {
+      await requirePlan(organizationId, 'STARTER');
+    } catch (err) {
+      if (err instanceof PlanError) {
+        return reply.status(403).send({ error: err.message });
+      }
+      throw err;
+    }
+
+    const pending = await prisma.diagnosis.findMany({
+      where: { organizationId, status: 'PENDING', severity: severity.toUpperCase() as 'CRITICAL' | 'WARNING' | 'INFO' },
+      select: { id: true, actionType: true },
+    });
+
+    if (pending.length === 0) {
+      return { action: 'approve', severity: severity.toUpperCase(), total: 0, succeeded: 0, failed: 0, failures: [] };
+    }
+
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+
+    for (const diag of pending) {
+      try {
+        await prisma.diagnosis.update({ where: { id: diag.id }, data: { status: 'APPROVED' } });
+        const result = await executeAction(diag.id, 'user');
+        if (result.success) {
+          succeeded.push(diag.id);
+        } else {
+          failed.push({ id: diag.id, error: result.error ?? 'Execution failed' });
+        }
+      } catch (err) {
+        failed.push({ id: diag.id, error: (err as Error).message });
+      }
+    }
+
+    return {
+      action: 'approve',
+      severity: severity.toUpperCase(),
+      total: pending.length,
+      succeeded: succeeded.length,
+      failed: failed.length,
+      failures: failed,
+    };
+  });
+
+  // ── GET /autopilot/performance — performance report ──────────
+  app.get('/autopilot/performance', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Autopilot performance report',
+      description: 'Returns summary of autopilot actions, budget changes, and estimated impact over a period.',
+    },
+  }, async (request) => {
+    const { days = '30' } = request.query as { days?: string };
+    const daysNum = Math.min(90, Math.max(7, parseInt(days, 10) || 30));
+    const since = new Date();
+    since.setDate(since.getDate() - daysNum);
+
+    const orgFilter = await resolveOrgWhere(request);
+
+    const actions = await prisma.autopilotActionLog.findMany({
+      where: { ...orgFilter, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const byType: Record<string, number> = {};
+    let totalSuccessful = 0;
+    let totalFailed = 0;
+    let budgetIncreasesTotal = 0;
+    let budgetDecreasesTotal = 0;
+    let adsPaused = 0;
+    let adsReactivated = 0;
+    let undoCount = 0;
+    const byTrigger: Record<string, number> = { user: 0, auto: 0, schedule: 0 };
+
+    for (const action of actions) {
+      byType[action.actionType] = (byType[action.actionType] ?? 0) + 1;
+      if (action.triggeredBy in byTrigger) byTrigger[action.triggeredBy]!++;
+
+      if (action.success) {
+        totalSuccessful++;
+        if (action.actionType === 'PAUSE_AD') adsPaused++;
+        if (action.actionType === 'REACTIVATE_AD') adsReactivated++;
+        if (action.actionType === 'INCREASE_BUDGET') {
+          const before = (action.beforeValue as Record<string, number> | null)?.dailyBudget ?? 0;
+          const after = (action.afterValue as Record<string, number> | null)?.dailyBudget ?? 0;
+          budgetIncreasesTotal += (after - before);
+        }
+        if (action.actionType === 'DECREASE_BUDGET') {
+          const before = (action.beforeValue as Record<string, number> | null)?.dailyBudget ?? 0;
+          const after = (action.afterValue as Record<string, number> | null)?.dailyBudget ?? 0;
+          budgetDecreasesTotal += (before - after);
+        }
+        if (action.actionType.startsWith('UNDO_')) undoCount++;
+      } else {
+        totalFailed++;
+      }
+    }
+
+    const adActionCounts = new Map<string, { name: string; count: number }>();
+    for (const action of actions) {
+      if (!action.success) continue;
+      const existing = adActionCounts.get(action.targetId);
+      if (existing) existing.count++;
+      else adActionCounts.set(action.targetId, { name: action.targetName, count: 1 });
+    }
+    const topAds = Array.from(adActionCounts.values()).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    const config = await prisma.autopilotConfig.findUnique({
+      where: { organizationId: orgFilter.organizationId },
+    });
+
+    return {
+      period: { days: daysNum, since: since.toISOString() },
+      totalActions: actions.length,
+      totalSuccessful,
+      totalFailed,
+      undoCount,
+      byType,
+      byTrigger,
+      budget: {
+        totalIncreases: Math.round(budgetIncreasesTotal * 100) / 100,
+        totalDecreases: Math.round(budgetDecreasesTotal * 100) / 100,
+        netChange: Math.round((budgetIncreasesTotal - budgetDecreasesTotal) * 100) / 100,
+      },
+      adsPaused,
+      adsReactivated,
+      topActionedAds: topAds,
+      circuitBreaker: {
+        enabled: config?.circuitBreakerEnabled ?? true,
+        trippedAt: config?.circuitBreakerTrippedAt ?? null,
+        isTripped: !!config?.circuitBreakerTrippedAt,
+      },
+      mode: config?.mode ?? 'suggest',
+    };
+  });
+
+  // ── POST /autopilot/circuit-breaker/reset ─────────────────────
+  app.post('/autopilot/circuit-breaker/reset', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Reset circuit breaker',
+      description: 'Resets the circuit breaker, re-enabling auto mode execution.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    await prisma.autopilotConfig.update({
+      where: { organizationId },
+      data: { circuitBreakerTrippedAt: null },
+    });
+
+    return { success: true, message: 'Circuit breaker reset. Auto mode re-enabled.' };
+  });
 }

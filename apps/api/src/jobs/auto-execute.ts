@@ -5,14 +5,17 @@
 // the org's AutopilotConfig mode is 'auto'.
 //
 // Safety checks:
-//   1. Only auto-executable action types (PAUSE_AD, INCREASE_BUDGET,
-//      DECREASE_BUDGET, REACTIVATE_AD)
-//   2. Max 3 auto-actions per 24h per campaign
-//   3. DISMISSED diagnosis blocks auto-action on that ad for 7 days
-//   4. Budget increases respect maxBudgetIncreasePct
-//   5. Minimum spend threshold (minSpendBeforeAction)
-//   6. Global daily action limit (maxActionsPerDay)
-//   7. Daily budget cap enforcement (dailyBudgetCap)
+//   0a. Execution window (business hours only)
+//   0b. Circuit breaker not tripped
+//   1.  Only auto-executable action types (PAUSE_AD, INCREASE_BUDGET,
+//       DECREASE_BUDGET, REACTIVATE_AD)
+//   2.  Max 3 auto-actions per 24h per campaign
+//   3.  DISMISSED diagnosis blocks auto-action on that ad for 7 days
+//   4.  Budget increases respect maxBudgetIncreasePct
+//   5.  Minimum spend threshold (minSpendBeforeAction)
+//   6.  Global daily action limit (maxActionsPerDay)
+//   7.  Daily budget cap enforcement (dailyBudgetCap)
+//   8.  Minimum confidence threshold
 // ──────────────────────────────────────────────────────────────
 
 import { prisma } from '@growth-os/database';
@@ -36,6 +39,7 @@ const DISMISSED_BLOCK_DAYS = 7;
 export interface AutoExecuteResult {
   actionsQueued: number;
   actionsSkipped: number;
+  actionsRemaining: number;
   reasons: string[];
 }
 
@@ -47,6 +51,31 @@ export interface AutopilotConfigLike {
   readonly maxActionsPerDay: number;
   readonly dailyBudgetCap: number | null;
   readonly minConfidence: number;
+  readonly executionWindowStart: number;
+  readonly executionWindowEnd: number;
+  readonly executionTimezone: string;
+  readonly circuitBreakerTrippedAt: Date | null;
+}
+
+/**
+ * Check if the current time is within the configured execution window.
+ */
+function isWithinExecutionWindow(config: AutopilotConfigLike): boolean {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: config.executionTimezone,
+    });
+    const currentHour = parseInt(formatter.format(new Date()), 10);
+
+    if (config.executionWindowStart <= config.executionWindowEnd) {
+      return currentHour >= config.executionWindowStart && currentHour < config.executionWindowEnd;
+    }
+    return currentHour >= config.executionWindowStart || currentHour < config.executionWindowEnd;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -66,8 +95,25 @@ export async function autoExecutePending(
   const result: AutoExecuteResult = {
     actionsQueued: 0,
     actionsSkipped: 0,
+    actionsRemaining: 0,
     reasons: [],
   };
+
+  // Safety 0a: Execution window (business hours only)
+  if (!isWithinExecutionWindow(config)) {
+    result.reasons.push(
+      `Outside execution window (${config.executionWindowStart}:00–${config.executionWindowEnd}:00 ${config.executionTimezone})`,
+    );
+    return result;
+  }
+
+  // Safety 0b: Circuit breaker check
+  if (config.circuitBreakerTrippedAt) {
+    result.reasons.push(
+      `Circuit breaker tripped at ${config.circuitBreakerTrippedAt.toISOString()} — auto-execution suspended`,
+    );
+    return result;
+  }
 
   // Fetch all PENDING diagnoses for this org, including ad info for safety checks
   const pendingDiagnoses = await prisma.diagnosis.findMany({

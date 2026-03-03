@@ -50,6 +50,16 @@ async function startScheduler() {
     },
   );
 
+  await syncQueue.add(
+    'autopilot-digest',
+    { type: 'autopilot-digest' },
+    {
+      repeat: { pattern: process.env.AUTOPILOT_DIGEST_CRON ?? '0 9 * * *' }, // 9am daily
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5000 },
+    },
+  );
+
   // Worker
   const worker = new Worker(
     'growth-os-sync',
@@ -99,6 +109,61 @@ async function startScheduler() {
               await runDiagnosis(org.id);
             } catch (err) {
               log.error({ orgId: org.id, error: String(err) }, 'Autopilot sync failed for org');
+            }
+          }
+        } else if (job.data.type === 'autopilot-digest') {
+          const { sendAutopilotDigestToSlack } = await import('./lib/slack.js');
+          const dashboardUrl = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+          const orgs = await prisma.organization.findMany({ select: { id: true } });
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+          for (const org of orgs) {
+            try {
+              const config = await prisma.autopilotConfig.findUnique({
+                where: { organizationId: org.id },
+              });
+              if (!config || config.mode === 'monitor') continue;
+
+              const recentActions = await prisma.autopilotActionLog.findMany({
+                where: { organizationId: org.id, createdAt: { gte: yesterday } },
+                select: { actionType: true, triggeredBy: true, success: true, beforeValue: true, afterValue: true },
+              });
+
+              const successfulActions = recentActions.filter((a) => a.success);
+              const autoCount = successfulActions.filter((a) => a.triggeredBy === 'auto').length;
+              const manualCount = successfulActions.filter((a) => a.triggeredBy !== 'auto').length;
+              const adsPaused = successfulActions.filter((a) => a.actionType === 'PAUSE_AD').length;
+              const adsReactivated = successfulActions.filter((a) => a.actionType === 'REACTIVATE_AD').length;
+
+              let netBudgetChange = 0;
+              for (const a of successfulActions) {
+                if (a.actionType === 'INCREASE_BUDGET' || a.actionType === 'DECREASE_BUDGET') {
+                  const before = (a.beforeValue as Record<string, number> | null)?.dailyBudget ?? 0;
+                  const after = (a.afterValue as Record<string, number> | null)?.dailyBudget ?? 0;
+                  netBudgetChange += (after - before);
+                }
+              }
+
+              const pendingApprovals = await prisma.diagnosis.count({
+                where: { organizationId: org.id, status: 'PENDING' },
+              });
+
+              const today = new Date();
+              const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+              await sendAutopilotDigestToSlack({
+                period: dateStr,
+                actionsAutoCount: autoCount,
+                actionsManualCount: manualCount,
+                netBudgetChange: Math.round(netBudgetChange * 100) / 100,
+                adsPaused,
+                adsReactivated,
+                pendingApprovals,
+                circuitBreakerTripped: !!config.circuitBreakerTrippedAt,
+                dashboardUrl,
+              });
+            } catch (err) {
+              log.error({ orgId: org.id, error: String(err) }, 'Autopilot digest failed for org');
             }
           }
         }
