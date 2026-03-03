@@ -10,6 +10,11 @@ import { evaluateDiagnosisRules } from '@growth-os/etl';
 import type { DiagnosisRuleInput, DiagnosisRuleConfig } from '@growth-os/etl';
 import { autoExecutePending } from './auto-execute.js';
 import type { AutoExecuteResult } from './auto-execute.js';
+import { evaluateCircuitBreaker } from './circuit-breaker.js';
+import {
+  sendAutopilotPendingToSlack,
+  sendAutopilotActionsToSlack,
+} from '../lib/slack.js';
 
 export interface RunDiagnosisResult {
   adsEvaluated: number;
@@ -174,15 +179,99 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
         mode: autopilotConfig.mode,
         maxBudgetIncreasePct: autopilotConfig.maxBudgetIncreasePct,
         minSpendBeforeAction: autopilotConfig.minSpendBeforeAction.toNumber(),
+        executionWindowStart: autopilotConfig.executionWindowStart,
+        executionWindowEnd: autopilotConfig.executionWindowEnd,
+        executionTimezone: autopilotConfig.executionTimezone,
+        maxActionsPerDay: autopilotConfig.maxActionsPerDay,
+        dailyBudgetChangeCap: autopilotConfig.dailyBudgetChangeCap
+          ? autopilotConfig.dailyBudgetChangeCap.toNumber()
+          : null,
+        circuitBreakerTrippedAt: autopilotConfig.circuitBreakerTrippedAt,
       });
+
+      // Post-execution: evaluate circuit breaker if any actions were taken
+      if (autoActions.actionsQueued > 0) {
+        try {
+          const cbResult = await evaluateCircuitBreaker(organizationId);
+          if (cbResult.tripped) {
+            console.warn(
+              `[runDiagnosis] Circuit breaker tripped for org ${organizationId}: ${cbResult.degraded}/${cbResult.checked} actions degraded performance`,
+            );
+          }
+        } catch (cbErr) {
+          console.error('[runDiagnosis] Circuit breaker evaluation failed:', cbErr);
+        }
+
+        // Notify Slack about auto-executed actions
+        try {
+          const dashboardUrl = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+          const recentActions = await prisma.autopilotActionLog.findMany({
+            where: {
+              organizationId,
+              triggeredBy: 'auto',
+              createdAt: { gte: new Date(Date.now() - 60 * 1000) }, // last 60s
+            },
+            select: {
+              actionType: true,
+              targetName: true,
+              beforeValue: true,
+              afterValue: true,
+            },
+          });
+
+          if (recentActions.length > 0) {
+            await sendAutopilotActionsToSlack({
+              total: recentActions.length,
+              actions: recentActions.map((a) => ({
+                actionType: a.actionType,
+                adName: a.targetName,
+                before: JSON.stringify(a.beforeValue ?? {}),
+                after: JSON.stringify(a.afterValue ?? {}),
+              })),
+              dashboardUrl,
+            });
+          }
+        } catch {
+          // Slack notification failure must not crash the run
+        }
+      }
     } catch (err) {
       // Auto-execute failures must not crash the diagnosis run
       console.error('[runDiagnosis] Auto-execute failed:', err);
       autoActions = {
         actionsQueued: 0,
         actionsSkipped: 0,
+        actionsRemaining: 0,
         reasons: [`Auto-execute error: ${(err as Error).message}`],
       };
+    }
+  }
+
+  // 5. Notify Slack about pending approvals (suggest mode or newly created diagnoses)
+  if (
+    autopilotConfig &&
+    autopilotConfig.notifyOnPendingApproval &&
+    diagnosesCreated > 0 &&
+    (autopilotConfig.mode === 'suggest' || autopilotConfig.mode === 'auto')
+  ) {
+    try {
+      const pendingCounts = await prisma.diagnosis.groupBy({
+        by: ['severity'],
+        where: { organizationId, status: 'PENDING' },
+        _count: true,
+      });
+
+      const total = pendingCounts.reduce((sum, g) => sum + g._count, 0);
+      const critical = pendingCounts.find((g) => g.severity === 'CRITICAL')?._count ?? 0;
+      const warning = pendingCounts.find((g) => g.severity === 'WARNING')?._count ?? 0;
+      const info = pendingCounts.find((g) => g.severity === 'INFO')?._count ?? 0;
+      const dashboardUrl = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+
+      if (total > 0) {
+        await sendAutopilotPendingToSlack({ total, critical, warning, info, dashboardUrl });
+      }
+    } catch {
+      // Slack notification failure must not crash the run
     }
   }
 

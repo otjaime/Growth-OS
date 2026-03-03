@@ -5,12 +5,16 @@
 // the org's AutopilotConfig mode is 'auto'.
 //
 // Safety checks:
-//   1. Only auto-executable action types (PAUSE_AD, INCREASE_BUDGET,
-//      DECREASE_BUDGET, REACTIVATE_AD)
-//   2. Max 3 auto-actions per 24h per campaign
-//   3. DISMISSED diagnosis blocks auto-action on that ad for 7 days
-//   4. Budget increases respect maxBudgetIncreasePct
-//   5. Minimum spend threshold (minSpendBeforeAction)
+//   0a. Execution window (business hours only)
+//   0b. Circuit breaker not tripped
+//   0c. Daily action limit not exceeded
+//   1.  Only auto-executable action types (PAUSE_AD, INCREASE_BUDGET,
+//       DECREASE_BUDGET, REACTIVATE_AD)
+//   2.  Max 3 auto-actions per 24h per campaign
+//   3.  DISMISSED diagnosis blocks auto-action on that ad for 7 days
+//   4.  Budget increases respect maxBudgetIncreasePct
+//   5.  Minimum spend threshold (minSpendBeforeAction)
+//   6.  Daily budget change cap (org-level)
 // ──────────────────────────────────────────────────────────────
 
 import { prisma } from '@growth-os/database';
@@ -34,6 +38,7 @@ const DISMISSED_BLOCK_DAYS = 7;
 export interface AutoExecuteResult {
   actionsQueued: number;
   actionsSkipped: number;
+  actionsRemaining: number;
   reasons: string[];
 }
 
@@ -42,6 +47,36 @@ export interface AutopilotConfigLike {
   readonly mode: string;
   readonly maxBudgetIncreasePct: number;
   readonly minSpendBeforeAction: number;
+  readonly executionWindowStart: number;
+  readonly executionWindowEnd: number;
+  readonly executionTimezone: string;
+  readonly maxActionsPerDay: number;
+  readonly dailyBudgetChangeCap: number | null;
+  readonly circuitBreakerTrippedAt: Date | null;
+}
+
+/**
+ * Check if the current time is within the configured execution window.
+ */
+function isWithinExecutionWindow(config: AutopilotConfigLike): boolean {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: config.executionTimezone,
+    });
+    const currentHour = parseInt(formatter.format(new Date()), 10);
+
+    if (config.executionWindowStart <= config.executionWindowEnd) {
+      // Normal window: e.g. 9–17
+      return currentHour >= config.executionWindowStart && currentHour < config.executionWindowEnd;
+    }
+    // Overnight window: e.g. 22–6
+    return currentHour >= config.executionWindowStart || currentHour < config.executionWindowEnd;
+  } catch {
+    // If timezone is invalid, default to allowing execution
+    return true;
+  }
 }
 
 /**
@@ -61,8 +96,66 @@ export async function autoExecutePending(
   const result: AutoExecuteResult = {
     actionsQueued: 0,
     actionsSkipped: 0,
+    actionsRemaining: 0,
     reasons: [],
   };
+
+  // Safety 0a: Execution window (business hours only)
+  if (!isWithinExecutionWindow(config)) {
+    result.reasons.push(
+      `Outside execution window (${config.executionWindowStart}:00–${config.executionWindowEnd}:00 ${config.executionTimezone})`,
+    );
+    return result;
+  }
+
+  // Safety 0b: Circuit breaker check
+  if (config.circuitBreakerTrippedAt) {
+    result.reasons.push(
+      `Circuit breaker tripped at ${config.circuitBreakerTrippedAt.toISOString()} — auto-execution suspended`,
+    );
+    return result;
+  }
+
+  // Safety 0c: Daily action limit — count today's auto-actions
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayAutoActions = await prisma.autopilotActionLog.count({
+    where: {
+      organizationId,
+      triggeredBy: 'auto',
+      createdAt: { gte: todayStart },
+    },
+  });
+
+  if (todayAutoActions >= config.maxActionsPerDay) {
+    result.reasons.push(
+      `Daily action limit reached (${todayAutoActions}/${config.maxActionsPerDay})`,
+    );
+    return result;
+  }
+
+  let remainingDailyActions = config.maxActionsPerDay - todayAutoActions;
+
+  // Safety 6 pre-calc: Daily budget change cap — sum today's budget changes
+  let dailyBudgetChangeUsed = 0;
+  if (config.dailyBudgetChangeCap !== null) {
+    const todayBudgetActions = await prisma.autopilotActionLog.findMany({
+      where: {
+        organizationId,
+        triggeredBy: 'auto',
+        success: true,
+        actionType: { in: ['INCREASE_BUDGET', 'DECREASE_BUDGET'] },
+        createdAt: { gte: todayStart },
+      },
+      select: { beforeValue: true, afterValue: true },
+    });
+
+    for (const a of todayBudgetActions) {
+      const before = (a.beforeValue as Record<string, number> | null)?.dailyBudget ?? 0;
+      const after = (a.afterValue as Record<string, number> | null)?.dailyBudget ?? 0;
+      dailyBudgetChangeUsed += Math.abs(after - before);
+    }
+  }
 
   // Fetch all PENDING diagnoses for this org, including ad info for safety checks
   const pendingDiagnoses = await prisma.diagnosis.findMany({
@@ -199,6 +292,33 @@ export async function autoExecutePending(
       continue;
     }
 
+    // Safety 6: Daily budget change cap (org-level)
+    if (
+      config.dailyBudgetChangeCap !== null &&
+      (diag.actionType === 'INCREASE_BUDGET' || diag.actionType === 'DECREASE_BUDGET')
+    ) {
+      const suggested = diag.suggestedValue as { newBudget?: number } | null;
+      const currentBudget = diag.ad.adSet?.dailyBudget ? Number(diag.ad.adSet.dailyBudget) : 0;
+      const proposedChange = Math.abs((suggested?.newBudget ?? 0) - currentBudget);
+
+      if (dailyBudgetChangeUsed + proposedChange > config.dailyBudgetChangeCap) {
+        result.actionsSkipped++;
+        result.reasons.push(
+          `Skipped "${adName}" (${diag.ruleId}): daily budget change cap reached ($${dailyBudgetChangeUsed.toFixed(2)} used of $${config.dailyBudgetChangeCap} cap)`,
+        );
+        continue;
+      }
+    }
+
+    // Safety 0c (mid-loop): Daily action limit
+    if (remainingDailyActions <= 0) {
+      result.actionsRemaining++;
+      result.reasons.push(
+        `Skipped "${adName}" (${diag.ruleId}): daily action limit reached`,
+      );
+      continue;
+    }
+
     // All safety checks passed — approve and execute
     try {
       // Mark diagnosis as APPROVED before execution
@@ -212,8 +332,18 @@ export async function autoExecutePending(
 
       if (execResult.success) {
         result.actionsQueued++;
+        remainingDailyActions--;
         // Increment campaign counter to enforce the per-24h limit within this run
         campaignActionCount.set(campaignId, campCount + 1);
+        // Track budget change for daily cap
+        if (
+          config.dailyBudgetChangeCap !== null &&
+          (diag.actionType === 'INCREASE_BUDGET' || diag.actionType === 'DECREASE_BUDGET')
+        ) {
+          const suggested = diag.suggestedValue as { newBudget?: number } | null;
+          const currentBudget = diag.ad.adSet?.dailyBudget ? Number(diag.ad.adSet.dailyBudget) : 0;
+          dailyBudgetChangeUsed += Math.abs((suggested?.newBudget ?? 0) - currentBudget);
+        }
       } else {
         result.actionsSkipped++;
         result.reasons.push(
