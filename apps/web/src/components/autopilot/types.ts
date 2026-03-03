@@ -130,6 +130,7 @@ export interface Diagnosis {
   actionType: DiagnosisAction;
   status: DiagnosisStatus;
   suggestedValue: Record<string, unknown> | null;
+  executionResult: Record<string, unknown> | null;
   confidence: number | null;
   expiresAt: string | null;
   createdAt: string;

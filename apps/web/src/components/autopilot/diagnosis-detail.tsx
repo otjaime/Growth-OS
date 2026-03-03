@@ -414,6 +414,9 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
           <ExecutionStatus
             diagnosisId={d.id}
             status={d.status}
+            initialError={
+              (d.executionResult as Record<string, unknown> | null)?.error as string | undefined
+            }
             onExecuted={onRefresh}
           />
         )}
