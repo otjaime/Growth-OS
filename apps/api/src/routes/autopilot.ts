@@ -915,12 +915,12 @@ export async function autopilotRoutes(app: FastifyInstance) {
     };
   });
 
-  // ── GET /autopilot/diagnoses/:id/status — SSE execution stream ─
+  // ── GET /autopilot/diagnoses/:id/status — JSON execution status ─
   app.get('/autopilot/diagnoses/:id/status', {
     schema: {
       tags: ['autopilot'],
-      summary: 'Diagnosis execution status (SSE)',
-      description: 'Server-Sent Events stream for real-time execution status updates.',
+      summary: 'Diagnosis execution status (JSON)',
+      description: 'Returns current execution status as JSON. Frontend polls this endpoint.',
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -935,72 +935,103 @@ export async function autopilotRoutes(app: FastifyInstance) {
       return { error: 'Diagnosis not found' };
     }
 
-    // If already in a terminal state, return immediately (no SSE needed)
-    if (['EXECUTED', 'DISMISSED', 'EXPIRED'].includes(diagnosis.status)) {
+    // Check if execution failed (status stays APPROVED but executionResult has error)
+    const execResult = diagnosis.executionResult as Record<string, unknown> | null;
+    if (diagnosis.status === 'APPROVED' && execResult?.error) {
       return {
         status: diagnosis.status,
-        executedAt: diagnosis.executedAt,
+        error: execResult.error as string,
         executionResult: diagnosis.executionResult,
       };
     }
 
-    // SSE stream for PENDING/APPROVED states
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:3000',
+    return {
+      status: diagnosis.status,
+      executedAt: diagnosis.executedAt,
+      executionResult: diagnosis.executionResult,
+    };
+  });
+
+  // ── POST /autopilot/diagnoses/:id/retry — retry failed execution ─
+  app.post('/autopilot/diagnoses/:id/retry', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Retry failed diagnosis execution',
+      description: 'Re-runs executeAction for APPROVED diagnoses that failed.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const organizationId = await resolveOrgId(request);
+
+    const diagnosis = await prisma.diagnosis.findFirst({
+      where: { id, organizationId },
     });
 
-    // Send initial status
-    reply.raw.write(`data: ${JSON.stringify({ status: diagnosis.status, actionType: diagnosis.actionType })}\n\n`);
+    if (!diagnosis) {
+      reply.status(404);
+      return { error: 'Diagnosis not found' };
+    }
 
-    // Poll for status changes (check every 2 seconds, up to 60s)
-    let lastStatus = diagnosis.status;
-    const maxPolls = 30;
-    let polls = 0;
+    if (diagnosis.status !== 'APPROVED') {
+      reply.status(400);
+      return { error: `Cannot retry diagnosis with status ${diagnosis.status}` };
+    }
 
-    const pollInterval = setInterval(async () => {
-      polls++;
-      try {
-        const current = await prisma.diagnosis.findUnique({
-          where: { id },
-          select: { status: true, executedAt: true, executionResult: true },
+    const execResult = diagnosis.executionResult as Record<string, unknown> | null;
+    if (!execResult?.error) {
+      reply.status(400);
+      return { error: 'Diagnosis has no execution error — it may still be processing' };
+    }
+
+    // Clear the old execution error before retrying
+    await prisma.diagnosis.update({
+      where: { id },
+      data: { executionResult: Prisma.DbNull },
+    });
+
+    // Re-execute in background
+    const jobRun = await prisma.jobRun.create({
+      data: {
+        jobName: `retry_${diagnosis.actionType.toLowerCase()}`,
+        status: 'RUNNING',
+        organizationId,
+        metadata: { diagnosisId: id, retry: true } as never,
+      },
+    });
+
+    executeAction(id)
+      .then(async (result) => {
+        await prisma.jobRun.update({
+          where: { id: jobRun.id },
+          data: {
+            status: result.success ? 'SUCCESS' : 'FAILED',
+            finishedAt: new Date(),
+            durationMs: Date.now() - jobRun.startedAt.getTime(),
+            metadata: result as never,
+          },
         });
+      })
+      .catch(async (err) => {
+        await prisma.jobRun.update({
+          where: { id: jobRun.id },
+          data: {
+            status: 'FAILED',
+            finishedAt: new Date(),
+            durationMs: Date.now() - jobRun.startedAt.getTime(),
+            errorJson: { message: String(err) },
+          },
+        }).catch(() => {});
+        app.log.error({ diagnosisId: id, error: String(err) }, 'Diagnosis retry execution failed');
+      });
 
-        if (!current) {
-          reply.raw.write(`data: ${JSON.stringify({ error: 'Diagnosis not found' })}\n\n`);
-          clearInterval(pollInterval);
-          reply.raw.end();
-          return;
-        }
-
-        if (current.status !== lastStatus) {
-          lastStatus = current.status;
-          reply.raw.write(`data: ${JSON.stringify({
-            status: current.status,
-            executedAt: current.executedAt,
-            executionResult: current.executionResult,
-          })}\n\n`);
-        }
-
-        // Terminal state or timeout
-        if (['EXECUTED', 'DISMISSED', 'EXPIRED'].includes(current.status) || polls >= maxPolls) {
-          reply.raw.write(`data: ${JSON.stringify({ done: true, status: current.status })}\n\n`);
-          clearInterval(pollInterval);
-          reply.raw.end();
-        }
-      } catch (err) {
-        reply.raw.write(`data: ${JSON.stringify({ error: 'Status check failed' })}\n\n`);
-        clearInterval(pollInterval);
-        reply.raw.end();
-      }
-    }, 2000);
-
-    // Clean up on client disconnect
-    request.raw.on('close', () => {
-      clearInterval(pollInterval);
-    });
+    return {
+      success: true,
+      diagnosisId: id,
+      status: 'APPROVED',
+      actionType: diagnosis.actionType,
+      jobRunId: jobRun.id,
+      message: `Retrying ${diagnosis.actionType} via Meta API...`,
+    };
   });
 
   // ── GET /autopilot/history — action history ──────────────────

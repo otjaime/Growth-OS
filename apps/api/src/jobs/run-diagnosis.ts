@@ -100,14 +100,22 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
       });
 
       if (existing) {
-        // Only update if the existing diagnosis is still PENDING.
-        // APPROVED, EXECUTED, DISMISSED diagnoses must NOT be overwritten.
-        if (existing.status === 'PENDING') {
+        // Determine if this is a stuck APPROVED diagnosis whose execution failed.
+        // These should be reset to PENDING so the user can re-approve with
+        // fresh suggestedValue (which may now include budget fields that were
+        // missing in a previous code version).
+        const execResult = existing.executionResult as Record<string, unknown> | null;
+        const isApprovedWithError =
+          existing.status === 'APPROVED' && execResult?.error;
+
+        if (existing.status === 'PENDING' || isApprovedWithError) {
           // Clear cached AI insight if the message changed (metrics shifted)
           const insightChanged = existing.message !== diag.message;
           await prisma.diagnosis.update({
             where: { id: existing.id },
             data: {
+              // Reset stuck APPROVED→PENDING so user can re-approve
+              status: 'PENDING',
               severity: diag.severity,
               title: diag.title,
               message: diag.message,
@@ -115,7 +123,12 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
               suggestedValue: diag.suggestedValue as never,
               confidence: diag.confidence,
               expiresAt,
-              ...(insightChanged ? { aiInsight: Prisma.DbNull, aiInsightAt: null } : {}),
+              // Clear stale execution data
+              executionResult: Prisma.DbNull,
+              executedAt: null,
+              ...(insightChanged || isApprovedWithError
+                ? { aiInsight: Prisma.DbNull, aiInsightAt: null }
+                : {}),
             },
           });
           diagnosesUpdated++;
