@@ -150,7 +150,7 @@ export function ConfigPanel() {
                 className={`text-left p-3 rounded-lg border transition-all ease-spring ${
                   isActive
                     ? 'border-apple-blue bg-[var(--tint-blue)]'
-                    : 'border-[var(--glass-border)] bg-white/[0.02] hover:bg-white/[0.04]'
+                    : 'border-[var(--glass-border)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)]'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1.5">
@@ -185,7 +185,7 @@ export function ConfigPanel() {
               placeholder="e.g. 2.5"
               value={config.targetRoas ?? ''}
               onChange={(e) => updateField('targetRoas', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -201,7 +201,7 @@ export function ConfigPanel() {
               placeholder="e.g. 50"
               value={config.maxCpa ?? ''}
               onChange={(e) => updateField('maxCpa', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -217,7 +217,7 @@ export function ConfigPanel() {
               placeholder="e.g. 5000"
               value={config.dailyBudgetCap ?? ''}
               onChange={(e) => updateField('dailyBudgetCap', parseOptionalNumber(e.target.value))}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -254,7 +254,7 @@ export function ConfigPanel() {
               max="50"
               value={config.maxActionsPerDay}
               onChange={(e) => updateField('maxActionsPerDay', Number(e.target.value) || 10)}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -270,7 +270,7 @@ export function ConfigPanel() {
               placeholder="e.g. 100"
               value={config.minSpendBeforeAction}
               onChange={(e) => updateField('minSpendBeforeAction', Number(e.target.value) || 0)}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -288,7 +288,7 @@ export function ConfigPanel() {
               max={100}
               value={config.minConfidence}
               onChange={(e) => updateField('minConfidence', parseInt(e.target.value) || 0)}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
         </div>
@@ -314,7 +314,7 @@ export function ConfigPanel() {
                 updateField('slackWebhookUrl', e.target.value || null);
                 setWebhookModified(true);
               }}
-              className="w-full text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
+              className="w-full text-sm bg-[var(--glass-bg-thin)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/40 focus:outline-none focus:border-apple-blue transition-colors"
             />
           </div>
 
@@ -330,7 +330,7 @@ export function ConfigPanel() {
               aria-label="Notify on critical diagnoses"
               onClick={() => updateField('notifyOnCritical', !config.notifyOnCritical)}
               className={`relative w-10 h-6 rounded-full transition-colors ease-spring ${
-                config.notifyOnCritical ? 'bg-apple-green' : 'bg-white/[0.1]'
+                config.notifyOnCritical ? 'bg-apple-green' : 'bg-[var(--glass-bg)]'
               }`}
             >
               <span
@@ -353,7 +353,7 @@ export function ConfigPanel() {
               aria-label="Notify on auto actions"
               onClick={() => updateField('notifyOnAutoAction', !config.notifyOnAutoAction)}
               className={`relative w-10 h-6 rounded-full transition-colors ease-spring ${
-                config.notifyOnAutoAction ? 'bg-apple-green' : 'bg-white/[0.1]'
+                config.notifyOnAutoAction ? 'bg-apple-green' : 'bg-[var(--glass-bg)]'
               }`}
             >
               <span

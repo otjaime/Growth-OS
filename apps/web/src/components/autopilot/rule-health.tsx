@@ -45,7 +45,7 @@ function ScoreBar({ score }: { score: number }) {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-[var(--glass-bg)] rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${color}`}
           style={{ width: `${Math.max(2, score)}%` }}
@@ -110,7 +110,7 @@ export function RuleHealth() {
                 <span className="text-sm font-medium text-[var(--foreground)]">
                   {ruleDisplayName(rule.ruleId)}
                 </span>
-                <span className="text-[10px] text-[var(--foreground-secondary)]/60 bg-white/[0.04] px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-[var(--foreground-secondary)]/60 bg-[var(--glass-bg-thin)] px-1.5 py-0.5 rounded">
                   {rule.total} diagnoses
                 </span>
               </div>

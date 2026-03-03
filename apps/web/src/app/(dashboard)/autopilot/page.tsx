@@ -321,7 +321,7 @@ export default function AutopilotPage() {
         <>
           {/* Filter Bar (scoped to diagnoses) */}
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
               {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => (
                 <button
                   key={s}
@@ -336,7 +336,7 @@ export default function AutopilotPage() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
               {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => (
                 <button
                   key={s}
@@ -359,7 +359,7 @@ export default function AutopilotPage() {
               className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ease-spring ${
                 selectionMode
                   ? 'text-apple-blue bg-[var(--tint-blue)]'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-white/[0.04]'
+                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-[var(--glass-bg-thin)]'
               }`}
             >
               <CheckSquare className="h-3.5 w-3.5" />

@@ -49,7 +49,7 @@ export function ConfirmationModal({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-md mx-4 bg-[var(--glass-bg-elevated)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl shadow-glass-elevated overflow-hidden">
         <div className="p-6">
           {/* Icon + Title */}
           <div className="flex items-start gap-4">
@@ -60,7 +60,7 @@ export function ConfirmationModal({
               <h3 className="text-base font-semibold text-[var(--foreground)]">{title}</h3>
               <p className="text-sm text-[var(--foreground-secondary)] mt-1">{message}</p>
               {detail && (
-                <p className="text-xs text-[var(--foreground-secondary)]/70 mt-2 px-3 py-2 bg-white/[0.04] rounded-lg">{detail}</p>
+                <p className="text-xs text-[var(--foreground-secondary)]/70 mt-2 px-3 py-2 bg-[var(--glass-bg-thin)] rounded-lg">{detail}</p>
               )}
             </div>
             <button
@@ -75,7 +75,7 @@ export function ConfirmationModal({
           <div className="flex items-center justify-end gap-3 mt-6">
             <button
               onClick={onCancel}
-              className="text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-white/[0.06] hover:bg-white/[0.1] px-4 py-2.5 rounded-lg transition-all ease-spring"
+              className="text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)] px-4 py-2.5 rounded-lg transition-all ease-spring"
             >
               Cancel
             </button>
