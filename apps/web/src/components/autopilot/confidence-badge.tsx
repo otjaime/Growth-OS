@@ -20,13 +20,13 @@ export function ConfidenceBadge({ confidence }: ConfidenceBadgeProps) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold ${color}`}
+        className={`inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full font-semibold ${color}`}
       >
         <span className="tabular-nums">{confidence}%</span>
         <span className="opacity-70">{label}</span>
       </span>
       {confidence < 50 && (
-        <span className="text-[10px] text-[var(--foreground-secondary)]/60 italic">
+        <span className="text-caption text-[var(--foreground-secondary)]/60 italic">
           Limited data
         </span>
       )}

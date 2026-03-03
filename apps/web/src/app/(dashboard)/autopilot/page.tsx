@@ -24,12 +24,13 @@ import {
   BulkActionsBar,
 } from '@/components/autopilot';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { AnimatePresence, motion } from 'motion/react';
 
 type FilterStatus = 'ALL' | 'PENDING' | 'DISMISSED' | 'EXECUTED';
 type FilterSeverity = 'ALL' | 'CRITICAL' | 'WARNING' | 'INFO';
 
 const MODE_BADGE: Record<AutopilotMode, { label: string; icon: typeof Eye; color: string; bg: string }> = {
-  monitor: { label: 'Monitor', icon: Eye, color: 'text-[var(--foreground-secondary)]', bg: 'bg-white/[0.06]' },
+  monitor: { label: 'Monitor', icon: Eye, color: 'text-[var(--foreground-secondary)]', bg: 'bg-glass-hover' },
   suggest: { label: 'Suggest', icon: Lightbulb, color: 'text-apple-blue', bg: 'bg-[var(--tint-blue)]' },
   auto: { label: 'Auto', icon: Zap, color: 'text-apple-purple', bg: 'bg-[var(--tint-purple)]' },
 };
@@ -238,8 +239,22 @@ export default function AutopilotPage() {
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl skeleton-shimmer" />
+          <div className="space-y-2">
+            <div className="h-6 w-48 skeleton-shimmer" />
+            <div className="h-3 w-32 skeleton-shimmer" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card p-4 space-y-3">
+              <div className="h-4 w-24 skeleton-shimmer" />
+              <div className="h-8 w-20 skeleton-shimmer" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -267,8 +282,8 @@ export default function AutopilotPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-[var(--foreground)]">Meta Autopilot</h1>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${modeBadge.color} ${modeBadge.bg}`}>
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Meta Autopilot</h1>
+              <span className={`inline-flex items-center gap-1 text-caption font-semibold px-2 py-0.5 rounded-full ${modeBadge.color} ${modeBadge.bg}`}>
                 <ModeBadgeIcon className="h-3 w-3" />
                 {modeBadge.label}
               </span>
@@ -316,129 +331,139 @@ export default function AutopilotPage() {
         adsCount={autopilotStats?.totalAds ?? 0}
       />
 
-      {/* ═══ Diagnoses Tab ═══════════════════════════════════════ */}
-      {activeTab === 'diagnoses' && (
-        <>
-          {/* Filter Bar (scoped to diagnoses) */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
-              {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
-                    filterStatus === s
-                      ? 'bg-[var(--tint-blue)] text-apple-blue'
-                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
-              {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setFilterSeverity(s)}
-                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
-                    filterSeverity === s
-                      ? 'bg-[var(--tint-blue)] text-apple-blue'
-                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => {
-                setSelectionMode(!selectionMode);
-                if (selectionMode) setSelectedIds(new Set());
-              }}
-              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ease-spring ${
-                selectionMode
-                  ? 'text-apple-blue bg-[var(--tint-blue)]'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-[var(--glass-bg-thin)]'
-              }`}
-            >
-              <CheckSquare className="h-3.5 w-3.5" />
-              {selectionMode ? 'Cancel Select' : 'Select'}
-            </button>
-          </div>
-
-          {/* Two-column layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" style={{ minHeight: '60vh' }}>
-            {/* Left — Diagnosis List */}
-            <GlassSurface className="col-span-full lg:col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
-              <DiagnosisList
-                diagnoses={diagnoses}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                selectionMode={selectionMode}
-                selectedIds={selectedIds}
-                onToggleSelect={handleToggleSelect}
-                onSelectAll={handleSelectAll}
-                onDeselectAll={handleDeselectAll}
-              />
-            </GlassSurface>
-
-            {/* Right — Detail Panel */}
-            <GlassSurface className="col-span-full lg:col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
-              {selected ? (
-                <DiagnosisDetail
-                  diagnosis={selected}
-                  onDismiss={handleDismiss}
-                  onRefresh={fetchData}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <Zap className="h-12 w-12 text-[var(--foreground-secondary)]/20 mb-4" />
-                  <p className="text-sm font-medium text-[var(--foreground-secondary)]">
-                    Select a diagnosis to view details
-                  </p>
-                  <p className="text-xs text-[var(--foreground-secondary)]/60 mt-1">
-                    Click any item in the list to see the full diagnosis and take action
-                  </p>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        >
+          {/* ═══ Diagnoses Tab ═══════════════════════════════════════ */}
+          {activeTab === 'diagnoses' && (
+            <>
+              {/* Filter Bar (scoped to diagnoses) */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
+                  {(['ALL', 'PENDING', 'DISMISSED', 'EXECUTED'] as FilterStatus[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setFilterStatus(s)}
+                      className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
+                        filterStatus === s
+                          ? 'bg-[var(--tint-blue)] text-apple-blue'
+                          : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </GlassSurface>
-          </div>
-        </>
-      )}
+                <div className="flex items-center gap-1 bg-[var(--glass-bg-thin)] rounded-lg p-1">
+                  {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as FilterSeverity[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setFilterSeverity(s)}
+                      className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ease-spring ${
+                        filterSeverity === s
+                          ? 'bg-[var(--tint-blue)] text-apple-blue'
+                          : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      {s === 'ALL' ? 'All Severity' : s.charAt(0) + s.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectionMode(!selectionMode);
+                    if (selectionMode) setSelectedIds(new Set());
+                  }}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ease-spring ${
+                    selectionMode
+                      ? 'text-apple-blue bg-[var(--tint-blue)]'
+                      : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-[var(--glass-bg-thin)]'
+                  }`}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  {selectionMode ? 'Cancel Select' : 'Select'}
+                </button>
+              </div>
 
-      {/* ═══ All Ads Tab ═════════════════════════════════════════ */}
-      {activeTab === 'ads' && (
-        <AdsTable
-          ads={allAds}
-          loading={adsLoading}
-          diagnosisByAdId={diagnosisByAdId}
-        />
-      )}
+              {/* Two-column layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6" style={{ minHeight: '60vh' }}>
+                {/* Left — Diagnosis List */}
+                <GlassSurface className="col-span-full lg:col-span-4 card p-3 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+                  <DiagnosisList
+                    diagnoses={diagnoses}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={handleToggleSelect}
+                    onSelectAll={handleSelectAll}
+                    onDeselectAll={handleDeselectAll}
+                  />
+                </GlassSurface>
 
-      {/* ═══ Budget Tab ════════════════════════════════════════ */}
-      {activeTab === 'budget' && (
-        <BudgetView />
-      )}
+                {/* Right — Detail Panel */}
+                <GlassSurface className="col-span-full lg:col-span-8 card p-6 overflow-y-auto" intensity="subtle" style={{ maxHeight: '70vh' }}>
+                  {selected ? (
+                    <DiagnosisDetail
+                      diagnosis={selected}
+                      onDismiss={handleDismiss}
+                      onRefresh={fetchData}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      <Zap className="h-12 w-12 text-[var(--foreground-secondary)]/20 mb-4" />
+                      <p className="text-sm font-medium text-[var(--foreground-secondary)]">
+                        Select a diagnosis to view details
+                      </p>
+                      <p className="text-xs text-[var(--foreground-secondary)]/60 mt-1">
+                        Click any item in the list to see the full diagnosis and take action
+                      </p>
+                    </div>
+                  )}
+                </GlassSurface>
+              </div>
+            </>
+          )}
 
-      {/* ═══ Health Tab ════════════════════════════════════════ */}
-      {activeTab === 'health' && (
-        <CampaignHealthView />
-      )}
+          {/* ═══ All Ads Tab ═════════════════════════════════════════ */}
+          {activeTab === 'ads' && (
+            <AdsTable
+              ads={allAds}
+              loading={adsLoading}
+              diagnosisByAdId={diagnosisByAdId}
+            />
+          )}
 
-      {/* ═══ History Tab ═════════════════════════════════════════ */}
-      {activeTab === 'history' && (
-        <HistoryTable
-          items={historyItems}
-          total={historyTotal}
-          loading={historyLoading}
-        />
-      )}
+          {/* ═══ Budget Tab ════════════════════════════════════════ */}
+          {activeTab === 'budget' && (
+            <BudgetView />
+          )}
 
-      {/* ═══ Settings Tab ═══════════════════════════════════════ */}
-      {activeTab === 'settings' && (
-        <ConfigPanel />
-      )}
+          {/* ═══ Health Tab ════════════════════════════════════════ */}
+          {activeTab === 'health' && (
+            <CampaignHealthView />
+          )}
+
+          {/* ═══ History Tab ═════════════════════════════════════════ */}
+          {activeTab === 'history' && (
+            <HistoryTable
+              items={historyItems}
+              total={historyTotal}
+              loading={historyLoading}
+            />
+          )}
+
+          {/* ═══ Settings Tab ═══════════════════════════════════════ */}
+          {activeTab === 'settings' && (
+            <ConfigPanel />
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       {/* Bulk Actions Floating Bar */}
       {selectionMode && selectedIds.size > 0 && (

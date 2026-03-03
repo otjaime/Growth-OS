@@ -13,7 +13,7 @@ function gradeColor(grade: CampaignHealthScore['grade']): string {
     case 'C': return 'text-apple-yellow bg-[var(--tint-yellow)]';
     case 'D': return 'text-apple-orange bg-apple-orange/[0.18]';
     case 'F': return 'text-apple-red bg-[var(--tint-red)]';
-    default: return 'text-[var(--foreground-secondary)] bg-white/[0.06]';
+    default: return 'text-[var(--foreground-secondary)] bg-glass-hover';
   }
 }
 
@@ -30,19 +30,19 @@ function TrendIndicator({ trend }: { trend: CampaignHealthScore['trend'] }) {
   switch (trend) {
     case 'improving':
       return (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-apple-green">
+        <span className="inline-flex items-center gap-0.5 text-caption font-medium text-apple-green">
           <TrendingUp className="h-3 w-3" /> Improving
         </span>
       );
     case 'declining':
       return (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-apple-red">
+        <span className="inline-flex items-center gap-0.5 text-caption font-medium text-apple-red">
           <TrendingDown className="h-3 w-3" /> Declining
         </span>
       );
     default:
       return (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--foreground-secondary)]">
+        <span className="inline-flex items-center gap-0.5 text-caption font-medium text-[var(--foreground-secondary)]">
           <Minus className="h-3 w-3" /> Stable
         </span>
       );
@@ -53,14 +53,14 @@ function ComponentBar({ label, score, max }: { label: string; score: number; max
   const pct = Math.min((score / max) * 100, 100);
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] text-[var(--foreground-secondary)] w-16 shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+      <span className="text-caption text-[var(--foreground-secondary)] w-16 shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-glass-hover overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ease-spring ${scoreColor(score, max)}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-[10px] font-medium text-[var(--foreground-secondary)] w-8 text-right">
+      <span className="text-caption font-medium text-[var(--foreground-secondary)] w-8 text-right">
         {score.toFixed(0)}
       </span>
     </div>
@@ -90,8 +90,20 @@ export function CampaignHealthView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="h-4 w-32 skeleton-shimmer" />
+              <div className="h-10 w-10 rounded-lg skeleton-shimmer" />
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, j) => (
+                <div key={j} className="h-2 skeleton-shimmer" />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -150,7 +162,7 @@ export function CampaignHealthView() {
           {c.topIssue && (
             <div className="flex items-start gap-1.5 mt-2 pt-2 border-t border-[var(--glass-border)]">
               <AlertTriangle className="h-3 w-3 text-apple-red mt-0.5 shrink-0" />
-              <p className="text-[11px] text-apple-red leading-relaxed">{c.topIssue}</p>
+              <p className="text-label text-apple-red leading-relaxed">{c.topIssue}</p>
             </div>
           )}
         </GlassSurface>

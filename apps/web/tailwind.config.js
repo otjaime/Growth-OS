@@ -41,6 +41,21 @@ module.exports = {
       fontFamily: {
         sans: ['var(--font-sans)'],
       },
+      backgroundColor: {
+        'glass-hover': 'var(--glass-hover)',
+        'glass-active': 'var(--glass-active)',
+        'glass-active-strong': 'var(--glass-active-strong)',
+        'glass-muted': 'var(--glass-muted)',
+        'glass-skeleton': 'var(--glass-skeleton)',
+      },
+      borderColor: {
+        separator: 'var(--separator)',
+        'separator-strong': 'var(--separator-strong)',
+      },
+      fontSize: {
+        caption: ['10px', { lineHeight: '14px', letterSpacing: '-0.01em' }],
+        label: ['11px', { lineHeight: '16px', letterSpacing: '-0.01em' }],
+      },
     },
   },
   plugins: [],

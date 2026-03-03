@@ -1,6 +1,7 @@
 'use client';
 
 import { Clock, Check, X, Timer } from 'lucide-react';
+import { motion } from 'motion/react';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { SeverityBadge } from './severity-badge';
 import { AdThumbnail } from './ad-thumbnail';
@@ -16,31 +17,31 @@ function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case 'EXECUTED':
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">
+        <span className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">
           <Check className="h-3 w-3" /> Executed
         </span>
       );
     case 'APPROVED':
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-blue)] text-apple-blue font-semibold">
+        <span className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-[var(--tint-blue)] text-apple-blue font-semibold">
           <Check className="h-3 w-3" /> Approved
         </span>
       );
     case 'DISMISSED':
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-white/[0.08] text-[var(--foreground-secondary)] font-semibold">
+        <span className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-glass-active text-[var(--foreground-secondary)] font-semibold">
           <X className="h-3 w-3" /> Dismissed
         </span>
       );
     case 'EXPIRED':
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-yellow)] text-apple-yellow font-semibold">
+        <span className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-[var(--tint-yellow)] text-apple-yellow font-semibold">
           <Timer className="h-3 w-3" /> Expired
         </span>
       );
     default:
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-[var(--foreground-secondary)] font-semibold">
+        <span className="text-caption px-2 py-0.5 rounded-full bg-glass-hover text-[var(--foreground-secondary)] font-semibold">
           {status}
         </span>
       );
@@ -55,8 +56,18 @@ function formatDate(iso: string): string {
 export function HistoryTable({ items, total, loading }: HistoryTableProps) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+      <div className="card space-y-0">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 px-4 py-3 table-separator">
+            <div className="h-3 w-16 skeleton-shimmer" />
+            <div className="h-8 w-8 rounded-lg skeleton-shimmer" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 w-48 skeleton-shimmer" />
+              <div className="h-2 w-32 skeleton-shimmer" />
+            </div>
+            <div className="h-5 w-16 skeleton-shimmer" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -82,18 +93,23 @@ export function HistoryTable({ items, total, loading }: HistoryTableProps) {
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="border-b border-[var(--glass-border)]">
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Date</th>
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3 w-10" />
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Diagnosis</th>
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Ad</th>
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Severity</th>
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Status</th>
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Variants</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Date</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3 w-10" />
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Diagnosis</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Ad</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Severity</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Status</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-4 py-3">Variants</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-b border-[var(--glass-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors">
+            {items.map((item, index) => (
+              <motion.tr
+                key={item.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30, delay: index * 0.03 }}
+                className="table-separator last:bg-none hover:bg-glass-muted transition-colors">
                 <td className="px-4 py-3">
                   <span className="text-xs text-[var(--foreground-secondary)]">{formatDate(item.updatedAt)}</span>
                 </td>
@@ -111,7 +127,7 @@ export function HistoryTable({ items, total, loading }: HistoryTableProps) {
                 </td>
                 <td className="px-4 py-3">
                   <p className="text-xs font-medium text-[var(--foreground)]">{item.ad.name}</p>
-                  <p className="text-[10px] text-[var(--foreground-secondary)]">{item.ad.campaign.name}</p>
+                  <p className="text-caption text-[var(--foreground-secondary)]">{item.ad.campaign.name}</p>
                 </td>
                 <td className="px-4 py-3">
                   <SeverityBadge severity={item.severity} />
@@ -125,10 +141,10 @@ export function HistoryTable({ items, total, loading }: HistoryTableProps) {
                       {item.variants.map((v) => (
                         <span
                           key={v.id}
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          className={`text-caption px-1.5 py-0.5 rounded font-medium ${
                             v.status === 'APPROVED' ? 'text-apple-green bg-[var(--tint-green)]' :
                             v.status === 'REJECTED' ? 'text-apple-red bg-[var(--tint-red)]' :
-                            'text-[var(--foreground-secondary)] bg-white/[0.06]'
+                            'text-[var(--foreground-secondary)] bg-glass-hover'
                           }`}
                           title={v.headline}
                         >
@@ -140,7 +156,7 @@ export function HistoryTable({ items, total, loading }: HistoryTableProps) {
                     <span className="text-xs text-[var(--foreground-secondary)]/40">—</span>
                   )}
                 </td>
-              </tr>
+              </motion.tr>
             ))}
           </tbody>
         </table>

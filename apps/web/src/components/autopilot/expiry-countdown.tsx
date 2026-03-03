@@ -32,7 +32,7 @@ export function ExpiryCountdown({ expiresAt }: { expiresAt: string | null }) {
   const isExpired = label === 'Expired';
 
   return (
-    <span className={`text-[10px] font-medium ${isExpired ? 'text-apple-red/70' : 'text-[var(--foreground-secondary)]/60'}`}>
+    <span className={`text-caption font-medium ${isExpired ? 'text-apple-red/70' : 'text-[var(--foreground-secondary)]/60'}`}>
       {label}
     </span>
   );

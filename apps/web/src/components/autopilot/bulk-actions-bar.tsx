@@ -81,7 +81,7 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
         <button
           onClick={handleBulkApprove}
           disabled={loading !== null}
-          className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Approve ({selectedCount})
@@ -90,7 +90,7 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
         <button
           onClick={handleBulkDismiss}
           disabled={loading !== null}
-          className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)] px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)] px-4 py-2 rounded-lg press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'dismiss' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
           Dismiss ({selectedCount})

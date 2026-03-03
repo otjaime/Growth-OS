@@ -116,7 +116,7 @@ export function Sidebar() {
             <BarChart3 className="h-7 w-7 text-apple-blue" />
             <div>
               <h1 className="text-lg font-bold text-[var(--foreground)]">Growth OS</h1>
-              <p className="text-[10px] text-[var(--foreground-secondary)]/70 uppercase tracking-widest">Analytics Platform</p>
+              <p className="text-caption text-[var(--foreground-secondary)]/70 uppercase tracking-widest">Analytics Platform</p>
             </div>
           </div>
           {/* Close button on mobile */}
@@ -142,7 +142,7 @@ export function Sidebar() {
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
                   isActive
                     ? 'bg-[var(--tint-blue)] text-apple-blue'
-                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
+                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-hover',
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -165,7 +165,7 @@ export function Sidebar() {
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
                 isActive
                   ? 'bg-[var(--tint-blue)] text-apple-blue'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06]',
+                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-hover',
               )}
             >
               <Icon className="h-4 w-4" />
@@ -177,11 +177,11 @@ export function Sidebar() {
 
       {/* Channel Filter */}
       <div className="px-4 py-3 border-t border-[var(--glass-border)]">
-        <label className="text-[10px] text-[var(--foreground-secondary)]/50 uppercase tracking-wider mb-1 block">Channel Filter</label>
+        <label className="text-caption text-[var(--foreground-secondary)]/50 uppercase tracking-wider mb-1 block">Channel Filter</label>
         <select
           value={channelFilter ?? ''}
           onChange={(e) => setChannelFilter(e.target.value || null)}
-          className="w-full px-2 py-1.5 text-xs bg-white/[0.06] border border-[var(--glass-border)] rounded-[var(--radius-md)] text-[var(--foreground-secondary)] focus:outline-none focus:border-apple-blue"
+          className="w-full px-2 py-1.5 text-xs bg-glass-hover border border-[var(--glass-border)] rounded-[var(--radius-md)] text-[var(--foreground-secondary)] focus:outline-none focus:border-apple-blue"
         >
           <option value="">All Channels</option>
           {CHANNELS.map((ch) => (
@@ -202,7 +202,7 @@ export function Sidebar() {
           </span>
         </Link>
         {apiOk && (
-          <p className="text-[10px] text-[var(--foreground-secondary)]/50 pl-4">{syncLabel}</p>
+          <p className="text-caption text-[var(--foreground-secondary)]/50 pl-4">{syncLabel}</p>
         )}
         <LogoutButton />
       </div>
@@ -214,7 +214,7 @@ export function Sidebar() {
       {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-white/[0.06] backdrop-blur-md rounded-lg text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.1] transition-all ease-spring"
+        className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-glass-hover backdrop-blur-md rounded-lg text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-active-strong transition-all ease-spring"
         aria-label="Open menu"
       >
         <Menu className="h-5 w-5" />

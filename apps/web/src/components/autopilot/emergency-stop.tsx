@@ -104,7 +104,7 @@ export function EmergencyStop({ onStopped }: EmergencyStopProps) {
         onTouchStart={handlePressStart}
         onTouchEnd={handlePressEnd}
         disabled={executing}
-        className="relative overflow-hidden flex items-center justify-center gap-2 w-full bg-[var(--tint-red)] hover:bg-apple-red/20 text-apple-red border border-apple-red/30 rounded-xl px-6 py-3 text-sm font-semibold transition-all ease-spring disabled:opacity-50 select-none"
+        className="relative overflow-hidden flex items-center justify-center gap-2 w-full bg-[var(--tint-red)] hover:bg-apple-red/20 text-apple-red border border-apple-red/30 rounded-xl px-6 py-3 text-sm font-semibold press-scale transition-all ease-spring disabled:opacity-50 select-none"
       >
         {executing ? (
           <>

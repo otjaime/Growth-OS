@@ -21,9 +21,9 @@ function SkeletonCard(): JSX.Element {
   return (
     <GlassSurface intensity="subtle" className="card p-4">
       <div className="space-y-3">
-        <div className="h-4 w-24 animate-pulse bg-white/[0.06] rounded" />
-        <div className="h-6 w-16 animate-pulse bg-white/[0.06] rounded" />
-        <div className="h-3 w-20 animate-pulse bg-white/[0.06] rounded" />
+        <div className="h-4 w-24 skeleton-shimmer" />
+        <div className="h-6 w-16 skeleton-shimmer" />
+        <div className="h-3 w-20 skeleton-shimmer" />
       </div>
     </GlassSurface>
   );

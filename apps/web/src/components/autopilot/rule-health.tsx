@@ -110,11 +110,11 @@ export function RuleHealth() {
                 <span className="text-sm font-medium text-[var(--foreground)]">
                   {ruleDisplayName(rule.ruleId)}
                 </span>
-                <span className="text-[10px] text-[var(--foreground-secondary)]/60 bg-[var(--glass-bg-thin)] px-1.5 py-0.5 rounded">
+                <span className="text-caption text-[var(--foreground-secondary)]/60 bg-[var(--glass-bg-thin)] px-1.5 py-0.5 rounded">
                   {rule.total} diagnoses
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-[10px]">
+              <div className="flex items-center gap-3 text-caption">
                 <span className="flex items-center gap-1 text-apple-green">
                   <Check className="h-3 w-3" />
                   {rule.approved + rule.autoExecuted}
@@ -131,7 +131,7 @@ export function RuleHealth() {
 
             <ScoreBar score={rule.effectivenessScore} />
 
-            <div className="flex items-center gap-4 text-[10px] text-[var(--foreground-secondary)]">
+            <div className="flex items-center gap-4 text-caption text-[var(--foreground-secondary)]">
               <span>Approval rate: <strong className="text-[var(--foreground)]">{Math.round(rule.approvalRate * 100)}%</strong></span>
               <span>Dismissal rate: <strong className="text-[var(--foreground)]">{Math.round(rule.dismissalRate * 100)}%</strong></span>
               {rule.autoExecuted > 0 && (

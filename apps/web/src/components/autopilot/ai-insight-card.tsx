@@ -17,7 +17,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 
 function PriorityPill({ priority }: { priority: string }) {
   return (
-    <span className={`text-[9px] px-1.5 py-0.5 rounded-full uppercase font-bold tracking-wide ${PRIORITY_STYLES[priority] ?? PRIORITY_STYLES.medium}`}>
+    <span className={`text-caption px-1.5 py-0.5 rounded-full uppercase font-bold tracking-wide ${PRIORITY_STYLES[priority] ?? PRIORITY_STYLES.medium}`}>
       {priority}
     </span>
   );
@@ -33,13 +33,13 @@ function RecommendationRow({
   rec: InsightRecommendation;
 }) {
   return (
-    <div className="flex gap-3 py-3 border-b border-white/[0.04] last:border-b-0">
+    <div className="flex gap-3 py-3 border-b border-separator last:border-b-0">
       <div className="flex-shrink-0 mt-0.5 text-[var(--foreground-secondary)]/60">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-[10px] uppercase font-semibold text-[var(--foreground-secondary)]/60 tracking-wide">{label}</p>
+          <p className="text-caption uppercase font-semibold text-[var(--foreground-secondary)]/60 tracking-wide">{label}</p>
           <PriorityPill priority={rec.priority} />
         </div>
         <p className="text-sm font-semibold text-[var(--foreground)]">{rec.action}</p>
@@ -51,19 +51,19 @@ function RecommendationRow({
 
 function SkeletonLoader() {
   return (
-    <div className="card border border-[var(--glass-border)] p-4 space-y-4 animate-pulse">
+    <div className="card border border-[var(--glass-border)] p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <div className="h-4 w-4 rounded bg-white/[0.08]" />
-        <div className="h-3 w-32 rounded bg-white/[0.08]" />
+        <div className="h-4 w-4 rounded skeleton-shimmer" />
+        <div className="h-3 w-32 rounded skeleton-shimmer" />
       </div>
-      <div className="h-10 rounded bg-white/[0.06]" />
+      <div className="h-10 rounded skeleton-shimmer" />
       {[1, 2, 3].map((i) => (
         <div key={i} className="flex gap-3 py-3">
-          <div className="h-4 w-4 rounded bg-white/[0.06]" />
+          <div className="h-4 w-4 rounded skeleton-shimmer" />
           <div className="flex-1 space-y-2">
-            <div className="h-2 w-16 rounded bg-white/[0.06]" />
-            <div className="h-3 w-48 rounded bg-white/[0.08]" />
-            <div className="h-2 w-64 rounded bg-white/[0.06]" />
+            <div className="h-2 w-16 rounded skeleton-shimmer" />
+            <div className="h-3 w-48 rounded skeleton-shimmer" />
+            <div className="h-2 w-64 rounded skeleton-shimmer" />
           </div>
         </div>
       ))}
@@ -127,8 +127,8 @@ export function AIInsightCard({ diagnosisId }: AIInsightCardProps) {
       </div>
 
       {/* Root Cause */}
-      <div className="rounded-lg bg-white/[0.04] px-3 py-2.5 mb-3">
-        <p className="text-[10px] uppercase font-semibold text-apple-purple/80 mb-1">Root Cause</p>
+      <div className="rounded-lg bg-glass-muted px-3 py-2.5 mb-3">
+        <p className="text-caption uppercase font-semibold text-apple-purple/80 mb-1">Root Cause</p>
         <p className="text-sm text-[var(--foreground)] leading-relaxed">{insight.rootCause}</p>
       </div>
 
@@ -150,7 +150,7 @@ export function AIInsightCard({ diagnosisId }: AIInsightCardProps) {
       />
 
       {/* Estimated Impact */}
-      <div className="flex items-center gap-2 pt-3 mt-1 border-t border-white/[0.06]">
+      <div className="flex items-center gap-2 pt-3 mt-1 border-t border-separator-strong">
         <DollarSign className="h-4 w-4 text-apple-green" />
         <p className="text-sm font-semibold text-apple-green">{insight.estimatedImpact}</p>
       </div>

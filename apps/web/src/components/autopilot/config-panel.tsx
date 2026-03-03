@@ -159,7 +159,7 @@ export function ConfigPanel() {
                     {label}
                   </span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-[var(--foreground-secondary)]">{description}</p>
+                <p className="text-label leading-relaxed text-[var(--foreground-secondary)]">{description}</p>
               </button>
             );
           })}
@@ -175,7 +175,7 @@ export function ConfigPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Target ROAS */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Target ROAS
             </label>
             <input
@@ -191,7 +191,7 @@ export function ConfigPanel() {
 
           {/* Max CPA */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Max CPA ($)
             </label>
             <input
@@ -207,7 +207,7 @@ export function ConfigPanel() {
 
           {/* Daily Budget Cap */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Daily Budget Cap ($)
             </label>
             <input
@@ -223,7 +223,7 @@ export function ConfigPanel() {
 
           {/* Max Budget Increase % */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Max Budget Increase %
             </label>
             <div className="flex items-center gap-3">
@@ -244,7 +244,7 @@ export function ConfigPanel() {
 
           {/* Max Actions Per Day */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Max Actions Per Day
             </label>
             <input
@@ -260,7 +260,7 @@ export function ConfigPanel() {
 
           {/* Min Spend Before Action */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Min Spend Before Action ($)
             </label>
             <input
@@ -276,10 +276,10 @@ export function ConfigPanel() {
 
           {/* Min Confidence for Auto-Execute */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Min Confidence for Auto-Execute
             </label>
-            <p className="text-[10px] text-[var(--foreground-secondary)]/60 mt-0.5 mb-1.5">
+            <p className="text-caption text-[var(--foreground-secondary)]/60 mt-0.5 mb-1.5">
               Only auto-execute diagnoses above this confidence level (0-100)
             </p>
             <input
@@ -303,7 +303,7 @@ export function ConfigPanel() {
         <div className="space-y-4">
           {/* Slack Webhook */}
           <div>
-            <label className="block text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
+            <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
               Slack Webhook URL
             </label>
             <input

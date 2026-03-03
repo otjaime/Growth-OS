@@ -35,13 +35,17 @@ function actionLabel(actionType: string): string {
 
 function actionColor(actionType: string): string {
   switch (actionType) {
-    case 'PAUSE_AD': return 'text-apple-red bg-[var(--tint-red)]';
-    case 'REACTIVATE_AD': return 'text-apple-green bg-[var(--tint-green)]';
-    case 'INCREASE_BUDGET': return 'text-apple-green bg-[var(--tint-green)]';
-    case 'DECREASE_BUDGET': return 'text-apple-yellow bg-[var(--tint-yellow)]';
-    case 'GENERATE_COPY_VARIANTS': return 'text-apple-purple bg-[var(--tint-purple)]';
-    case 'REFRESH_CREATIVE': return 'text-apple-blue bg-[var(--tint-blue)]';
-    default: return 'text-[var(--foreground-secondary)] bg-white/[0.06]';
+    case 'PAUSE_AD':
+    case 'DECREASE_BUDGET':
+      return 'text-apple-red bg-[var(--tint-red)]';
+    case 'REACTIVATE_AD':
+    case 'INCREASE_BUDGET':
+      return 'text-apple-green bg-[var(--tint-green)]';
+    case 'GENERATE_COPY_VARIANTS':
+    case 'REFRESH_CREATIVE':
+      return 'text-apple-blue bg-[var(--tint-blue)]';
+    default:
+      return 'text-[var(--foreground-secondary)] bg-glass-hover';
   }
 }
 
@@ -109,10 +113,10 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect, selectionMode, 
                     key={diag.id}
                     onClick={() => onSelect(diag.id)}
                     className={clsx(
-                      'w-full text-left px-3 py-3 rounded-lg transition-all ease-spring',
+                      'w-full text-left px-3 py-3 rounded-lg press-scale transition-all ease-spring',
                       selectedId === diag.id
                         ? 'bg-[var(--tint-blue)] border border-apple-blue/30'
-                        : 'hover:bg-white/[0.06] border border-transparent',
+                        : 'hover:bg-glass-hover border border-transparent',
                     )}
                   >
                     <div className="flex items-start gap-2.5">
@@ -144,14 +148,14 @@ export function DiagnosisList({ diagnoses, selectedId, onSelect, selectionMode, 
                         </div>
                         <p className="text-xs text-[var(--foreground-secondary)] mt-0.5 truncate">{diag.ad.name}</p>
                         <div className="flex items-center gap-2 mt-1.5">
-                          <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${actionColor(diag.actionType)}`}>
+                          <span className={`text-label px-2 py-0.5 rounded font-medium ${actionColor(diag.actionType)}`}>
                             {actionLabel(diag.actionType)}
                           </span>
-                          <span className="text-[10px] text-[var(--foreground-secondary)]/60">
+                          <span className="text-caption text-[var(--foreground-secondary)]/60">
                             ${spend.toFixed(0)} / 7d
                           </span>
                           {isPauseAction && spend > 0 && (
-                            <span className="text-[10px] text-apple-red font-medium">
+                            <span className="text-caption text-apple-red font-medium">
                               wasting ${spend.toLocaleString()}
                             </span>
                           )}

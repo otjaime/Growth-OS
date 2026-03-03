@@ -17,7 +17,7 @@ export function TrendArrow({ change, invert = false, size = 'sm' }: TrendArrowPr
   const isGood = invert ? !isUp : isUp;
   const color = isGood ? 'text-apple-green' : 'text-apple-red';
   const iconSize = size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5';
-  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
+  const textSize = size === 'sm' ? 'text-caption' : 'text-xs';
   const Icon = isUp ? TrendingUp : TrendingDown;
   const pct = `${isUp ? '+' : ''}${(change * 100).toFixed(0)}%`;
 

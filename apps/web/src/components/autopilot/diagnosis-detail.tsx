@@ -61,8 +61,8 @@ function MetricPill({ label, value, change, invert }: {
   invert?: boolean;
 }) {
   return (
-    <div className="px-3 py-2 bg-white/[0.04] rounded-lg">
-      <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
+    <div className="px-3 py-2 bg-glass-muted rounded-lg">
+      <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">{label}</p>
       <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{value}</p>
       {change !== undefined && <TrendArrow change={change ?? null} invert={invert} size="sm" />}
     </div>
@@ -90,26 +90,26 @@ function CopyVariantCard({
   return (
     <div className="card border border-[var(--glass-border)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold ${angleColor}`}>
+        <span className={`text-caption px-2 py-0.5 rounded-full uppercase font-semibold ${angleColor}`}>
           {angleName}
         </span>
         {variant.status === 'APPROVED' && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">APPROVED</span>
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">APPROVED</span>
         )}
         {variant.status === 'REJECTED' && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">REJECTED</span>
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">REJECTED</span>
         )}
       </div>
 
       {/* Before / After comparison */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2 opacity-50">
-          <p className="text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium">Current</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Current</p>
           <p className="text-xs font-semibold text-[var(--foreground)]">{original.headline ?? '—'}</p>
           <p className="text-xs text-[var(--foreground-secondary)] line-clamp-2">{original.primaryText ?? '—'}</p>
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] uppercase text-apple-blue/80 font-medium">Variant</p>
+          <p className="text-caption uppercase text-apple-blue/80 font-medium">Variant</p>
           <p className="text-xs font-semibold text-[var(--foreground)]">{variant.headline}</p>
           <p className="text-xs text-[var(--foreground-secondary)] line-clamp-2">{variant.primaryText}</p>
         </div>
@@ -275,7 +275,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
           <ExpiryCountdown expiresAt={d.expiresAt} />
           {d.confidence !== null && <ConfidenceBadge confidence={d.confidence} />}
         </div>
-        <h2 className="text-lg font-bold text-[var(--foreground)]">{d.title}</h2>
+        <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">{d.title}</h2>
         <p className="text-sm text-[var(--foreground-secondary)] mt-1">{d.message}</p>
       </div>
 
@@ -294,12 +294,12 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
               {ad.campaign.name} &rsaquo; {ad.adSet.name}
             </p>
             <div className="flex items-center gap-2 mt-1.5">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                ad.status === 'ACTIVE' ? 'text-apple-green bg-[var(--tint-green)]' : 'text-[var(--foreground-secondary)] bg-white/[0.06]'
+              <span className={`text-caption px-1.5 py-0.5 rounded font-medium ${
+                ad.status === 'ACTIVE' ? 'text-apple-green bg-[var(--tint-green)]' : 'text-[var(--foreground-secondary)] bg-glass-hover'
               }`}>
                 {ad.status}
               </span>
-              <span className="text-[10px] text-[var(--foreground-secondary)]/60 uppercase">{ad.creativeType}</span>
+              <span className="text-caption text-[var(--foreground-secondary)]/60 uppercase">{ad.creativeType}</span>
             </div>
           </div>
         </div>
@@ -385,7 +385,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
             <button
               onClick={handleDismiss}
               disabled={dismissing}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-white/[0.06] hover:bg-white/[0.1] px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-glass-hover hover:bg-glass-active-strong px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
               {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
               Dismiss

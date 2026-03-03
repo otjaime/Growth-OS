@@ -24,7 +24,7 @@ export function AdThumbnail({ thumbnailUrl, imageUrl, name, size = 'sm' }: AdThu
   if (!src || failed) {
     return (
       <div
-        className={`${sizeClass} flex-shrink-0 flex items-center justify-center bg-white/[0.06] border border-[var(--glass-border)] font-semibold text-[var(--foreground-secondary)]`}
+        className={`${sizeClass} flex-shrink-0 flex items-center justify-center bg-glass-hover border border-[var(--glass-border)] font-semibold text-[var(--foreground-secondary)]`}
       >
         {initial}
       </div>
@@ -36,7 +36,7 @@ export function AdThumbnail({ thumbnailUrl, imageUrl, name, size = 'sm' }: AdThu
       src={src}
       alt=""
       onError={() => setFailed(true)}
-      className={`${sizeClass} flex-shrink-0 object-cover bg-white/[0.06] border border-[var(--glass-border)]`}
+      className={`${sizeClass} flex-shrink-0 object-cover bg-glass-hover border border-[var(--glass-border)]`}
     />
   );
 }

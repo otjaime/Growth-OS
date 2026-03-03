@@ -35,7 +35,7 @@ function SortHeader({
   const isActive = currentKey === sortKey;
   return (
     <th
-      className={`text-${align} text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3 cursor-pointer hover:text-[var(--foreground-secondary)] transition-colors select-none whitespace-nowrap`}
+      className={`text-${align} text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3 cursor-pointer hover:text-[var(--foreground-secondary)] transition-colors select-none whitespace-nowrap`}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-0.5">
@@ -55,8 +55,8 @@ function roasColor(roas: number | null): string {
 
 function statusBadge(status: string): string {
   if (status === 'ACTIVE') return 'text-apple-green bg-[var(--tint-green)]';
-  if (status === 'PAUSED') return 'text-[var(--foreground-secondary)] bg-white/[0.06]';
-  return 'text-[var(--foreground-secondary)] bg-white/[0.06]';
+  if (status === 'PAUSED') return 'text-[var(--foreground-secondary)] bg-glass-hover';
+  return 'text-[var(--foreground-secondary)] bg-glass-hover';
 }
 
 export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableProps) {
@@ -85,8 +85,19 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue" />
+      <div className="card space-y-0">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2.5 table-separator">
+            <div className="h-8 w-8 rounded-md skeleton-shimmer" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 w-40 skeleton-shimmer" />
+              <div className="h-2 w-24 skeleton-shimmer" />
+            </div>
+            <div className="h-4 w-16 skeleton-shimmer" />
+            <div className="h-4 w-16 skeleton-shimmer" />
+            <div className="h-4 w-12 skeleton-shimmer" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -106,9 +117,9 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
         <table className="w-full min-w-[900px]">
           <thead>
             <tr className="border-b border-[var(--glass-border)]">
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3 w-10" />
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3 w-10" />
               <SortHeader label="Ad" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} align="left" />
-              <th className="text-left text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Status</th>
+              <th className="text-left text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Status</th>
               <SortHeader label="Spend 7d" sortKey="spend7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortHeader label="Revenue" sortKey="revenue7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortHeader label="ROAS" sortKey="roas7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
@@ -116,7 +127,7 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
               <SortHeader label="CPC" sortKey="cpc7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortHeader label="Freq" sortKey="frequency7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortHeader label="Conv" sortKey="conversions7d" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <th className="text-center text-[10px] uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Health</th>
+              <th className="text-center text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium px-3 py-3">Health</th>
             </tr>
           </thead>
           <tbody>
@@ -134,7 +145,7 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
                 <tr
                   key={ad.id}
                   onClick={() => onAdClick?.(ad.id)}
-                  className={`${borderClass} border-b border-[var(--glass-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors cursor-pointer`}
+                  className={`${borderClass} table-separator last:bg-none hover:bg-glass-muted transition-colors cursor-pointer`}
                 >
                   {/* Thumbnail */}
                   <td className="px-3 py-2.5">
@@ -144,12 +155,12 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
                   {/* Name + Campaign */}
                   <td className="px-3 py-2.5 max-w-[200px]">
                     <p className="text-sm font-medium text-[var(--foreground)] truncate">{ad.name}</p>
-                    <p className="text-[10px] text-[var(--foreground-secondary)] truncate">{ad.campaign.name}</p>
+                    <p className="text-caption text-[var(--foreground-secondary)] truncate">{ad.campaign.name}</p>
                   </td>
 
                   {/* Status */}
                   <td className="px-3 py-2.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${statusBadge(ad.status)}`}>
+                    <span className={`text-caption px-1.5 py-0.5 rounded font-medium ${statusBadge(ad.status)}`}>
                       {ad.status}
                     </span>
                   </td>
@@ -208,7 +219,7 @@ export function AdsTable({ ads, loading, diagnosisByAdId, onAdClick }: AdsTableP
                     ) : (
                       <span className="inline-flex items-center gap-1">
                         <AlertTriangle className={`h-3.5 w-3.5 ${hasCritical ? 'text-apple-red' : 'text-apple-yellow'}`} />
-                        <span className="text-[10px] font-medium text-[var(--foreground-secondary)]">{diags.length}</span>
+                        <span className="text-caption font-medium text-[var(--foreground-secondary)]">{diags.length}</span>
                       </span>
                     )}
                   </td>
