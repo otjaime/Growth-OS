@@ -128,14 +128,14 @@ export function BudgetView() {
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4">
-          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Blended ROAS</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Current Return</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {data.currentBlendedRoas != null ? `${data.currentBlendedRoas.toFixed(2)}x` : '--'}
           </p>
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4">
-          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Projected ROAS</p>
+          <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1">Projected Return</p>
           <p className="text-2xl font-bold text-[var(--foreground)]">
             {data.projectedBlendedRoas != null ? `${data.projectedBlendedRoas.toFixed(2)}x` : '--'}
           </p>

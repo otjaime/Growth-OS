@@ -19,18 +19,18 @@ interface RuleHealth {
 
 function ruleDisplayName(ruleId: string): string {
   const names: Record<string, string> = {
-    creative_fatigue: 'Creative Fatigue',
-    negative_roas: 'Negative ROAS',
-    winner_not_scaled: 'Winner Not Scaled',
-    wasted_budget: 'Wasted Budget',
-    low_ctr: 'Low CTR',
-    click_no_buy: 'Click No Buy',
-    learning_phase: 'Learning Phase',
-    paused_positive: 'Paused Positive',
-    top_performer: 'Top Performer',
-    budget_pacing: 'Budget Pacing',
-    audience_saturation: 'Audience Saturation',
-    cost_spike: 'Cost Spike',
+    creative_fatigue: 'People have seen this ad too many times',
+    negative_roas: 'This ad is losing money',
+    winner_not_scaled: 'This winning ad could grow more',
+    wasted_budget: 'Money spent with no sales',
+    low_ctr: 'Few people are clicking this ad',
+    click_no_buy: 'People click but don\'t buy',
+    learning_phase: 'New ad — still learning',
+    paused_positive: 'A paused ad that was making money',
+    top_performer: 'Your best-performing ad',
+    budget_pacing: 'Under-spending its budget',
+    audience_saturation: 'Audience is getting saturated',
+    cost_spike: 'Costs are rising fast',
   };
   return names[ruleId] ?? ruleId;
 }

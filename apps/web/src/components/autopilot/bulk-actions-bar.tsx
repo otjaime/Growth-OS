@@ -71,7 +71,7 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-      <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--glass-border)] shadow-2xl">
+      <div className="flex items-center gap-3 px-6 py-3.5 glass-elevated rounded-2xl">
         <span className="text-sm font-semibold text-[var(--foreground)] tabular-nums">
           {selectedCount} selected
         </span>
@@ -81,25 +81,25 @@ export function BulkActionsBar({ selectedCount, selectedIds, onComplete, onCance
         <button
           onClick={handleBulkApprove}
           disabled={loading !== null}
-          className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-lg press-scale transition-all ease-spring disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs font-medium text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 px-4 py-2 rounded-xl press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          Approve ({selectedCount})
+          Apply {selectedCount} change{selectedCount !== 1 ? 's' : ''}
         </button>
 
         <button
           onClick={handleBulkDismiss}
           disabled={loading !== null}
-          className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)] px-4 py-2 rounded-lg press-scale transition-all ease-spring disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-secondary)] bg-glass-muted hover:bg-glass-active px-4 py-2 rounded-xl press-scale transition-all ease-spring disabled:opacity-50"
         >
           {loading === 'dismiss' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-          Dismiss ({selectedCount})
+          Skip {selectedCount} item{selectedCount !== 1 ? 's' : ''}
         </button>
 
         <button
           onClick={onCancel}
           disabled={loading !== null}
-          className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] ml-1 transition-colors"
+          className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] ml-1 press-scale transition-colors"
         >
           Cancel
         </button>

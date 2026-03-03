@@ -6,12 +6,13 @@ import { apiFetch } from '@/lib/api';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { EmergencyStop } from './emergency-stop';
 import { RuleHealth } from './rule-health';
+import { MODE_LABELS } from './human-labels';
 import type { AutopilotConfig, AutopilotMode } from './types';
 
 const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye; description: string }[] = [
-  { key: 'monitor', label: 'Monitor', icon: Eye, description: 'Watch metrics and surface diagnoses. No actions taken.' },
-  { key: 'suggest', label: 'Suggest', icon: Lightbulb, description: 'Surface diagnoses with recommended actions for approval.' },
-  { key: 'auto', label: 'Auto', icon: Zap, description: 'Automatically execute approved action types without confirmation.' },
+  { key: 'monitor', label: MODE_LABELS.monitor.label, icon: Eye, description: MODE_LABELS.monitor.description },
+  { key: 'suggest', label: MODE_LABELS.suggest.label, icon: Lightbulb, description: MODE_LABELS.suggest.description },
+  { key: 'auto', label: MODE_LABELS.auto.label, icon: Zap, description: MODE_LABELS.auto.description },
 ];
 
 const DEFAULT_CONFIG: AutopilotConfig = {
@@ -126,9 +127,9 @@ export function ConfigPanel() {
         <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-[var(--tint-yellow)] border border-apple-yellow/30">
           <AlertTriangle className="h-4 w-4 text-apple-yellow mt-0.5 shrink-0" />
           <div>
-            <p className="text-xs font-semibold text-apple-yellow">Auto mode is active</p>
+            <p className="text-xs font-semibold text-apple-yellow">Auto-Apply is active</p>
             <p className="text-xs text-apple-yellow/80 mt-0.5">
-              Autopilot will automatically execute budget changes, pause underperforming ads, and reactivate paused ads without manual confirmation.
+              Copilot will automatically apply budget changes, stop underperforming ads, and restart paused ads without asking you first.
             </p>
           </div>
         </div>
@@ -176,7 +177,7 @@ export function ConfigPanel() {
           {/* Target ROAS */}
           <div>
             <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
-              Target ROAS
+              Target Return
             </label>
             <input
               type="number"
@@ -192,7 +193,7 @@ export function ConfigPanel() {
           {/* Max CPA */}
           <div>
             <label className="block text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium mb-1.5">
-              Max CPA ($)
+              Max Cost per Sale ($)
             </label>
             <input
               type="number"
@@ -321,8 +322,8 @@ export function ConfigPanel() {
           {/* Toggle: Notify on Critical */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-[var(--foreground)]">Notify on critical diagnoses</p>
-              <p className="text-xs text-[var(--foreground-secondary)]">Get alerted when critical issues are detected</p>
+              <p className="text-sm text-[var(--foreground)]">Alert me on urgent issues</p>
+              <p className="text-xs text-[var(--foreground-secondary)]">Get a Slack message when something needs attention now</p>
             </div>
             <button
               role="switch"
@@ -344,8 +345,8 @@ export function ConfigPanel() {
           {/* Toggle: Notify on Auto Action */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-[var(--foreground)]">Notify on auto actions</p>
-              <p className="text-xs text-[var(--foreground-secondary)]">Get alerted when autopilot takes an action automatically</p>
+              <p className="text-sm text-[var(--foreground)]">Alert me on auto actions</p>
+              <p className="text-xs text-[var(--foreground-secondary)]">Get notified when Copilot makes a change automatically</p>
             </div>
             <button
               role="switch"

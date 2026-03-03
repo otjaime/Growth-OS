@@ -152,10 +152,10 @@ export function CampaignHealthView() {
 
           {/* Component Bars */}
           <div className="space-y-2 mb-3">
-            <ComponentBar label="ROAS" score={c.components.roasScore} max={25} />
-            <ComponentBar label="Efficiency" score={c.components.efficiencyScore} max={25} />
-            <ComponentBar label="Scale" score={c.components.scaleScore} max={25} />
-            <ComponentBar label="Stability" score={c.components.stabilityScore} max={25} />
+            <ComponentBar label="Return" score={c.components.roasScore} max={25} />
+            <ComponentBar label="Cost efficiency" score={c.components.efficiencyScore} max={25} />
+            <ComponentBar label="Growth" score={c.components.scaleScore} max={25} />
+            <ComponentBar label="Consistency" score={c.components.stabilityScore} max={25} />
           </div>
 
           {/* Top Issue */}

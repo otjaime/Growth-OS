@@ -2,6 +2,7 @@
 
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import type { DiagnosisSeverity } from './types';
+import { getSeverityLabel } from './human-labels';
 
 const config: Record<DiagnosisSeverity, { icon: typeof AlertTriangle; color: string; bg: string; text: string; border: string }> = {
   CRITICAL: { icon: AlertTriangle, color: 'text-apple-red', bg: 'bg-[var(--tint-red)]', text: 'text-apple-red', border: 'border-apple-red' },
@@ -12,8 +13,8 @@ const config: Record<DiagnosisSeverity, { icon: typeof AlertTriangle; color: str
 export function SeverityBadge({ severity }: { severity: DiagnosisSeverity }) {
   const c = config[severity];
   return (
-    <span className={`text-caption px-2 py-0.5 rounded-full uppercase font-semibold tracking-wide ${c.bg} ${c.text}`}>
-      {severity}
+    <span className={`text-caption px-2 py-0.5 rounded-full font-semibold ${c.bg} ${c.text}`}>
+      {getSeverityLabel(severity)}
     </span>
   );
 }
