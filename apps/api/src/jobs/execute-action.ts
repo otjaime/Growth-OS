@@ -9,6 +9,7 @@ import {
   pauseAd,
   reactivateAd,
   updateAdSetBudget,
+  updateCampaignBudget,
   createAdFromVariant,
 } from '../lib/meta-executor.js';
 import type { ExecutionResult } from '../lib/meta-executor.js';
@@ -96,6 +97,7 @@ interface DiagnosisWithAd {
     readonly name: string;
     readonly status: string;
     readonly adSet: { readonly adSetId: string; readonly dailyBudget: unknown };
+    readonly campaign: { readonly campaignId: string };
     readonly account: { readonly adAccountId: string };
   };
 }
@@ -116,6 +118,7 @@ export async function executeAction(
       ad: {
         include: {
           adSet: { select: { adSetId: true, dailyBudget: true } },
+          campaign: { select: { campaignId: true } },
           account: { select: { adAccountId: true } },
         },
       },
@@ -176,6 +179,7 @@ export async function executeAction(
 
   const metaAdId = diagnosis.ad.adId; // external Meta ad ID
   const metaAdSetId = diagnosis.ad.adSet.adSetId; // external Meta ad set ID
+  const metaCampaignId = diagnosis.ad.campaign.campaignId; // external Meta campaign ID
   const adAccountId = diagnosis.ad.account.adAccountId; // act_xxx
 
   // Execute with retries for retryable errors
@@ -213,7 +217,25 @@ export async function executeAction(
         }
         // Meta expects cents
         const budgetCents = Math.round(newBudgetDollars * 100);
-        result = await updateAdSetBudget(accessToken, metaAdSetId, budgetCents);
+
+        // When Campaign Budget Optimization (CBO) is enabled, the ad set
+        // won't have a daily_budget — Meta returns error code 200 (Permissions).
+        // Detect CBO by checking if adSet.dailyBudget is null and fall back
+        // to updating the campaign budget directly.
+        const isCBO = diagnosis.ad.adSet.dailyBudget == null;
+
+        if (isCBO) {
+          // CBO campaign — update at the campaign level
+          result = await updateCampaignBudget(accessToken, metaCampaignId, budgetCents);
+        } else {
+          // ABO (Ad Set Budget Optimization) — update at the ad set level
+          result = await updateAdSetBudget(accessToken, metaAdSetId, budgetCents);
+          // If ad set update fails with Permissions error (code 200), it's likely
+          // CBO was enabled after last sync. Fall back to campaign budget.
+          if (!result.success && result.errorCode === 200) {
+            result = await updateCampaignBudget(accessToken, metaCampaignId, budgetCents);
+          }
+        }
         break;
       }
 

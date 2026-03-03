@@ -35,6 +35,9 @@ export async function reactivateAd(accessToken: string, adId: string): Promise<E
  * Update an ad set's daily budget.
  * POST /{adset-id} { daily_budget: <cents> }
  * Meta expects budget in cents (integer).
+ *
+ * NOTE: This will fail with error code 200 (Permissions) if Campaign
+ * Budget Optimization (CBO) is enabled. Use updateCampaignBudget() instead.
  */
 export async function updateAdSetBudget(
   accessToken: string,
@@ -61,6 +64,42 @@ export async function updateAdSetBudget(
     }
 
     return { success: true, metaResponse: body };
+  } catch (err) {
+    return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
+  }
+}
+
+/**
+ * Update a campaign's daily budget.
+ * POST /{campaign-id} { daily_budget: <cents> }
+ * Use this when Campaign Budget Optimization (CBO) is enabled
+ * and ad-set-level budget updates are not allowed.
+ */
+export async function updateCampaignBudget(
+  accessToken: string,
+  campaignId: string,
+  newDailyBudgetCents: number,
+): Promise<ExecutionResult> {
+  if (!Number.isInteger(newDailyBudgetCents) || newDailyBudgetCents < 100) {
+    return { success: false, error: 'Budget must be an integer >= 100 (cents)', retryable: false };
+  }
+
+  try {
+    const resp = await fetch(`${META_BASE}/${campaignId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ daily_budget: newDailyBudgetCents }),
+    });
+
+    const body = await resp.json() as { success?: boolean; error?: MetaErrorResponse };
+    if (!resp.ok || body.error) {
+      return handleMetaError(body.error, resp.status);
+    }
+
+    return { success: true, metaResponse: { ...body, level: 'campaign' } };
   } catch (err) {
     return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
   }
