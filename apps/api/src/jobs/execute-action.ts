@@ -5,6 +5,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import { prisma, decrypt } from '@growth-os/database';
+import { getCurrencyOffset } from '@growth-os/etl';
 import {
   pauseAd,
   reactivateAd,
@@ -98,7 +99,7 @@ interface DiagnosisWithAd {
     readonly status: string;
     readonly adSet: { readonly adSetId: string; readonly dailyBudget: unknown };
     readonly campaign: { readonly campaignId: string };
-    readonly account: { readonly adAccountId: string };
+    readonly account: { readonly adAccountId: string; readonly currency: string };
   };
 }
 
@@ -119,7 +120,7 @@ export async function executeAction(
         include: {
           adSet: { select: { adSetId: true, dailyBudget: true } },
           campaign: { select: { campaignId: true } },
-          account: { select: { adAccountId: true } },
+          account: { select: { adAccountId: true, currency: true } },
         },
       },
     },
@@ -181,6 +182,7 @@ export async function executeAction(
   const metaAdSetId = diagnosis.ad.adSet.adSetId; // external Meta ad set ID
   const metaCampaignId = diagnosis.ad.campaign.campaignId; // external Meta campaign ID
   const adAccountId = diagnosis.ad.account.adAccountId; // act_xxx
+  const currencyOffset = getCurrencyOffset(diagnosis.ad.account.currency);
 
   // Execute with retries for retryable errors
   let result: ExecutionResult = { success: false, error: 'No action taken' };
@@ -215,9 +217,9 @@ export async function executeAction(
           result = { success: false, error: 'No valid budget in suggestedValue', retryable: false };
           break;
         }
-        // Diagnosis rules already produce values in Meta's daily_budget unit
-        // (same as what Meta returns — no cents conversion needed).
-        const budgetValue = Math.round(newBudget);
+        // Diagnosis rules produce human-readable values (e.g. 1476 MXN).
+        // Meta API expects values multiplied by currency offset (e.g. 147600 for MXN offset=100).
+        const budgetValue = Math.round(newBudget * currencyOffset);
 
         // When Campaign Budget Optimization (CBO) is enabled, the ad set
         // won't have a daily_budget — Meta returns error code 200 (Permissions).

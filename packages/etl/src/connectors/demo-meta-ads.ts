@@ -262,5 +262,8 @@ export function generateDemoMetaAds(): MetaAdCreativeResult {
     }
   }
 
-  return { campaigns, adSets, ads, insights7d, insights14d };
+  return {
+    accountInfo: { name: 'Growth Store — Main', currency: 'USD', timezone: 'America/New_York', currencyOffset: 100 },
+    campaigns, adSets, ads, insights7d, insights14d,
+  };
 }

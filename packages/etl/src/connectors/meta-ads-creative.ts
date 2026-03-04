@@ -64,12 +64,49 @@ export interface MetaAdInsight {
   frequency: number | null;
 }
 
+export interface MetaAccountInfo {
+  name: string;
+  currency: string;
+  timezone: string;
+  currencyOffset: number;
+}
+
 export interface MetaAdCreativeResult {
+  accountInfo: MetaAccountInfo;
   campaigns: MetaCampaignData[];
   adSets: MetaAdSetData[];
   ads: MetaAdData[];
   insights7d: MetaAdInsight[];
   insights14d: MetaAdInsight[];
+}
+
+// ── Currency offset ──────────────────────────────────────────
+// Meta's Marketing API returns all monetary values (budgets, spend)
+// multiplied by the currency's offset to avoid floating point.
+// Most currencies use offset=100 (cents); some use 1 or 1000.
+// Reference: https://developers.facebook.com/docs/marketing-api/currencies
+
+/** Currencies with offset = 1 (no subunit or treated as whole units). */
+const OFFSET_1_CURRENCIES = new Set([
+  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW',
+  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+]);
+
+/** Currencies with offset = 1000 (3 decimal subunit). */
+const OFFSET_1000_CURRENCIES = new Set([
+  'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND',
+]);
+
+/**
+ * Get Meta's currency offset for a given ISO 4217 currency code.
+ * Meta multiplies all monetary values by this offset.
+ * Divide by offset to get human-readable values.
+ */
+export function getCurrencyOffset(currency: string): number {
+  const code = currency.toUpperCase();
+  if (OFFSET_1_CURRENCIES.has(code)) return 1;
+  if (OFFSET_1000_CURRENCIES.has(code)) return 1000;
+  return 100; // USD, EUR, GBP, MXN, BRL, CAD, AUD, etc.
 }
 
 // ── Helper ───────────────────────────────────────────────────
@@ -146,6 +183,23 @@ export async function fetchMetaAdCreatives(
   const baseUrl = 'https://graph.facebook.com/v21.0';
   const authHeaders = { Authorization: `Bearer ${config.accessToken}` };
 
+  // 0. Fetch account metadata (currency, timezone)
+  log.info('Fetching Meta ad account info');
+  const accountFields = 'name,currency,timezone_name';
+  const rawAccount = await fetchWithRetry(
+    `${baseUrl}/${accountId}?fields=${accountFields}`,
+    authHeaders,
+  ) as Record<string, unknown>;
+  const currency = String(rawAccount.currency ?? 'USD');
+  const offset = getCurrencyOffset(currency);
+  const accountInfo: MetaAccountInfo = {
+    name: String(rawAccount.name ?? accountId),
+    currency,
+    timezone: String(rawAccount.timezone_name ?? 'America/New_York'),
+    currencyOffset: offset,
+  };
+  log.info({ currency, offset, timezone: accountInfo.timezone }, 'Account info fetched');
+
   // 1. Fetch campaigns
   log.info('Fetching Meta campaigns');
   const campaignFields = 'id,name,status,effective_status,objective,daily_budget';
@@ -158,7 +212,7 @@ export async function fetchMetaAdCreatives(
     name: String(c.name ?? ''),
     status: String(c.effective_status ?? c.status ?? 'UNKNOWN'),
     objective: String(c.objective ?? ''),
-    dailyBudget: c.daily_budget ? Number(c.daily_budget) : null, // Meta API value — stored as-is (account currency unit)
+    dailyBudget: c.daily_budget ? Number(c.daily_budget) / offset : null, // Meta offset → human-readable
   }));
   log.info({ count: campaigns.length }, 'Fetched campaigns');
 
@@ -174,7 +228,7 @@ export async function fetchMetaAdCreatives(
     campaignId: String(a.campaign_id ?? ''),
     name: String(a.name ?? ''),
     status: String(a.effective_status ?? a.status ?? 'UNKNOWN'),
-    dailyBudget: a.daily_budget ? Number(a.daily_budget) : null, // Meta API value — stored as-is (account currency unit)
+    dailyBudget: a.daily_budget ? Number(a.daily_budget) / offset : null, // Meta offset → human-readable
     targeting: (a.targeting as Record<string, unknown>) ?? null,
   }));
   log.info({ count: adSets.length }, 'Fetched ad sets');
@@ -233,7 +287,7 @@ export async function fetchMetaAdCreatives(
   const insights14d = parseInsights(rawInsights14d);
   log.info({ count: insights14d.length }, 'Fetched 14d insights');
 
-  return { campaigns, adSets, ads, insights7d, insights14d };
+  return { accountInfo, campaigns, adSets, ads, insights7d, insights14d };
 }
 
 function parseInsights(raw: Record<string, unknown>[]): MetaAdInsight[] {
