@@ -2,6 +2,11 @@
 // Growth OS — Meta API Executor
 // Functions to mutate Meta Ads via the Marketing API.
 // All changes require prior user approval (never called automatically).
+//
+// IMPORTANT: Meta's Marketing API expects POST requests as
+// application/x-www-form-urlencoded with access_token as a field,
+// NOT JSON with Bearer header. Using JSON+Bearer can cause
+// error code 200 / subcode 4841013 ("user doesn't have permission").
 // ──────────────────────────────────────────────────────────────
 
 const META_API_VERSION = 'v21.0';
@@ -33,7 +38,7 @@ export async function reactivateAd(accessToken: string, adId: string): Promise<E
 
 /**
  * Update an ad set's daily budget.
- * POST /{adset-id} { daily_budget: <cents> }
+ * POST /{adset-id} -F daily_budget=<cents> -F access_token=<token>
  * Meta expects budget in cents (integer).
  *
  * NOTE: This will fail with error code 200 (Permissions) if Campaign
@@ -48,30 +53,14 @@ export async function updateAdSetBudget(
     return { success: false, error: 'Budget must be an integer >= 100 (cents)', retryable: false };
   }
 
-  try {
-    const resp = await fetch(`${META_BASE}/${adSetId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ daily_budget: newDailyBudgetCents }),
-    });
-
-    const body = await resp.json() as { success?: boolean; error?: MetaErrorResponse };
-    if (!resp.ok || body.error) {
-      return handleMetaError(body.error, resp.status);
-    }
-
-    return { success: true, metaResponse: body };
-  } catch (err) {
-    return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
-  }
+  return metaPost(accessToken, adSetId, {
+    daily_budget: String(newDailyBudgetCents),
+  });
 }
 
 /**
  * Update a campaign's daily budget.
- * POST /{campaign-id} { daily_budget: <cents> }
+ * POST /{campaign-id} -F daily_budget=<cents> -F access_token=<token>
  * Use this when Campaign Budget Optimization (CBO) is enabled
  * and ad-set-level budget updates are not allowed.
  */
@@ -84,25 +73,16 @@ export async function updateCampaignBudget(
     return { success: false, error: 'Budget must be an integer >= 100 (cents)', retryable: false };
   }
 
-  try {
-    const resp = await fetch(`${META_BASE}/${campaignId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ daily_budget: newDailyBudgetCents }),
-    });
+  const result = await metaPost(accessToken, campaignId, {
+    daily_budget: String(newDailyBudgetCents),
+  });
 
-    const body = await resp.json() as { success?: boolean; error?: MetaErrorResponse };
-    if (!resp.ok || body.error) {
-      return handleMetaError(body.error, resp.status);
-    }
-
-    return { success: true, metaResponse: { ...body, level: 'campaign' } };
-  } catch (err) {
-    return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
+  // Tag the response as campaign-level for logging
+  if (result.success && result.metaResponse) {
+    result.metaResponse = { ...(result.metaResponse as Record<string, unknown>), level: 'campaign' };
   }
+
+  return result;
 }
 
 /**
@@ -127,7 +107,7 @@ export async function createAdFromVariant(
   },
 ): Promise<ExecutionResult> {
   try {
-    // Step 1: Create AdCreative
+    // Step 1: Create AdCreative — this one uses JSON because it has nested objects
     const creativePayload: Record<string, unknown> = {
       name: `${creative.name} — GrowthOS Variant`,
       object_story_spec: {
@@ -162,18 +142,17 @@ export async function createAdFromVariant(
     }
 
     // Step 2: Create Ad using the new creative
+    const adFormData = new URLSearchParams();
+    adFormData.append('access_token', accessToken);
+    adFormData.append('name', `${creative.name} — GrowthOS`);
+    adFormData.append('adset_id', adSetId);
+    adFormData.append('creative', JSON.stringify({ creative_id: creativeId }));
+    adFormData.append('status', 'PAUSED'); // Always create paused — user must activate manually
+
     const adResp = await fetch(`${META_BASE}/${adAccountId}/ads`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        name: `${creative.name} — GrowthOS`,
-        adset_id: adSetId,
-        creative: { creative_id: creativeId },
-        status: 'PAUSED', // Always create paused — user must activate manually
-      }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: adFormData.toString(),
     });
 
     const adBody = await adResp.json() as { id?: string; error?: MetaErrorResponse };
@@ -199,19 +178,27 @@ interface MetaErrorResponse {
   error_subcode?: number;
 }
 
-async function updateAdStatus(
+/**
+ * Core helper: POST to a Meta object using form-urlencoded format.
+ * Meta's Marketing API officially uses form-urlencoded with access_token
+ * as a field (not JSON body with Bearer header).
+ */
+async function metaPost(
   accessToken: string,
-  adId: string,
-  status: 'ACTIVE' | 'PAUSED',
+  objectId: string,
+  fields: Record<string, string>,
 ): Promise<ExecutionResult> {
   try {
-    const resp = await fetch(`${META_BASE}/${adId}`, {
+    const formData = new URLSearchParams();
+    formData.append('access_token', accessToken);
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, value);
+    }
+
+    const resp = await fetch(`${META_BASE}/${objectId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ status }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
     });
 
     const body = await resp.json() as { success?: boolean; error?: MetaErrorResponse };
@@ -225,22 +212,31 @@ async function updateAdStatus(
   }
 }
 
+async function updateAdStatus(
+  accessToken: string,
+  adId: string,
+  status: 'ACTIVE' | 'PAUSED',
+): Promise<ExecutionResult> {
+  return metaPost(accessToken, adId, { status });
+}
+
 function handleMetaError(error: MetaErrorResponse | undefined, httpStatus: number): ExecutionResult {
   const code = error?.code ?? httpStatus;
   const message = error?.message ?? `HTTP ${httpStatus}`;
+  const subcode = error?.error_subcode;
 
   // Meta error code classification
   // 190: Expired/invalid token → not retryable, user must re-auth
   // 32: Rate limit → retryable with backoff
-  // 200: Permission error → not retryable (missing ads_management scope)
+  // 200: Permission error → not retryable
   // 1487: Ad account suspended → not retryable
   // 2: Temporary error → retryable
   const retryable = code === 32 || code === 2;
 
   // Provide actionable error messages for common issues
-  let userMessage = `Meta API error (${code}): ${message}`;
+  let userMessage = `Meta API error (${code}${subcode ? `/${subcode}` : ''}): ${message}`;
   if (code === 200) {
-    userMessage = 'Missing ads_management permission — re-generate your Meta token with ads_management scope enabled. Go to Data Connections → Meta Ads to update.';
+    userMessage = `Meta permission denied (${code}/${subcode ?? '?'}): ${message}. Check that your user has Admin role on the ad account in Business Settings.`;
   } else if (code === 190) {
     userMessage = 'Meta access token expired or invalid — re-connect Meta Ads in Data Connections.';
   } else if (code === 1487) {

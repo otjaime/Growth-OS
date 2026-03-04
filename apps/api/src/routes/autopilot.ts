@@ -1077,17 +1077,19 @@ export async function autopilotRoutes(app: FastifyInstance) {
     );
     const readBody = await readResp.json();
 
-    // Step 2: Try a write (update to SAME daily_budget, so no actual change)
+    // Step 2: Try a write using form-urlencoded (Meta's official format)
+    // Update to SAME daily_budget so no actual change is made
     const currentBudget = (readBody as Record<string, unknown>).daily_budget;
     let writeResult: unknown = null;
     if (currentBudget) {
+      const formData = new URLSearchParams();
+      formData.append('access_token', accessToken);
+      formData.append('daily_budget', String(currentBudget));
+
       const writeResp = await fetch(`https://graph.facebook.com/v21.0/${targetId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ daily_budget: Number(currentBudget) }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString(),
       });
       writeResult = await writeResp.json();
     }

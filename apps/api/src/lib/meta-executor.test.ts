@@ -9,10 +9,21 @@ import {
   pauseAd,
   reactivateAd,
   updateAdSetBudget,
+  updateCampaignBudget,
   createAdFromVariant,
 } from './meta-executor.js';
 
 const TOKEN = 'EAAtest123';
+
+/** Parse a form-urlencoded body string into a record. */
+function parseForm(body: string): Record<string, string> {
+  const params = new URLSearchParams(body);
+  const result: Record<string, string> = {};
+  for (const [key, value] of params) {
+    result[key] = value;
+  }
+  return result;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -20,7 +31,7 @@ beforeEach(() => {
 
 describe('meta-executor', () => {
   describe('pauseAd', () => {
-    it('sends PAUSED status to Meta API', async () => {
+    it('sends PAUSED status via form-urlencoded to Meta API', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -32,9 +43,12 @@ describe('meta-executor', () => {
 
       const call = mockFetch.mock.calls[0]!;
       expect(call[0]).toContain('/123456');
-      const body = JSON.parse(call[1].body as string);
+      const body = parseForm(call[1].body as string);
       expect(body.status).toBe('PAUSED');
-      expect(call[1].headers.Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(body.access_token).toBe(TOKEN);
+      // Should NOT use Bearer header — uses access_token as form field
+      expect(call[1].headers?.Authorization).toBeUndefined();
+      expect(call[1].headers?.['Content-Type'] ?? call[1].headers?.['content-type']).toBe('application/x-www-form-urlencoded');
     });
 
     it('returns error on Meta API failure', async () => {
@@ -61,7 +75,7 @@ describe('meta-executor', () => {
   });
 
   describe('reactivateAd', () => {
-    it('sends ACTIVE status to Meta API', async () => {
+    it('sends ACTIVE status via form-urlencoded to Meta API', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -70,13 +84,14 @@ describe('meta-executor', () => {
       const result = await reactivateAd(TOKEN, '123456');
       expect(result.success).toBe(true);
 
-      const body = JSON.parse(mockFetch.mock.calls[0]![1].body as string);
+      const body = parseForm(mockFetch.mock.calls[0]![1].body as string);
       expect(body.status).toBe('ACTIVE');
+      expect(body.access_token).toBe(TOKEN);
     });
   });
 
   describe('updateAdSetBudget', () => {
-    it('sends budget in cents to Meta API', async () => {
+    it('sends budget in cents via form-urlencoded to Meta API', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -85,8 +100,9 @@ describe('meta-executor', () => {
       const result = await updateAdSetBudget(TOKEN, 'adset_123', 5000);
       expect(result.success).toBe(true);
 
-      const body = JSON.parse(mockFetch.mock.calls[0]![1].body as string);
-      expect(body.daily_budget).toBe(5000);
+      const body = parseForm(mockFetch.mock.calls[0]![1].body as string);
+      expect(body.daily_budget).toBe('5000');
+      expect(body.access_token).toBe(TOKEN);
     });
 
     it('rejects budgets less than 100 cents', async () => {
@@ -104,14 +120,49 @@ describe('meta-executor', () => {
     });
   });
 
+  describe('updateCampaignBudget', () => {
+    it('sends budget in cents via form-urlencoded to campaign', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const result = await updateCampaignBudget(TOKEN, 'campaign_123', 10000);
+      expect(result.success).toBe(true);
+
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/campaign_123');
+      const body = parseForm(call[1].body as string);
+      expect(body.daily_budget).toBe('10000');
+      expect(body.access_token).toBe(TOKEN);
+    });
+
+    it('tags response as campaign-level', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const result = await updateCampaignBudget(TOKEN, 'campaign_123', 10000);
+      expect(result.success).toBe(true);
+      expect((result.metaResponse as Record<string, unknown>).level).toBe('campaign');
+    });
+
+    it('rejects budgets less than 100 cents', async () => {
+      const result = await updateCampaignBudget(TOKEN, 'campaign_123', 50);
+      expect(result.success).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createAdFromVariant', () => {
     it('creates creative then ad in two API calls', async () => {
-      // First call: create creative
+      // First call: create creative (JSON format for nested objects)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 'creative_789' }),
       });
-      // Second call: create ad
+      // Second call: create ad (form-urlencoded)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 'ad_101' }),
@@ -135,12 +186,13 @@ describe('meta-executor', () => {
       const creativeCall = mockFetch.mock.calls[0]!;
       expect(creativeCall[0]).toContain('act_123/adcreatives');
 
-      // Verify ad call — created PAUSED
+      // Verify ad call — created PAUSED, uses form-urlencoded
       const adCall = mockFetch.mock.calls[1]!;
       expect(adCall[0]).toContain('act_123/ads');
-      const adBody = JSON.parse(adCall[1].body as string);
+      const adBody = parseForm(adCall[1].body as string);
       expect(adBody.status).toBe('PAUSED');
       expect(adBody.adset_id).toBe('adset_456');
+      expect(adBody.access_token).toBe(TOKEN);
     });
 
     it('returns error when creative creation fails', async () => {
@@ -205,6 +257,17 @@ describe('meta-executor', () => {
 
       const result = await pauseAd(TOKEN, '123');
       expect(result.retryable).toBe(true);
+    });
+
+    it('includes subcode in permission error message', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: { message: 'Permission denied', code: 200, error_subcode: 4841013 } }),
+      });
+
+      const result = await pauseAd(TOKEN, '123');
+      expect(result.error).toContain('4841013');
     });
   });
 });
