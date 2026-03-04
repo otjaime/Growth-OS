@@ -38,8 +38,8 @@ export async function reactivateAd(accessToken: string, adId: string): Promise<E
 
 /**
  * Update an ad set's daily budget.
- * POST /{adset-id} -F daily_budget=<cents> -F access_token=<token>
- * Meta expects budget in cents (integer).
+ * POST /{adset-id} -F daily_budget=<value> -F access_token=<token>
+ * Budget value is in the ad account's currency unit (same as Meta API returns).
  *
  * NOTE: This will fail with error code 200 (Permissions) if Campaign
  * Budget Optimization (CBO) is enabled. Use updateCampaignBudget() instead.
@@ -47,34 +47,35 @@ export async function reactivateAd(accessToken: string, adId: string): Promise<E
 export async function updateAdSetBudget(
   accessToken: string,
   adSetId: string,
-  newDailyBudgetCents: number,
+  newDailyBudget: number,
 ): Promise<ExecutionResult> {
-  if (!Number.isInteger(newDailyBudgetCents) || newDailyBudgetCents < 100) {
-    return { success: false, error: 'Budget must be an integer >= 100 (cents)', retryable: false };
+  if (!Number.isInteger(newDailyBudget) || newDailyBudget < 1) {
+    return { success: false, error: 'Budget must be a positive integer', retryable: false };
   }
 
   return metaPost(accessToken, adSetId, {
-    daily_budget: String(newDailyBudgetCents),
+    daily_budget: String(newDailyBudget),
   });
 }
 
 /**
  * Update a campaign's daily budget.
- * POST /{campaign-id} -F daily_budget=<cents> -F access_token=<token>
+ * POST /{campaign-id} -F daily_budget=<value> -F access_token=<token>
+ * Budget value is in the ad account's currency unit (same as Meta API returns).
  * Use this when Campaign Budget Optimization (CBO) is enabled
  * and ad-set-level budget updates are not allowed.
  */
 export async function updateCampaignBudget(
   accessToken: string,
   campaignId: string,
-  newDailyBudgetCents: number,
+  newDailyBudget: number,
 ): Promise<ExecutionResult> {
-  if (!Number.isInteger(newDailyBudgetCents) || newDailyBudgetCents < 100) {
-    return { success: false, error: 'Budget must be an integer >= 100 (cents)', retryable: false };
+  if (!Number.isInteger(newDailyBudget) || newDailyBudget < 1) {
+    return { success: false, error: 'Budget must be a positive integer', retryable: false };
   }
 
   const result = await metaPost(accessToken, campaignId, {
-    daily_budget: String(newDailyBudgetCents),
+    daily_budget: String(newDailyBudget),
   });
 
   // Tag the response as campaign-level for logging
