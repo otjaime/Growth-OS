@@ -269,7 +269,9 @@ export default function AutopilotPage() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const syncRes = await apiFetch('/api/autopilot/sync', { method: 'POST' });
+      // Manual sync always uses force=true to recycle executed/expired diagnoses
+      // so the user can re-test the pipeline without waiting for the 6h cooldown.
+      const syncRes = await apiFetch('/api/autopilot/sync?force=true', { method: 'POST' });
       if (!syncRes.ok) {
         const body = await syncRes.json().catch(() => ({ error: syncRes.statusText }));
         const msg = body.error ?? syncRes.statusText;
@@ -279,7 +281,9 @@ export default function AutopilotPage() {
         return;
       }
 
-      const diagRes = await apiFetch('/api/autopilot/run-diagnosis', { method: 'POST' });
+      // The sync endpoint already runs diagnosis with force=true, but we call
+      // run-diagnosis again with force in case any rules only fire after metrics update.
+      const diagRes = await apiFetch('/api/autopilot/run-diagnosis?force=true', { method: 'POST' });
       if (!diagRes.ok) {
         const body = await diagRes.json().catch(() => ({ error: diagRes.statusText }));
         setSyncError(`Check failed: ${body.error ?? diagRes.statusText}`);
