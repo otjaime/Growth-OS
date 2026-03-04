@@ -5,9 +5,17 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateDemoMetaAds } from './demo-meta-ads.js';
+import { getCurrencyOffset } from './meta-ads-creative.js';
 
 describe('generateDemoMetaAds', () => {
   const result = generateDemoMetaAds();
+
+  it('returns account info with currency', () => {
+    expect(result.accountInfo).toBeDefined();
+    expect(result.accountInfo.currency).toBe('USD');
+    expect(result.accountInfo.currencyOffset).toBe(100);
+    expect(result.accountInfo.timezone).toBeTruthy();
+  });
 
   it('returns campaigns', () => {
     expect(result.campaigns.length).toBeGreaterThan(0);
@@ -92,5 +100,31 @@ describe('generateDemoMetaAds', () => {
       expect(campaignIds.has(ad.campaignId)).toBe(true);
       expect(adSetIds.has(ad.adSetId)).toBe(true);
     }
+  });
+});
+
+describe('getCurrencyOffset', () => {
+  it('returns 100 for USD, EUR, GBP, MXN', () => {
+    expect(getCurrencyOffset('USD')).toBe(100);
+    expect(getCurrencyOffset('EUR')).toBe(100);
+    expect(getCurrencyOffset('GBP')).toBe(100);
+    expect(getCurrencyOffset('MXN')).toBe(100);
+  });
+
+  it('returns 1 for JPY, KRW, VND', () => {
+    expect(getCurrencyOffset('JPY')).toBe(1);
+    expect(getCurrencyOffset('KRW')).toBe(1);
+    expect(getCurrencyOffset('VND')).toBe(1);
+  });
+
+  it('returns 1000 for BHD, KWD, OMR', () => {
+    expect(getCurrencyOffset('BHD')).toBe(1000);
+    expect(getCurrencyOffset('KWD')).toBe(1000);
+    expect(getCurrencyOffset('OMR')).toBe(1000);
+  });
+
+  it('is case-insensitive', () => {
+    expect(getCurrencyOffset('usd')).toBe(100);
+    expect(getCurrencyOffset('jpy')).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 export { ingestRaw, normalizeStaging, buildMarts, validateData, mapChannelFromOrder, mapGA4ChannelToSlug } from './pipeline/index.js';
 export { generateAllDemoData, fetchShopifyOrders, fetchShopifyCustomers, fetchMetaInsights, fetchGoogleAdsInsights, fetchGA4Traffic, fetchTikTokInsights, fetchKlaviyoCampaigns, fetchKlaviyoFlows, fetchStripeCharges, fetchStripeRefunds } from './connectors/index.js';
-export { fetchMetaAdCreatives, generateDemoMetaAds } from './connectors/index.js';
-export type { MetaAdCreativeConfig, MetaAdCreativeResult, MetaCampaignData, MetaAdSetData, MetaAdData, MetaAdInsight } from './connectors/index.js';
+export { fetchMetaAdCreatives, generateDemoMetaAds, getCurrencyOffset } from './connectors/index.js';
+export type { MetaAdCreativeConfig, MetaAdCreativeResult, MetaAccountInfo, MetaCampaignData, MetaAdSetData, MetaAdData, MetaAdInsight } from './connectors/index.js';
 export * as kpis from './kpis.js';
 export { evaluateAlerts } from './alerts.js';
 export type { Alert, AlertInput } from './alerts.js';

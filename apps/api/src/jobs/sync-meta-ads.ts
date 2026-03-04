@@ -87,7 +87,7 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
   // 2. Fetch ad-level data
   const result = await fetchMetaAdCreatives(config);
 
-  // 3. Upsert MetaAdAccount
+  // 3. Upsert MetaAdAccount (including currency + timezone from Meta API)
   const rawId = config.adAccountId.trim().replace(/^act_/, '');
   const adAccountId = `act_${rawId}`;
   const account = await prisma.metaAdAccount.upsert({
@@ -97,9 +97,14 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
     create: {
       organizationId,
       adAccountId,
-      name: `Meta Ad Account (${adAccountId})`,
+      name: result.accountInfo.name,
+      currency: result.accountInfo.currency,
+      timezone: result.accountInfo.timezone,
     },
     update: {
+      name: result.accountInfo.name,
+      currency: result.accountInfo.currency,
+      timezone: result.accountInfo.timezone,
       updatedAt: new Date(),
     },
   });
