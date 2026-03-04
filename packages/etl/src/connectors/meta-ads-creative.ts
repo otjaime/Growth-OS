@@ -158,7 +158,7 @@ export async function fetchMetaAdCreatives(
     name: String(c.name ?? ''),
     status: String(c.effective_status ?? c.status ?? 'UNKNOWN'),
     objective: String(c.objective ?? ''),
-    dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null, // cents → dollars
+    dailyBudget: c.daily_budget ? Number(c.daily_budget) : null, // Meta API value — stored as-is (account currency unit)
   }));
   log.info({ count: campaigns.length }, 'Fetched campaigns');
 
@@ -174,7 +174,7 @@ export async function fetchMetaAdCreatives(
     campaignId: String(a.campaign_id ?? ''),
     name: String(a.name ?? ''),
     status: String(a.effective_status ?? a.status ?? 'UNKNOWN'),
-    dailyBudget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
+    dailyBudget: a.daily_budget ? Number(a.daily_budget) : null, // Meta API value — stored as-is (account currency unit)
     targeting: (a.targeting as Record<string, unknown>) ?? null,
   }));
   log.info({ count: adSets.length }, 'Fetched ad sets');

@@ -210,13 +210,14 @@ export async function executeAction(
           newBudget?: number;
           suggestedBudget?: number;
         } | null;
-        const newBudgetDollars = suggested?.newBudget ?? suggested?.suggestedBudget;
-        if (!newBudgetDollars || newBudgetDollars <= 0) {
+        const newBudget = suggested?.newBudget ?? suggested?.suggestedBudget;
+        if (!newBudget || newBudget <= 0) {
           result = { success: false, error: 'No valid budget in suggestedValue', retryable: false };
           break;
         }
-        // Meta expects cents
-        const budgetCents = Math.round(newBudgetDollars * 100);
+        // Diagnosis rules already produce values in Meta's daily_budget unit
+        // (same as what Meta returns — no cents conversion needed).
+        const budgetValue = Math.round(newBudget);
 
         // When Campaign Budget Optimization (CBO) is enabled, the ad set
         // won't have a daily_budget — Meta returns error code 200 (Permissions).
@@ -226,14 +227,14 @@ export async function executeAction(
 
         if (isCBO) {
           // CBO campaign — update at the campaign level
-          result = await updateCampaignBudget(accessToken, metaCampaignId, budgetCents);
+          result = await updateCampaignBudget(accessToken, metaCampaignId, budgetValue);
         } else {
           // ABO (Ad Set Budget Optimization) — update at the ad set level
-          result = await updateAdSetBudget(accessToken, metaAdSetId, budgetCents);
+          result = await updateAdSetBudget(accessToken, metaAdSetId, budgetValue);
           // If ad set update fails with Permissions error (code 200), it's likely
           // CBO was enabled after last sync. Fall back to campaign budget.
           if (!result.success && result.errorCode === 200) {
-            result = await updateCampaignBudget(accessToken, metaCampaignId, budgetCents);
+            result = await updateCampaignBudget(accessToken, metaCampaignId, budgetValue);
           }
         }
         break;

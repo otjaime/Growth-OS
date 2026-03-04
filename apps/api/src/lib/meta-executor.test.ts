@@ -91,7 +91,7 @@ describe('meta-executor', () => {
   });
 
   describe('updateAdSetBudget', () => {
-    it('sends budget in cents via form-urlencoded to Meta API', async () => {
+    it('sends budget via form-urlencoded to Meta API', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -105,23 +105,23 @@ describe('meta-executor', () => {
       expect(body.access_token).toBe(TOKEN);
     });
 
-    it('rejects budgets less than 100 cents', async () => {
-      const result = await updateAdSetBudget(TOKEN, 'adset_123', 50);
+    it('rejects budgets less than 1', async () => {
+      const result = await updateAdSetBudget(TOKEN, 'adset_123', 0);
       expect(result.success).toBe(false);
-      expect(result.error).toContain('>= 100');
+      expect(result.error).toContain('positive integer');
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('rejects non-integer budgets', async () => {
       const result = await updateAdSetBudget(TOKEN, 'adset_123', 50.5);
       expect(result.success).toBe(false);
-      expect(result.error).toContain('integer');
+      expect(result.error).toContain('positive integer');
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe('updateCampaignBudget', () => {
-    it('sends budget in cents via form-urlencoded to campaign', async () => {
+    it('sends budget via form-urlencoded to campaign', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -148,8 +148,8 @@ describe('meta-executor', () => {
       expect((result.metaResponse as Record<string, unknown>).level).toBe('campaign');
     });
 
-    it('rejects budgets less than 100 cents', async () => {
-      const result = await updateCampaignBudget(TOKEN, 'campaign_123', 50);
+    it('rejects budgets less than 1', async () => {
+      const result = await updateCampaignBudget(TOKEN, 'campaign_123', 0);
       expect(result.success).toBe(false);
       expect(mockFetch).not.toHaveBeenCalled();
     });
