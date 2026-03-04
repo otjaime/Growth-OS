@@ -25,7 +25,15 @@ export interface RunDiagnosisResult {
   autoActions?: AutoExecuteResult;
 }
 
-export async function runDiagnosis(organizationId: string): Promise<RunDiagnosisResult> {
+export interface RunDiagnosisOptions {
+  /** Skip cooldown check — recycle ALL executed/expired diagnoses immediately. */
+  force?: boolean;
+}
+
+export async function runDiagnosis(
+  organizationId: string,
+  options?: RunDiagnosisOptions,
+): Promise<RunDiagnosisResult> {
   const start = Date.now();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000); // 72h from now
@@ -108,14 +116,17 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
         const isApprovedWithError =
           existing.status === 'APPROVED' && execResult?.error;
 
-        // If the diagnosis was already EXECUTED or DISMISSED but the rule still fires,
+        // If the diagnosis was already EXECUTED or EXPIRED but the rule still fires,
         // recycle it back to PENDING so the user can review fresh metrics and re-approve.
-        // Cooldown: wait at least 6h after execution to avoid rapid re-diagnosis.
+        // Cooldown: wait at least 6h after execution to avoid rapid re-diagnosis
+        // (skipped when options.force is true).
         const RECYCLE_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+        const cooldownPassed =
+          !existing.executedAt ||
+          now.getTime() - new Date(existing.executedAt).getTime() > RECYCLE_COOLDOWN_MS;
         const isRecyclable =
           (existing.status === 'EXECUTED' || existing.status === 'EXPIRED') &&
-          (!existing.executedAt ||
-            now.getTime() - new Date(existing.executedAt).getTime() > RECYCLE_COOLDOWN_MS);
+          (options?.force || cooldownPassed);
 
         if (existing.status === 'PENDING' || isApprovedWithError || isRecyclable) {
           // Clear cached AI insight if the message changed (metrics shifted)
