@@ -108,13 +108,22 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
         const isApprovedWithError =
           existing.status === 'APPROVED' && execResult?.error;
 
-        if (existing.status === 'PENDING' || isApprovedWithError) {
+        // If the diagnosis was already EXECUTED or DISMISSED but the rule still fires,
+        // recycle it back to PENDING so the user can review fresh metrics and re-approve.
+        // Cooldown: wait at least 6h after execution to avoid rapid re-diagnosis.
+        const RECYCLE_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+        const isRecyclable =
+          (existing.status === 'EXECUTED' || existing.status === 'EXPIRED') &&
+          (!existing.executedAt ||
+            now.getTime() - new Date(existing.executedAt).getTime() > RECYCLE_COOLDOWN_MS);
+
+        if (existing.status === 'PENDING' || isApprovedWithError || isRecyclable) {
           // Clear cached AI insight if the message changed (metrics shifted)
           const insightChanged = existing.message !== diag.message;
           await prisma.diagnosis.update({
             where: { id: existing.id },
             data: {
-              // Reset stuck APPROVED→PENDING so user can re-approve
+              // Reset to PENDING so user can re-approve
               status: 'PENDING',
               severity: diag.severity,
               title: diag.title,
@@ -126,7 +135,7 @@ export async function runDiagnosis(organizationId: string): Promise<RunDiagnosis
               // Clear stale execution data
               executionResult: Prisma.DbNull,
               executedAt: null,
-              ...(insightChanged || isApprovedWithError
+              ...(insightChanged || isApprovedWithError || isRecyclable
                 ? { aiInsight: Prisma.DbNull, aiInsightAt: null }
                 : {}),
             },
