@@ -4,7 +4,7 @@
 // metrics and threshold adjustment suggestions.
 // ──────────────────────────────────────────────────────────────
 
-import { prisma } from '@growth-os/database';
+import { prisma, Prisma } from '@growth-os/database';
 
 export interface RuleHealthStats {
   ruleId: string;
@@ -86,4 +86,112 @@ export async function computeRuleHealth(organizationId: string): Promise<RuleHea
   // Sort by total (most active rules first)
   results.sort((a, b) => b.total - a.total);
   return results;
+}
+
+// ── Rule ID → Config Key Mapping ──────────────────────────────
+
+/**
+ * Maps diagnosis rule IDs to the DiagnosisRuleConfig keys they use.
+ * When a rule has a high dismissal rate, we relax its threshold.
+ * When a rule has a high approval rate, we tighten its threshold.
+ */
+const RULE_CONFIG_MAP: Record<string, {
+  configKey: 'targetRoas' | 'topPerformerRoas' | 'maxFrequency' | 'minCtr';
+  defaultValue: number;
+  /** Direction to relax: 'raise' means increase the threshold to fire less often */
+  relaxDirection: 'raise' | 'lower';
+}> = {
+  winner_not_scaled: { configKey: 'targetRoas', defaultValue: 3.0, relaxDirection: 'raise' },
+  top_performer:     { configKey: 'topPerformerRoas', defaultValue: 2.0, relaxDirection: 'raise' },
+  creative_fatigue:  { configKey: 'maxFrequency', defaultValue: 4.0, relaxDirection: 'raise' },
+  low_ctr:           { configKey: 'minCtr', defaultValue: 0.008, relaxDirection: 'lower' },
+};
+
+export interface RuleOverrides {
+  targetRoas?: number;
+  topPerformerRoas?: number;
+  maxFrequency?: number;
+  minCtr?: number;
+}
+
+export interface AutoAdjustResult {
+  overrides: RuleOverrides;
+  adjustments: string[];
+}
+
+const RELAX_PCT = 0.15;           // Relax by 15% when dismissal rate is high
+const TIGHTEN_PCT = 0.10;         // Tighten by 10% when approval rate is high
+const MIN_SAMPLES_RELAX = 10;     // Need ≥10 feedback entries to relax
+const MIN_SAMPLES_TIGHTEN = 20;   // Need ≥20 to tighten
+const DISMISSAL_THRESHOLD = 0.50; // >50% dismissals → relax
+const APPROVAL_THRESHOLD = 0.90;  // >90% approvals → tighten
+
+/**
+ * Analyze feedback patterns and auto-adjust rule thresholds.
+ *
+ * - If a rule has >50% dismissal rate (n≥10): relax its threshold by 15%
+ * - If a rule has >90% approval rate (n≥20): tighten its threshold by 10%
+ * - Persists adjustments in AutopilotConfig.ruleOverrides
+ *
+ * Returns the final merged overrides and a log of adjustments made.
+ */
+export async function autoAdjustThresholds(
+  organizationId: string,
+): Promise<AutoAdjustResult> {
+  const health = await computeRuleHealth(organizationId);
+  const adjustments: string[] = [];
+
+  // Load existing overrides from DB
+  const config = await prisma.autopilotConfig.findUnique({
+    where: { organizationId },
+    select: { ruleOverrides: true },
+  });
+
+  const existing: RuleOverrides = (config?.ruleOverrides as RuleOverrides | null) ?? {};
+  const overrides: RuleOverrides = { ...existing };
+
+  for (const rule of health) {
+    const mapping = RULE_CONFIG_MAP[rule.ruleId];
+    if (!mapping) continue;
+
+    const currentValue = overrides[mapping.configKey] ?? mapping.defaultValue;
+
+    if (rule.total >= MIN_SAMPLES_RELAX && rule.dismissalRate > DISMISSAL_THRESHOLD) {
+      // Rule fires too aggressively — relax threshold
+      let newValue: number;
+      if (mapping.relaxDirection === 'raise') {
+        newValue = currentValue * (1 + RELAX_PCT);
+      } else {
+        newValue = currentValue * (1 - RELAX_PCT);
+      }
+      newValue = Math.round(newValue * 10000) / 10000;
+      overrides[mapping.configKey] = newValue;
+      adjustments.push(
+        `Relaxed ${mapping.configKey} from ${currentValue} → ${newValue} (${rule.ruleId} dismissed ${Math.round(rule.dismissalRate * 100)}%)`,
+      );
+    } else if (rule.total >= MIN_SAMPLES_TIGHTEN && rule.approvalRate > APPROVAL_THRESHOLD) {
+      // Rule is highly accurate — tighten threshold
+      let newValue: number;
+      if (mapping.relaxDirection === 'raise') {
+        newValue = currentValue * (1 - TIGHTEN_PCT);
+      } else {
+        newValue = currentValue * (1 + TIGHTEN_PCT);
+      }
+      newValue = Math.round(newValue * 10000) / 10000;
+      overrides[mapping.configKey] = newValue;
+      adjustments.push(
+        `Tightened ${mapping.configKey} from ${currentValue} → ${newValue} (${rule.ruleId} approved ${Math.round(rule.approvalRate * 100)}%)`,
+      );
+    }
+  }
+
+  // Persist if any changes were made
+  if (adjustments.length > 0) {
+    await prisma.autopilotConfig.update({
+      where: { organizationId },
+      data: { ruleOverrides: overrides as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  return { overrides, adjustments };
 }

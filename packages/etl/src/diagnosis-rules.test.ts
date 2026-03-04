@@ -506,3 +506,218 @@ describe('Multi-rule interactions', () => {
     expect(activeRules).toHaveLength(0);
   });
 });
+
+// ── Rule 4: Wasted Budget with dynamic threshold ────────────
+
+describe('Rule 4: Wasted Budget — configurable threshold', () => {
+  it('uses default $100 threshold when no config', () => {
+    const input = baseInput({
+      spend7d: 80,
+      conversions7d: 0,
+      roas7d: 0.5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const wasted = results.find((r) => r.ruleId === 'wasted_budget');
+    expect(wasted).toBeUndefined(); // $80 < $100 default
+  });
+
+  it('fires when spend exceeds dynamic threshold', () => {
+    const input = baseInput({
+      spend7d: 60,
+      conversions7d: 0,
+      roas7d: 0.3,
+    });
+    const results = evaluateDiagnosisRules(input, NOW, { wastedSpendThreshold: 50 });
+    const wasted = results.find((r) => r.ruleId === 'wasted_budget');
+    expect(wasted).toBeDefined();
+    expect(wasted!.actionType).toBe('PAUSE_AD');
+  });
+
+  it('does not fire when spend is below dynamic threshold', () => {
+    const input = baseInput({
+      spend7d: 60,
+      conversions7d: 0,
+      roas7d: 0.3,
+    });
+    const results = evaluateDiagnosisRules(input, NOW, { wastedSpendThreshold: 100 });
+    const wasted = results.find((r) => r.ruleId === 'wasted_budget');
+    expect(wasted).toBeUndefined();
+  });
+});
+
+// ── Rule 12: Cost Spike with dynamic threshold ──────────────
+
+describe('Rule 12: Cost Spike — configurable threshold', () => {
+  it('uses default 30% threshold when no config', () => {
+    const input = baseInput({
+      cpc7d: 1.25,
+      cpc14d: 1.0,
+      spend7d: 100,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const spike = results.find((r) => r.ruleId === 'cost_spike');
+    expect(spike).toBeUndefined(); // 25% < 30% default
+  });
+
+  it('fires when CPC increase exceeds dynamic threshold', () => {
+    const input = baseInput({
+      cpc7d: 1.25,
+      cpc14d: 1.0,
+      spend7d: 100,
+    });
+    const results = evaluateDiagnosisRules(input, NOW, { cpcSpikeThreshold: 0.20 });
+    const spike = results.find((r) => r.ruleId === 'cost_spike');
+    expect(spike).toBeDefined();
+    expect(spike!.actionType).toBe('DECREASE_BUDGET');
+  });
+
+  it('does not fire when CPC increase is below dynamic threshold', () => {
+    const input = baseInput({
+      cpc7d: 1.35,
+      cpc14d: 1.0,
+      spend7d: 100,
+    });
+    const results = evaluateDiagnosisRules(input, NOW, { cpcSpikeThreshold: 0.50 });
+    const spike = results.find((r) => r.ruleId === 'cost_spike');
+    expect(spike).toBeUndefined(); // 35% < 50%
+  });
+});
+
+// ── Rule 13: Trend Acceleration ─────────────────────────────
+
+describe('Rule 13: Trend Acceleration', () => {
+  it('fires when ROAS decline accelerates over 3+ weeks', () => {
+    const input = baseInput({
+      // Each week worse than the last, with acceleration
+      weeklyRoasAvgs: [3.0, 2.5, 1.5], // deltas: -0.5, -1.0 (accelerating)
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeDefined();
+    expect(trend!.severity).toBe('WARNING');
+    expect(trend!.actionType).toBe('DECREASE_BUDGET');
+    expect(trend!.suggestedValue).toHaveProperty('weeklyRoas');
+    expect(trend!.suggestedValue).toHaveProperty('acceleration');
+  });
+
+  it('does not fire when ROAS decline is decelerating', () => {
+    const input = baseInput({
+      // Decline is slowing down
+      weeklyRoasAvgs: [3.0, 2.0, 1.5], // deltas: -1.0, -0.5 (decelerating)
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeUndefined();
+  });
+
+  it('does not fire when ROAS is improving', () => {
+    const input = baseInput({
+      weeklyRoasAvgs: [2.0, 2.5, 3.0], // improving
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeUndefined();
+  });
+
+  it('does not fire with fewer than 3 weekly averages', () => {
+    const input = baseInput({
+      weeklyRoasAvgs: [3.0, 2.0], // only 2 weeks
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeUndefined();
+  });
+
+  it('does not fire for PAUSED ads', () => {
+    const input = baseInput({
+      status: 'PAUSED',
+      weeklyRoasAvgs: [3.0, 2.5, 1.5],
+      roas14d: 3.0,
+      spend14d: 100,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeUndefined();
+  });
+
+  it('handles 4-week acceleration', () => {
+    const input = baseInput({
+      weeklyRoasAvgs: [4.0, 3.5, 2.5, 1.0], // deltas: -0.5, -1.0, -1.5 (accelerating)
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const trend = results.find((r) => r.ruleId === 'trend_acceleration');
+    expect(trend).toBeDefined();
+  });
+});
+
+// ── Rule 14: Predictive ROAS Decline ────────────────────────
+
+describe('Rule 14: Predictive ROAS Decline', () => {
+  it('fires when current ROAS > 1.0 but breakeven projected within 14 days', () => {
+    const input = baseInput({
+      roas7d: 2.5,
+      decayRecommendation: 'early_decay',
+      decayEstimatedDaysToBreakeven: 10,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeDefined();
+    expect(pred!.severity).toBe('WARNING');
+    expect(pred!.actionType).toBe('REFRESH_CREATIVE');
+    expect(pred!.suggestedValue).toHaveProperty('estimatedDaysToBreakeven', 10);
+  });
+
+  it('does not fire when ROAS is already below 1.0', () => {
+    const input = baseInput({
+      roas7d: 0.8,
+      decayRecommendation: 'replace_now',
+      decayEstimatedDaysToBreakeven: 5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeUndefined();
+  });
+
+  it('does not fire when breakeven is beyond 14 days', () => {
+    const input = baseInput({
+      roas7d: 2.0,
+      decayRecommendation: 'early_decay',
+      decayEstimatedDaysToBreakeven: 30,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeUndefined();
+  });
+
+  it('does not fire when decay recommendation is healthy', () => {
+    const input = baseInput({
+      roas7d: 3.0,
+      decayRecommendation: 'healthy',
+      decayEstimatedDaysToBreakeven: 5,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeUndefined();
+  });
+
+  it('does not fire without decay data', () => {
+    const input = baseInput({ roas7d: 2.0 });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeUndefined();
+  });
+
+  it('does not fire for PAUSED ads', () => {
+    const input = baseInput({
+      status: 'PAUSED',
+      roas7d: 2.0,
+      roas14d: 3.0,
+      spend14d: 100,
+      decayRecommendation: 'accelerating_decay',
+      decayEstimatedDaysToBreakeven: 7,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    const pred = results.find((r) => r.ruleId === 'predictive_roas_decline');
+    expect(pred).toBeUndefined();
+  });
+});

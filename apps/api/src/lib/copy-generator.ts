@@ -7,6 +7,15 @@
 
 import { getClient, isAIConfigured, AI_MODEL } from './ai.js';
 
+export interface PreviousVariantPerformance {
+  angle: string;
+  headline: string;
+  roas: number | null;
+  ctr: number | null;
+  conversions: number;
+  status: string; // APPROVED, REJECTED, etc.
+}
+
 export interface CopyGeneratorInput {
   originalHeadline: string | null;
   originalPrimaryText: string | null;
@@ -20,6 +29,8 @@ export interface CopyGeneratorInput {
     frequency7d: number | null;
     conversions7d: number;
   };
+  /** Phase 4.2: Previously tested variants with performance data */
+  previousVariants?: readonly PreviousVariantPerformance[];
 }
 
 export interface GeneratedCopy {
@@ -65,6 +76,21 @@ export async function generateCopyVariants(input: CopyGeneratorInput): Promise<G
     `Conversions (7d): ${input.adMetrics.conversions7d}`,
   ].filter(Boolean).join(' | ');
 
+  // Phase 4.2: Include previously tested variants with performance
+  const previousVariantsBlock = input.previousVariants && input.previousVariants.length > 0
+    ? `\nPREVIOUSLY TESTED VARIANTS (learn from these — double down on what worked, avoid what failed):
+${input.previousVariants.map((v) => {
+  const perf = [
+    v.roas !== null ? `ROAS: ${v.roas.toFixed(2)}x` : null,
+    v.ctr !== null ? `CTR: ${(v.ctr * 100).toFixed(2)}%` : null,
+    `Conv: ${v.conversions}`,
+    `Status: ${v.status}`,
+  ].filter(Boolean).join(', ');
+  return `- [${v.angle}] "${v.headline}" → ${perf}`;
+}).join('\n')}
+`
+    : '';
+
   const userPrompt = `Current ad copy:
 - Headline: ${input.originalHeadline ?? '(none)'}
 - Primary text: ${input.originalPrimaryText ?? '(none)'}
@@ -73,7 +99,7 @@ export async function generateCopyVariants(input: CopyGeneratorInput): Promise<G
 Diagnosis: ${input.diagnosisRule} — ${input.diagnosisMessage}
 
 Performance: ${metricsContext}
-
+${previousVariantsBlock}
 Generate 3 fresh copy variants using the benefit, pain_point, and urgency angles. Output as JSON array.`;
 
   const response = await ai.chat.completions.create({

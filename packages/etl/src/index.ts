@@ -22,6 +22,8 @@ export { seedDemoAutopilot } from './demo-autopilot.js';
 export { seedDemoOpportunities } from './demo-opportunities.js';
 export { evaluateDiagnosisRules } from './diagnosis-rules.js';
 export type { DiagnosisRuleInput, DiagnosisResult, DiagnosisActionType, DiagnosisSeverityLevel, DiagnosisRuleConfig } from './diagnosis-rules.js';
+export { computeDynamicThresholds } from './dynamic-thresholds.js';
+export type { AdMetricsForThresholds, DynamicThresholds } from './dynamic-thresholds.js';
 export { optimizeBudgetAllocation } from './budget-optimizer.js';
 export type { AdSetMetrics, BudgetAllocation, BudgetOptimizerConfig, PortfolioOptimization } from './budget-optimizer.js';
 export { analyzeCreativeDecay, linearRegression } from './creative-decay.js';
