@@ -243,10 +243,18 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Trigger Meta ad sync',
-      description: 'Manually triggers a sync of Meta ad-level data for the current organization.',
+      description: 'Manually triggers a sync of Meta ad-level data for the current organization. Pass ?force=true to recycle previously-executed diagnoses immediately.',
+      querystring: {
+        type: 'object',
+        properties: {
+          force: { type: 'string', enum: ['true', 'false'], description: 'Skip cooldown and recycle all executed/expired diagnoses' },
+        },
+      },
     },
   }, async (request, reply) => {
     const organizationId = await resolveOrgId(request);
+    const query = request.query as { force?: string };
+    const forceRecycle = query.force === 'true';
 
     // Create a job run for tracking
     const jobRun = await prisma.jobRun.create({
@@ -274,7 +282,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       // Re-run diagnosis rules against fresh metrics — this updates stale
       // PENDING diagnoses (messages, severity) and expires diagnoses whose
       // rules no longer fire (e.g., ROAS improved above threshold).
-      const diagResult = await runDiagnosis(organizationId);
+      const diagResult = await runDiagnosis(organizationId, { force: forceRecycle });
       app.log.info(
         { orgId: organizationId, ...diagResult },
         'Post-sync diagnosis run complete',
@@ -519,12 +527,20 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Run diagnosis engine',
-      description: 'Evaluates all diagnosis rules against current ad data for the organization.',
+      description: 'Evaluates all diagnosis rules against current ad data for the organization. Pass ?force=true to recycle previously-executed diagnoses immediately (skip 6h cooldown).',
+      querystring: {
+        type: 'object',
+        properties: {
+          force: { type: 'string', enum: ['true', 'false'], description: 'Skip cooldown and recycle all executed/expired diagnoses' },
+        },
+      },
     },
   }, async (request, reply) => {
     const organizationId = await resolveOrgId(request);
+    const query = request.query as { force?: string };
+    const force = query.force === 'true';
 
-    const result = await runDiagnosis(organizationId);
+    const result = await runDiagnosis(organizationId, { force });
     return result;
   });
 
