@@ -6,8 +6,28 @@
 // ──────────────────────────────────────────────────────────────
 
 import { prisma, Prisma } from '@growth-os/database';
-import { evaluateDiagnosisRules } from '@growth-os/etl';
-import type { DiagnosisRuleInput, DiagnosisRuleConfig } from '@growth-os/etl';
+import {
+  evaluateDiagnosisRules,
+  detectAnomalies,
+  analyzeCreativeDecay,
+  optimizeBudgetAllocation,
+  computeDynamicThresholds,
+  scoreCampaignHealth,
+} from '@growth-os/etl';
+import type {
+  DiagnosisRuleInput,
+  DiagnosisRuleConfig,
+  MetricSeries,
+  DailySnapshot,
+  AdSetMetrics,
+  AdMetricsForThresholds,
+  AnomalyResult,
+  CreativeDecayAnalysis,
+  BudgetAllocation,
+  PortfolioOptimization,
+  CampaignMetrics,
+  CampaignHealthScore,
+} from '@growth-os/etl';
 import { autoExecutePending } from './auto-execute.js';
 import type { AutoExecuteResult } from './auto-execute.js';
 import { evaluateCircuitBreaker } from './circuit-breaker.js';
@@ -15,6 +35,12 @@ import {
   sendAutopilotPendingToSlack,
   sendAutopilotActionsToSlack,
 } from '../lib/slack.js';
+import { autoAdjustThresholds } from '../lib/rule-tuner.js';
+import type { RuleOverrides } from '../lib/rule-tuner.js';
+import { enrichDiagnosis } from './enrich-diagnosis.js';
+import type { DiagnosisEnrichment } from './enrich-diagnosis.js';
+import { computeForecastBudgetContext } from './forecast-aware-budget.js';
+import type { ForecastBudgetContext } from './forecast-aware-budget.js';
 
 export interface RunDiagnosisResult {
   adsEvaluated: number;
@@ -43,20 +69,339 @@ export async function runDiagnosis(
     where: { organizationId },
   });
 
+  // Phase 1.4: Auto-adjust thresholds from feedback patterns before evaluating rules
+  let ruleOverrides: RuleOverrides = {};
+  if (autopilotConfig) {
+    try {
+      const adjustResult = await autoAdjustThresholds(organizationId);
+      ruleOverrides = adjustResult.overrides;
+      if (adjustResult.adjustments.length > 0) {
+        console.info(
+          `[runDiagnosis] Rule tuner adjustments: ${adjustResult.adjustments.join('; ')}`,
+        );
+      }
+    } catch (err) {
+      // Rule tuner failure must not crash the diagnosis run
+      console.error('[runDiagnosis] Rule tuner failed:', err);
+      ruleOverrides = (autopilotConfig.ruleOverrides as RuleOverrides | null) ?? {};
+    }
+  }
+
   const ruleConfig: DiagnosisRuleConfig | undefined = autopilotConfig ? {
-    targetRoas: autopilotConfig.targetRoas?.toNumber(),
-    topPerformerRoas: undefined, // Use defaults for now
-    maxFrequency: undefined,
-    minCtr: undefined,
+    targetRoas: ruleOverrides.targetRoas ?? autopilotConfig.targetRoas?.toNumber(),
+    topPerformerRoas: ruleOverrides.topPerformerRoas,
+    maxFrequency: ruleOverrides.maxFrequency,
+    minCtr: ruleOverrides.minCtr,
   } : undefined;
 
   // 1. Fetch all MetaAd records for this org (active + paused for rule 8)
   const ads = await prisma.metaAd.findMany({
     where: { organizationId },
     include: {
-      adSet: { select: { dailyBudget: true } },
+      adSet: { select: { id: true, name: true, dailyBudget: true } },
+      campaign: { select: { name: true } },
     },
   });
+
+  // ── Intelligence Layer: batch-load snapshots & pre-compute signals ──
+
+  // Phase 1.1 & 1.3: Load last 30 days of MetaAdSnapshot for anomaly + decay analysis
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const adIds = ads.map((a) => a.id);
+  const snapshots = adIds.length > 0
+    ? await prisma.metaAdSnapshot.findMany({
+        where: {
+          organizationId,
+          adId: { in: adIds },
+          date: { gte: thirtyDaysAgo },
+        },
+        select: {
+          adId: true,
+          date: true,
+          spend: true,
+          revenue: true,
+          roas: true,
+          ctr: true,
+          cpc: true,
+          impressions: true,
+          frequency: true,
+        },
+        orderBy: { date: 'asc' },
+      })
+    : [];
+
+  // Group snapshots by adId
+  const snapshotsByAd = new Map<string, typeof snapshots>();
+  for (const snap of snapshots) {
+    const group = snapshotsByAd.get(snap.adId) ?? [];
+    group.push(snap);
+    snapshotsByAd.set(snap.adId, group);
+  }
+
+  // Phase 1.1: Pre-compute anomaly scores per ad (requires ≥14 snapshots)
+  const anomalyByAd = new Map<string, AnomalyResult[]>();
+  for (const ad of ads) {
+    const adSnaps = snapshotsByAd.get(ad.id);
+    if (!adSnaps || adSnaps.length < 14) continue;
+
+    const roasSeries: MetricSeries = {
+      metric: 'roas',
+      values: adSnaps.map((s) => s.roas?.toNumber() ?? NaN),
+    };
+    const ctrSeries: MetricSeries = {
+      metric: 'ctr',
+      values: adSnaps.map((s) => s.ctr?.toNumber() ?? NaN),
+    };
+    const cpcSeries: MetricSeries = {
+      metric: 'cpc',
+      values: adSnaps.map((s) => s.cpc?.toNumber() ?? NaN),
+    };
+
+    const currentValues: Record<string, number> = {};
+    if (ad.roas7d !== null) currentValues['roas'] = ad.roas7d.toNumber();
+    if (ad.ctr7d !== null) currentValues['ctr'] = ad.ctr7d.toNumber();
+    if (ad.cpc7d !== null) currentValues['cpc'] = ad.cpc7d.toNumber();
+
+    if (Object.keys(currentValues).length > 0) {
+      const anomalies = detectAnomalies(
+        [roasSeries, ctrSeries, cpcSeries],
+        currentValues,
+      );
+      if (anomalies.length > 0) {
+        anomalyByAd.set(ad.id, anomalies);
+      }
+    }
+  }
+
+  // Phase 1.3: Pre-compute creative decay per ad (requires ≥7 snapshots)
+  const decayByAd = new Map<string, CreativeDecayAnalysis>();
+  for (const ad of ads) {
+    const adSnaps = snapshotsByAd.get(ad.id);
+    if (!adSnaps || adSnaps.length < 7) continue;
+
+    const dailySnapshots: DailySnapshot[] = adSnaps.map((s) => ({
+      date: s.date.toISOString().slice(0, 10),
+      spend: s.spend.toNumber(),
+      revenue: s.revenue.toNumber(),
+      roas: s.roas?.toNumber() ?? null,
+      ctr: s.ctr?.toNumber() ?? null,
+      impressions: s.impressions,
+      frequency: s.frequency?.toNumber() ?? null,
+    }));
+
+    const decay = analyzeCreativeDecay(
+      ad.id,
+      ad.name,
+      dailySnapshots,
+      ad.roas7d?.toNumber() ?? null,
+    );
+    decayByAd.set(ad.id, decay);
+  }
+
+  // Phase 1.2: Pre-compute portfolio optimization by aggregating ads → ad sets
+  const adSetAggregates = new Map<string, {
+    adSetId: string;
+    adSetName: string;
+    currentDailyBudget: number;
+    spend7d: number;
+    revenue7d: number;
+    impressions7d: number;
+    clicks7d: number;
+    conversions7d: number;
+    frequency7dSum: number;
+    frequency7dCount: number;
+  }>();
+
+  for (const ad of ads) {
+    if (!ad.adSet) continue;
+    const setId = ad.adSet.id;
+    const agg = adSetAggregates.get(setId) ?? {
+      adSetId: setId,
+      adSetName: ad.adSet.name ?? setId,
+      currentDailyBudget: ad.adSet.dailyBudget?.toNumber() ?? 0,
+      spend7d: 0,
+      revenue7d: 0,
+      impressions7d: 0,
+      clicks7d: 0,
+      conversions7d: 0,
+      frequency7dSum: 0,
+      frequency7dCount: 0,
+    };
+    agg.spend7d += ad.spend7d?.toNumber() ?? 0;
+    agg.revenue7d += ad.revenue7d?.toNumber() ?? 0;
+    agg.impressions7d += ad.impressions7d ?? 0;
+    agg.clicks7d += ad.clicks7d ?? 0;
+    agg.conversions7d += ad.conversions7d ?? 0;
+    if (ad.frequency7d !== null) {
+      agg.frequency7dSum += ad.frequency7d.toNumber();
+      agg.frequency7dCount++;
+    }
+    adSetAggregates.set(setId, agg);
+  }
+
+  const adSetMetricsList: AdSetMetrics[] = Array.from(adSetAggregates.values()).map((agg) => ({
+    adSetId: agg.adSetId,
+    adSetName: agg.adSetName,
+    currentDailyBudget: agg.currentDailyBudget,
+    spend7d: agg.spend7d,
+    revenue7d: agg.revenue7d,
+    roas7d: agg.spend7d > 0 ? agg.revenue7d / agg.spend7d : null,
+    impressions7d: agg.impressions7d,
+    clicks7d: agg.clicks7d,
+    conversions7d: agg.conversions7d,
+    frequency7d: agg.frequency7dCount > 0 ? agg.frequency7dSum / agg.frequency7dCount : null,
+  }));
+
+  let portfolioResult: PortfolioOptimization | undefined;
+  if (adSetMetricsList.length > 0) {
+    portfolioResult = optimizeBudgetAllocation(adSetMetricsList, {
+      targetRoas: autopilotConfig?.targetRoas?.toNumber() ?? 2.0,
+      maxChangePct: autopilotConfig?.maxBudgetIncreasePct ?? 20,
+      minDailyBudget: 5,
+      totalBudgetCap: autopilotConfig?.dailyBudgetCap?.toNumber() ?? undefined,
+    });
+  }
+
+  // Build lookup: adSetId → portfolio allocation suggestion
+  const portfolioByAdSet = new Map<string, BudgetAllocation>();
+  if (portfolioResult) {
+    for (const alloc of portfolioResult.allocations) {
+      portfolioByAdSet.set(alloc.adSetId, alloc);
+    }
+  }
+
+  // Phase 3.1: Compute dynamic thresholds from actual ad data
+  const adMetricsForThresholds: AdMetricsForThresholds[] = ads.map((a) => ({
+    ctr7d: a.ctr7d?.toNumber() ?? null,
+    cpc7d: a.cpc7d?.toNumber() ?? null,
+    adSetDailyBudget: a.adSet?.dailyBudget?.toNumber() ?? null,
+  }));
+
+  const dynamicThresholds = computeDynamicThresholds(adMetricsForThresholds);
+
+  // Merge dynamic thresholds into ruleConfig (dynamic < rule tuner overrides < explicit config)
+  if (ruleConfig) {
+    ruleConfig.minCtr = ruleConfig.minCtr ?? dynamicThresholds.minCtr;
+    ruleConfig.wastedSpendThreshold = ruleConfig.wastedSpendThreshold ?? dynamicThresholds.wastedSpendThreshold;
+    ruleConfig.cpcSpikeThreshold = ruleConfig.cpcSpikeThreshold ?? dynamicThresholds.cpcSpikeThreshold;
+  }
+
+  // Phase 3.4: Pre-compute campaign health scores
+  // Group ads by campaign, then build AdSetHealth[] for each campaign
+  const campaignAdSetIds = new Map<string, Set<string>>();
+  const campaignNames = new Map<string, string>();
+  for (const ad of ads) {
+    if (!ad.campaignId || !ad.adSet) continue;
+    const sets = campaignAdSetIds.get(ad.campaignId) ?? new Set<string>();
+    sets.add(ad.adSet.id);
+    campaignAdSetIds.set(ad.campaignId, sets);
+    if (!campaignNames.has(ad.campaignId)) {
+      campaignNames.set(ad.campaignId, ad.campaign?.name ?? ad.campaignId);
+    }
+  }
+
+  const campaignHealthByAd = new Map<string, CampaignHealthScore>();
+  for (const [campaignId, adSetIdSet] of campaignAdSetIds) {
+    const campaignMetrics: CampaignMetrics = {
+      campaignId,
+      campaignName: campaignNames.get(campaignId) ?? campaignId,
+      adSets: Array.from(adSetIdSet).map((setId) => {
+        const setAgg = adSetAggregates.get(setId);
+        return {
+          adSetId: setId,
+          spend7d: setAgg?.spend7d ?? 0,
+          revenue7d: setAgg?.revenue7d ?? 0,
+          roas7d: setAgg && setAgg.spend7d > 0 ? setAgg.revenue7d / setAgg.spend7d : null,
+          ctr7d: null,  // Not tracked at ad set aggregate level
+          frequency7d: setAgg && setAgg.frequency7dCount > 0
+            ? setAgg.frequency7dSum / setAgg.frequency7dCount
+            : null,
+          roas14d: null, // Not tracked at ad set aggregate level
+          ctr14d: null,
+        };
+      }),
+    };
+
+    const healthScore = scoreCampaignHealth(campaignMetrics);
+
+    // Map health score to all ads in this campaign
+    for (const ad of ads) {
+      if (ad.campaignId === campaignId) {
+        campaignHealthByAd.set(ad.id, healthScore);
+      }
+    }
+  }
+
+  // ── Phase 2: Cross-data enrichment (funnel, LTV, margins, channels) ──
+  let enrichment: DiagnosisEnrichment | null = null;
+  try {
+    enrichment = await enrichDiagnosis(organizationId);
+  } catch (err) {
+    // Enrichment failure must not crash the diagnosis run
+    console.error('[runDiagnosis] Enrichment failed:', err);
+  }
+
+  // Phase 5: Forecast-aware budget context (demand trends + seasonal factors)
+  let forecastContext: ForecastBudgetContext | null = null;
+  try {
+    forecastContext = await computeForecastBudgetContext(organizationId);
+    if (forecastContext) {
+      console.info(
+        `[runDiagnosis] Forecast context: trend=${forecastContext.trend}, multiplier=${forecastContext.budgetMultiplier}, seasonal=${forecastContext.todaySeasonalFactor ?? 'N/A'}`,
+      );
+    }
+  } catch (err) {
+    // Forecast failure must not crash the diagnosis run
+    console.error('[runDiagnosis] Forecast context failed:', err);
+  }
+
+  // Phase 4.3: Query suggestion feedback patterns to build confidence modifiers
+  // Maps OpportunityType → approval ratio (0-1). If efficiency suggestions are
+  // frequently approved, boost confidence for efficiency-related diagnoses.
+  const suggestionConfidenceMap = new Map<string, number>();
+  try {
+    const thirtyDaysAgoFeedback = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const feedbackWithType = await prisma.suggestionFeedback.findMany({
+      where: {
+        createdAt: { gte: thirtyDaysAgoFeedback },
+        suggestion: {
+          opportunity: {
+            organizationId,
+          },
+        },
+      },
+      select: {
+        action: true,
+        suggestion: {
+          select: {
+            opportunity: {
+              select: { type: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Group by opportunity type
+    const byType = new Map<string, { approved: number; total: number }>();
+    for (const fb of feedbackWithType) {
+      const type = fb.suggestion.opportunity.type;
+      const stats = byType.get(type) ?? { approved: 0, total: 0 };
+      stats.total++;
+      if (fb.action === 'APPROVE' || fb.action === 'PROMOTE') stats.approved++;
+      byType.set(type, stats);
+    }
+
+    for (const [type, stats] of byType) {
+      if (stats.total >= 5) {
+        suggestionConfidenceMap.set(type, stats.approved / stats.total);
+      }
+    }
+  } catch {
+    // Suggestion feedback query failure is non-fatal
+  }
+
+  // ── End Intelligence Layer ────────────────────────────────────
 
   let diagnosesCreated = 0;
   let diagnosesUpdated = 0;
@@ -92,10 +437,273 @@ export async function runDiagnosis(
       adSetDailyBudget: ad.adSet?.dailyBudget?.toNumber() ?? null,
     };
 
+    // Phase 3.2: Compute weekly ROAS averages for trend acceleration rule
+    const adSnaps = snapshotsByAd.get(ad.id);
+    if (adSnaps && adSnaps.length >= 21) {
+      // Group snapshots into weekly buckets (oldest first)
+      const weeklyBuckets: number[][] = [];
+      let currentBucket: number[] = [];
+      for (const snap of adSnaps) {
+        const roasVal = snap.roas?.toNumber();
+        if (roasVal !== null && roasVal !== undefined && !isNaN(roasVal)) {
+          currentBucket.push(roasVal);
+        }
+        if (currentBucket.length >= 7) {
+          weeklyBuckets.push(currentBucket);
+          currentBucket = [];
+        }
+      }
+      if (weeklyBuckets.length >= 3) {
+        // Take last 3-4 weeks
+        const recentWeeks = weeklyBuckets.slice(-4);
+        input.weeklyRoasAvgs = recentWeeks.map(
+          (bucket) => bucket.reduce((s, v) => s + v, 0) / bucket.length,
+        );
+      }
+    }
+
+    // Phase 3.3: Attach creative decay projections for predictive ROAS alert
+    const decay = decayByAd.get(ad.id);
+    if (decay) {
+      input.decayRecommendation = decay.recommendation;
+      input.decayEstimatedDaysToBreakeven = decay.estimatedDaysToBreakeven;
+    }
+
     const results = evaluateDiagnosisRules(input, now, ruleConfig);
 
     for (const diag of results) {
       firedPairs.add(`${ad.id}::${diag.ruleId}`);
+
+      // ── Intelligence: adjust confidence based on anomaly/decay/portfolio ──
+      let confidenceAdj = 0;
+      const enrichments: Record<string, unknown> = {};
+
+      // Phase 1.1: Anomaly detection — boost if statistically unusual, reduce if normal
+      const anomalies = anomalyByAd.get(ad.id);
+      if (anomalies && anomalies.length > 0) {
+        const fired = anomalies.filter((a) => a.isAnomaly);
+        if (fired.length > 0) {
+          confidenceAdj += 10;
+          enrichments.anomalyDetected = true;
+          enrichments.anomalies = fired.map((a) => ({
+            metric: a.metric,
+            zScore: a.zScore,
+            direction: a.direction,
+            pctChange: a.percentChange,
+          }));
+        } else {
+          confidenceAdj -= 5;
+          enrichments.anomalyDetected = false;
+        }
+      }
+
+      // Phase 1.3: Creative decay — boost/reduce for fatigue-related rules
+      if (diag.ruleId === 'creative_fatigue' || diag.ruleId === 'audience_saturation') {
+        const decay = decayByAd.get(ad.id);
+        if (decay) {
+          if (decay.recommendation === 'replace_now') {
+            confidenceAdj += 15;
+          } else if (decay.recommendation === 'accelerating_decay') {
+            confidenceAdj += 10;
+          } else if (decay.recommendation === 'healthy') {
+            confidenceAdj -= 15;
+          }
+          enrichments.decayAnalysis = {
+            decayRate: decay.decayRate,
+            estimatedDaysToBreakeven: decay.estimatedDaysToBreakeven,
+            peakRoas: decay.peakRoas,
+            recommendation: decay.recommendation,
+          };
+        }
+      }
+
+      // Phase 1.2: Portfolio validation — penalize budget changes that conflict with optimizer
+      if (
+        (diag.actionType === 'INCREASE_BUDGET' || diag.actionType === 'DECREASE_BUDGET') &&
+        ad.adSet
+      ) {
+        const portfolioAlloc = portfolioByAdSet.get(ad.adSet.id);
+        if (portfolioAlloc) {
+          const diagDir = diag.actionType === 'INCREASE_BUDGET' ? 1 : -1;
+          const portDir = portfolioAlloc.changePct > 0 ? 1 : portfolioAlloc.changePct < 0 ? -1 : 0;
+
+          if (portDir !== 0 && diagDir !== portDir) {
+            confidenceAdj -= 20;
+            enrichments.portfolioDisagreement = true;
+          }
+          enrichments.portfolioSuggestion = {
+            suggestedBudget: portfolioAlloc.suggestedDailyBudget,
+            changePct: portfolioAlloc.changePct,
+            reason: portfolioAlloc.reason,
+          };
+        }
+      }
+
+      // Phase 2.2: Funnel validation for click_no_buy
+      if (diag.ruleId === 'click_no_buy' && enrichment?.funnelContext) {
+        const funnel = enrichment.funnelContext;
+        if (funnel.atcToCheckout < 0.5) {
+          // Post-click funnel drop confirms the diagnosis (problem is beyond the ad)
+          confidenceAdj += 10;
+          enrichments.funnelConfirmed = true;
+          enrichments.funnelBottleneck = funnel.bottleneck;
+          enrichments.atcToCheckout = Math.round(funnel.atcToCheckout * 1000) / 10;
+        }
+      }
+
+      // Phase 2.3: Unit economics guard for budget increases
+      if (diag.actionType === 'INCREASE_BUDGET' && enrichment?.unitEconomicsContext) {
+        const ue = enrichment.unitEconomicsContext;
+        if (ue.currentMetaCac !== null && ue.currentMetaCac > ue.maxAffordableCac * 0.9) {
+          // Meta CAC is approaching the maximum affordable CAC — risky to scale
+          confidenceAdj -= 20;
+          enrichments.unitEconWarning = true;
+          enrichments.unitEconContext = {
+            metaCac: Math.round(ue.currentMetaCac * 100) / 100,
+            maxAffordableCac: Math.round(ue.maxAffordableCac * 100) / 100,
+            cmPct: Math.round(ue.currentCMPct * 1000) / 10,
+            aov: Math.round(ue.currentAOV * 100) / 100,
+          };
+        }
+      }
+
+      // Phase 2.4: Cohort LTV context for pause decisions
+      if (diag.ruleId === 'negative_roas' && diag.actionType === 'PAUSE_AD' && enrichment?.cohortContext) {
+        const cohort = enrichment.cohortContext;
+        if (cohort.ltvCacRatio > 3) {
+          // High LTV:CAC ratio — customers are valuable long-term, pausing may be premature
+          confidenceAdj -= 15;
+          enrichments.ltvOverride = true;
+          enrichments.ltvContext = {
+            ltvCacRatio: Math.round(cohort.ltvCacRatio * 10) / 10,
+            ltv90: Math.round(cohort.latestLtv90 * 100) / 100,
+            d30Retention: Math.round(cohort.latestD30Retention * 1000) / 10,
+          };
+        }
+      }
+
+      // Phase 2.5: Cross-channel context for budget decisions
+      if (diag.actionType === 'INCREASE_BUDGET' && enrichment?.crossChannelContext) {
+        const xch = enrichment.crossChannelContext;
+        if (xch.metaSpendShare > 0.7 && xch.bestChannel !== null) {
+          const isBest = xch.bestChannel.toLowerCase() === 'meta' || xch.bestChannel.toLowerCase() === 'meta ads';
+          if (!isBest) {
+            // Meta consumes >70% of spend but isn't the best-performing channel
+            confidenceAdj -= 10;
+            enrichments.crossChannelWarning = true;
+            enrichments.crossChannelNote = {
+              metaSpendShare: Math.round(xch.metaSpendShare * 1000) / 10,
+              bestChannel: xch.bestChannel,
+            };
+          }
+        }
+      }
+
+      // Phase 3.4: Campaign health — penalize budget increases for ads in unhealthy campaigns
+      const campaignHealth = campaignHealthByAd.get(ad.id);
+      if (campaignHealth) {
+        if (campaignHealth.grade === 'F' && diag.actionType === 'INCREASE_BUDGET') {
+          confidenceAdj -= 25;
+          enrichments.campaignHealthWarning = true;
+          enrichments.campaignHealth = {
+            grade: campaignHealth.grade,
+            score: campaignHealth.overallScore,
+            campaignName: campaignHealth.campaignName,
+          };
+        } else if (campaignHealth.grade === 'A' && diag.ruleId === 'top_performer') {
+          confidenceAdj += 5;
+          enrichments.campaignHealth = {
+            grade: campaignHealth.grade,
+            score: campaignHealth.overallScore,
+            campaignName: campaignHealth.campaignName,
+          };
+        }
+      }
+
+      // Phase 4.3: Suggestion feedback → confidence modifier
+      // Map diagnosis rules to relevant opportunity types
+      const RULE_TO_OPPORTUNITY: Record<string, string> = {
+        negative_roas: 'EFFICIENCY_DROP',
+        wasted_budget: 'EFFICIENCY_DROP',
+        cost_spike: 'CAC_SPIKE',
+        low_ctr: 'QUICK_WIN',
+        creative_fatigue: 'QUICK_WIN',
+        click_no_buy: 'FUNNEL_LEAK',
+        winner_not_scaled: 'GROWTH_PLATEAU',
+        top_performer: 'GROWTH_PLATEAU',
+      };
+      const relatedOppType = RULE_TO_OPPORTUNITY[diag.ruleId];
+      if (relatedOppType) {
+        const approvalRate = suggestionConfidenceMap.get(relatedOppType);
+        if (approvalRate !== undefined) {
+          // High approval rate → user trusts these suggestions → boost confidence
+          if (approvalRate > 0.7) {
+            confidenceAdj += 5;
+            enrichments.suggestionFeedbackBoost = true;
+          }
+          // Low approval rate → user frequently rejects → reduce confidence
+          if (approvalRate < 0.3) {
+            confidenceAdj -= 10;
+            enrichments.suggestionFeedbackPenalty = true;
+          }
+        }
+      }
+
+      // Extract base suggested value for forecast budget adjustments
+      const baseSuggested = (typeof diag.suggestedValue === 'object' && diag.suggestedValue !== null)
+        ? (diag.suggestedValue as Record<string, unknown>)
+        : {};
+
+      // Phase 5: Forecast-aware budget adjustments
+      // Penalize INCREASE_BUDGET when demand is declining, boost when growing
+      if (forecastContext && diag.actionType === 'INCREASE_BUDGET') {
+        if (forecastContext.trend === 'declining') {
+          confidenceAdj -= 15;
+          enrichments.forecastWarning = true;
+          enrichments.forecastContext = {
+            trend: forecastContext.trend,
+            budgetMultiplier: forecastContext.budgetMultiplier,
+            forecastedRevenue7d: forecastContext.forecastedRevenue7d,
+            forecastVsActualPct: forecastContext.forecastVsActualPct,
+          };
+        } else if (forecastContext.trend === 'growing') {
+          confidenceAdj += 5;
+          enrichments.forecastBoost = true;
+          enrichments.forecastContext = {
+            trend: forecastContext.trend,
+            budgetMultiplier: forecastContext.budgetMultiplier,
+            forecastedRevenue7d: forecastContext.forecastedRevenue7d,
+            forecastVsActualPct: forecastContext.forecastVsActualPct,
+          };
+
+          // Multiply suggested budget by forecast multiplier
+          if (
+            typeof baseSuggested['suggestedDailyBudget'] === 'number' &&
+            forecastContext.budgetMultiplier > 1.0
+          ) {
+            baseSuggested['forecastAdjustedBudget'] =
+              Math.round(
+                (baseSuggested['suggestedDailyBudget'] as number) * forecastContext.budgetMultiplier * 100,
+              ) / 100;
+          }
+        }
+
+        // Attach seasonal context if available
+        if (forecastContext.hasSeasonal && forecastContext.todaySeasonalFactor !== null) {
+          enrichments.seasonalContext = {
+            todayFactor: forecastContext.todaySeasonalFactor,
+            isHighDemandDay: forecastContext.todaySeasonalFactor > 1.1,
+          };
+        }
+      }
+
+      const adjustedConfidence = Math.max(0, Math.min(100, diag.confidence + confidenceAdj));
+
+      // Merge enrichments into suggestedValue for downstream consumption
+      const enrichedSuggestedValue = Object.keys(enrichments).length > 0
+        ? { ...baseSuggested, ...enrichments }
+        : diag.suggestedValue;
+
       // Upsert by [organizationId, adId, ruleId] — update if already exists
       const existing = await prisma.diagnosis.findUnique({
         where: {
@@ -140,8 +748,8 @@ export async function runDiagnosis(
               title: diag.title,
               message: diag.message,
               actionType: diag.actionType,
-              suggestedValue: diag.suggestedValue as never,
-              confidence: diag.confidence,
+              suggestedValue: enrichedSuggestedValue as never,
+              confidence: adjustedConfidence,
               expiresAt,
               // Clear stale execution data
               executionResult: Prisma.DbNull,
@@ -163,8 +771,8 @@ export async function runDiagnosis(
             title: diag.title,
             message: diag.message,
             actionType: diag.actionType,
-            suggestedValue: diag.suggestedValue as never,
-            confidence: diag.confidence,
+            suggestedValue: enrichedSuggestedValue as never,
+            confidence: adjustedConfidence,
             expiresAt,
           },
         });

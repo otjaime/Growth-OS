@@ -45,6 +45,14 @@ export interface DiagnosisRuleInput {
 
   // Ad set context (for budget rules)
   adSetDailyBudget: number | null;
+
+  // Optional: weekly ROAS averages for trend acceleration (Rule 13)
+  // Sorted oldest→newest, each entry is avg ROAS for that week
+  weeklyRoasAvgs?: readonly number[];
+
+  // Optional: creative decay projections for predictive alert (Rule 14)
+  decayRecommendation?: string;
+  decayEstimatedDaysToBreakeven?: number | null;
 }
 
 export interface DiagnosisResult {
@@ -58,10 +66,12 @@ export interface DiagnosisResult {
 }
 
 export interface DiagnosisRuleConfig {
-  targetRoas?: number;       // default 3.0 — used in winner_not_scaled
-  topPerformerRoas?: number; // default 2.0 — used in top_performer
-  maxFrequency?: number;     // default 4.0 — used in creative_fatigue
-  minCtr?: number;           // default 0.008 (0.8%) — used in low_ctr
+  targetRoas?: number;              // default 3.0 — used in winner_not_scaled
+  topPerformerRoas?: number;        // default 2.0 — used in top_performer
+  maxFrequency?: number;            // default 4.0 — used in creative_fatigue
+  minCtr?: number;                  // default 0.008 (0.8%) — used in low_ctr
+  wastedSpendThreshold?: number;    // default $100 — used in wasted_budget (Phase 3.1)
+  cpcSpikeThreshold?: number;       // default 0.30 (30%) — used in cost_spike (Phase 3.1)
 }
 
 // ── Rule Definitions ─────────────────────────────────────────
@@ -200,11 +210,13 @@ function evaluateWinnerNotScaled(input: DiagnosisRuleInput, config?: DiagnosisRu
 
 /**
  * Rule 4: Wasted Budget
- * Trigger: spend > $100 AND conversions < 2 (7d)
+ * Trigger: spend > wastedSpendThreshold AND conversions < 2 (7d)
+ * Phase 3.1: wastedSpendThreshold is now configurable via dynamic thresholds
  */
-function evaluateWastedBudget(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateWastedBudget(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const threshold = config?.wastedSpendThreshold ?? 100;
   if (input.status !== 'ACTIVE') return null;
-  if (input.spend7d <= 100) return null;
+  if (input.spend7d <= threshold) return null;
   if (input.conversions7d >= 2) return null;
   // Don't flag ads with strong ROAS — even with few conversions, they're profitable
   if (input.roas7d !== null && input.roas7d > 2.0) return null;
@@ -393,15 +405,17 @@ function evaluateAudienceSaturation(input: DiagnosisRuleInput): DiagnosisResult 
 
 /**
  * Rule 12: Cost Spike (CPC increase WoW)
- * Trigger: CPC increased > 30% (7d vs 14d) AND spend > $50
+ * Trigger: CPC increased > cpcSpikeThreshold (7d vs 14d) AND spend > $50
+ * Phase 3.1: cpcSpikeThreshold is now configurable via dynamic thresholds
  */
-function evaluateCostSpike(input: DiagnosisRuleInput): DiagnosisResult | null {
+function evaluateCostSpike(input: DiagnosisRuleInput, config?: DiagnosisRuleConfig): DiagnosisResult | null {
+  const spikeThreshold = config?.cpcSpikeThreshold ?? 0.30;
   if (input.status !== 'ACTIVE') return null;
   if (input.cpc7d === null || input.cpc14d === null || input.cpc14d === 0) return null;
   if (input.spend7d <= 50) return null;
 
   const cpcIncrease = (input.cpc7d - input.cpc14d) / input.cpc14d;
-  if (cpcIncrease <= 0.30) return null;
+  if (cpcIncrease <= spikeThreshold) return null;
 
   return {
     ruleId: 'cost_spike',
@@ -411,6 +425,89 @@ function evaluateCostSpike(input: DiagnosisRuleInput): DiagnosisResult | null {
     actionType: 'DECREASE_BUDGET',
     suggestedValue: { cpc7d: input.cpc7d, cpc14d: input.cpc14d, cpcIncreasePct: Math.round(cpcIncrease * 100) },
     confidence: computeConfidence(75, input),
+  };
+}
+
+/**
+ * Rule 13: Trend Acceleration (accelerating ROAS decline)
+ * Trigger: ≥3 weekly ROAS averages AND week-over-week delta is increasing
+ * negatively (decline is accelerating, not stabilizing).
+ * Phase 3.2: Uses snapshot-derived weeklyRoasAvgs from run-diagnosis.ts.
+ */
+function evaluateTrendAcceleration(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (!input.weeklyRoasAvgs || input.weeklyRoasAvgs.length < 3) return null;
+
+  const weeks = input.weeklyRoasAvgs;
+  // Compute deltas between consecutive weeks
+  const deltas: number[] = [];
+  for (let i = 1; i < weeks.length; i++) {
+    deltas.push(weeks[i]! - weeks[i - 1]!);
+  }
+
+  // Check if ROAS is declining (last delta negative)
+  const lastDelta = deltas[deltas.length - 1]!;
+  if (lastDelta >= 0) return null; // ROAS isn't declining
+
+  // Check if decline is accelerating (each delta more negative than the previous)
+  let accelerating = true;
+  for (let i = 1; i < deltas.length; i++) {
+    if (deltas[i]! >= deltas[i - 1]!) {
+      accelerating = false;
+      break;
+    }
+  }
+  if (!accelerating) return null;
+
+  // Compute acceleration metric (how much worse the decline got)
+  const firstDelta = deltas[0]!;
+  const acceleration = lastDelta - firstDelta; // more negative = faster decline
+
+  return {
+    ruleId: 'trend_acceleration',
+    severity: 'WARNING',
+    title: 'ROAS Decline Accelerating',
+    message: `${input.adName}: ROAS is declining at an accelerating pace over ${weeks.length} weeks (${weeks.map((r) => r.toFixed(2) + 'x').join(' → ')}). The decline is getting worse, not stabilizing. Consider reducing budget before performance collapses.`,
+    actionType: 'DECREASE_BUDGET',
+    suggestedValue: {
+      weeklyRoas: weeks.map((r) => Math.round(r * 100) / 100),
+      weeklyDeltas: deltas.map((d) => Math.round(d * 100) / 100),
+      acceleration: Math.round(acceleration * 100) / 100,
+    },
+    confidence: computeConfidence(70, input),
+  };
+}
+
+/**
+ * Rule 14: Predictive ROAS Decline (proactive creative refresh)
+ * Trigger: current ROAS > 1.0 BUT creative decay analysis projects breakeven
+ * within 14 days. Catches problems BEFORE they become critical.
+ * Phase 3.3: Uses decay analysis from Phase 1.3.
+ */
+function evaluatePredictiveRoasDecline(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.roas7d === null || input.roas7d <= 1.0) return null; // already unprofitable — other rules handle it
+  if (!input.decayRecommendation) return null;
+  if (input.decayEstimatedDaysToBreakeven === null || input.decayEstimatedDaysToBreakeven === undefined) return null;
+
+  // Only fire if decay projects breakeven within 14 days
+  if (input.decayEstimatedDaysToBreakeven <= 0 || input.decayEstimatedDaysToBreakeven > 14) return null;
+
+  // Don't fire if decay analysis says the ad is healthy
+  if (input.decayRecommendation === 'healthy') return null;
+
+  return {
+    ruleId: 'predictive_roas_decline',
+    severity: 'WARNING',
+    title: 'ROAS Projected to Drop Below Breakeven',
+    message: `${input.adName}: Currently profitable (${input.roas7d.toFixed(2)}x ROAS) but creative decay analysis projects breakeven in ~${Math.round(input.decayEstimatedDaysToBreakeven)} days. Proactively refresh creative before performance crashes.`,
+    actionType: 'REFRESH_CREATIVE',
+    suggestedValue: {
+      currentRoas: input.roas7d,
+      estimatedDaysToBreakeven: Math.round(input.decayEstimatedDaysToBreakeven),
+      decayRecommendation: input.decayRecommendation,
+    },
+    confidence: computeConfidence(65, input), // 65 base — predictive = less certain
   };
 }
 
@@ -446,7 +543,7 @@ export function evaluateDiagnosisRules(
   const winner = evaluateWinnerNotScaled(input, config);
   if (winner) results.push(winner);
 
-  const wasted = evaluateWastedBudget(input);
+  const wasted = evaluateWastedBudget(input, config);
   if (wasted) results.push(wasted);
 
   const lowCtr = evaluateLowCtr(input, config);
@@ -461,8 +558,16 @@ export function evaluateDiagnosisRules(
   const saturation = evaluateAudienceSaturation(input);
   if (saturation) results.push(saturation);
 
-  const costSpike = evaluateCostSpike(input);
+  const costSpike = evaluateCostSpike(input, config);
   if (costSpike) results.push(costSpike);
+
+  // Phase 3.2: Trend acceleration (requires snapshot-derived weeklyRoasAvgs)
+  const trendAccel = evaluateTrendAcceleration(input);
+  if (trendAccel) results.push(trendAccel);
+
+  // Phase 3.3: Predictive ROAS decline (requires creative decay projections)
+  const predictive = evaluatePredictiveRoasDecline(input);
+  if (predictive) results.push(predictive);
 
   // Paused ad rule (8)
   const paused = evaluatePausedPositive(input);

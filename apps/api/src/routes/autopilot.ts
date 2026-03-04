@@ -13,6 +13,7 @@ import { generateCopyVariants } from '../lib/copy-generator.js';
 import { executeAction } from '../jobs/execute-action.js';
 import { rollbackAction } from '../jobs/rollback-action.js';
 import { generateDiagnosisInsight, generateRuleBasedInsight } from '../lib/autopilot-analyzer.js';
+import type { DiagnosisAnalyzerInput } from '../lib/autopilot-analyzer.js';
 import { isAIConfigured } from '../lib/ai.js';
 import {
   optimizeBudgetAllocation,
@@ -28,6 +29,7 @@ import type {
   DailySnapshot,
 } from '@growth-os/etl';
 import { computeRuleHealth } from '../lib/rule-tuner.js';
+import { enrichDiagnosis } from '../jobs/enrich-diagnosis.js';
 
 /**
  * Ensure at least one Organization exists. When using Bearer-token auth
@@ -598,7 +600,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     });
 
     const ad = diagnosis.ad;
-    const analyzerInput = {
+    const analyzerInput: DiagnosisAnalyzerInput = {
       ruleId: diagnosis.ruleId,
       severity: diagnosis.severity,
       title: diagnosis.title,
@@ -636,6 +638,49 @@ export async function autopilotRoutes(app: FastifyInstance) {
         ctr7d: s.ctr7d ? Number(s.ctr7d) : null,
       })),
     };
+
+    // Phase 4.1: Enrich AI prompts with business context
+    try {
+      const enrichment = await enrichDiagnosis(organizationId);
+
+      const kpiParts: string[] = [];
+      if (enrichment.unitEconomicsContext) {
+        const ue = enrichment.unitEconomicsContext;
+        kpiParts.push(`AOV: $${ue.currentAOV.toFixed(0)}, CM%: ${(ue.currentCMPct * 100).toFixed(1)}%, Max affordable CAC: $${ue.maxAffordableCac.toFixed(0)}`);
+        if (ue.currentMetaCac !== null) kpiParts.push(`Current Meta CAC: $${ue.currentMetaCac.toFixed(0)}`);
+      }
+
+      const funnelParts: string[] = [];
+      if (enrichment.funnelContext) {
+        const f = enrichment.funnelContext;
+        funnelParts.push(`Funnel: Session→PDP ${(f.sessionToPdp * 100).toFixed(1)}%, PDP→ATC ${(f.pdpToAtc * 100).toFixed(1)}%, ATC→Checkout ${(f.atcToCheckout * 100).toFixed(1)}%, Checkout→Purchase ${(f.checkoutToPurchase * 100).toFixed(1)}%`);
+        if (f.bottleneck) funnelParts.push(`Bottleneck: ${f.bottleneck}`);
+      }
+
+      const cohortParts: string[] = [];
+      if (enrichment.cohortContext) {
+        const c = enrichment.cohortContext;
+        cohortParts.push(`LTV90: $${c.latestLtv90.toFixed(0)}, D30 Retention: ${(c.latestD30Retention * 100).toFixed(1)}%, LTV:CAC ratio: ${c.ltvCacRatio.toFixed(1)}x`);
+        if (c.paybackDays !== null) cohortParts.push(`Payback: ${c.paybackDays} days`);
+      }
+
+      const segmentParts: string[] = [];
+      if (enrichment.segmentContext) {
+        const s = enrichment.segmentContext;
+        segmentParts.push(`Segments: Champions ${s.champions}, Loyal ${s.loyal}, Potential ${s.potential}, At Risk ${s.atRisk}, Dormant ${s.dormant}, Lost ${s.lost} (Total: ${s.total})`);
+      }
+
+      if (kpiParts.length > 0 || funnelParts.length > 0 || cohortParts.length > 0 || segmentParts.length > 0) {
+        analyzerInput.businessContext = {
+          kpiSummary: kpiParts.join('. ') || 'N/A',
+          funnelSummary: funnelParts.join('. ') || 'N/A',
+          cohortSummary: cohortParts.join('. ') || 'N/A',
+          segmentSummary: segmentParts.join('. ') || 'N/A',
+        };
+      }
+    } catch {
+      // Business context enrichment failure is non-fatal
+    }
 
     let insight;
     try {
@@ -693,6 +738,41 @@ export async function autopilotRoutes(app: FastifyInstance) {
       return { error: `Diagnosis action type is ${diagnosis.actionType}, not GENERATE_COPY_VARIANTS` };
     }
 
+    // Phase 4.2: Query previously approved/published variants for learning
+    const previousVariants = await prisma.adVariant.findMany({
+      where: {
+        adId: diagnosis.adId,
+        status: { in: ['APPROVED', 'PUBLISHED'] },
+      },
+      select: {
+        angle: true,
+        headline: true,
+        spend: true,
+        conversions: true,
+        revenue: true,
+        clicks: true,
+        impressions: true,
+        status: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10, // Limit to most recent 10 variants
+    });
+
+    const previousVariantPerf = previousVariants.map((v) => {
+      const spend = v.spend ? Number(v.spend) : 0;
+      const revenue = v.revenue ? Number(v.revenue) : 0;
+      const clicks = v.clicks ?? 0;
+      const impressions = v.impressions ?? 0;
+      return {
+        angle: v.angle,
+        headline: v.headline,
+        roas: spend > 0 ? revenue / spend : null,
+        ctr: impressions > 0 ? clicks / impressions : null,
+        conversions: v.conversions ?? 0,
+        status: v.status,
+      };
+    });
+
     const copies = await generateCopyVariants({
       originalHeadline: diagnosis.ad.headline,
       originalPrimaryText: diagnosis.ad.primaryText,
@@ -706,6 +786,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
         frequency7d: diagnosis.ad.frequency7d ? Number(diagnosis.ad.frequency7d) : null,
         conversions7d: diagnosis.ad.conversions7d,
       },
+      previousVariants: previousVariantPerf.length > 0 ? previousVariantPerf : undefined,
     });
 
     // Create AdVariant records

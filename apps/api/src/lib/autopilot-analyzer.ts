@@ -47,6 +47,18 @@ export interface DiagnosisAnalyzerInput {
   adSetDailyBudget: number | null;
   // Sibling ads in the same ad set
   siblingAds: readonly SiblingAd[];
+
+  // Phase 4.1: Cross-data business context for richer AI insights
+  businessContext?: {
+    /** KPI summary: revenue, CAC, CM%, ROAS trends */
+    kpiSummary: string;
+    /** GA4 funnel conversion rates */
+    funnelSummary: string;
+    /** Latest LTV, D30 retention */
+    cohortSummary: string;
+    /** RFM segment distribution */
+    segmentSummary: string;
+  };
 }
 
 export interface SiblingAd {
@@ -138,6 +150,17 @@ export async function generateDiagnosisInsight(input: DiagnosisAnalyzerInput): P
     ).join('\n')
     : '(No other ads in this ad set)';
 
+  // Phase 4.1: Build business context section if available
+  const businessContextBlock = input.businessContext
+    ? `
+BUSINESS CONTEXT (use this to make recommendations more strategic):
+${input.businessContext.kpiSummary}
+${input.businessContext.funnelSummary}
+${input.businessContext.cohortSummary}
+${input.businessContext.segmentSummary}
+`
+    : '';
+
   const userPrompt = `Diagnosis: [${input.severity}] ${input.title}
 Rule: ${input.ruleId}
 Message: ${input.message}
@@ -156,7 +179,7 @@ Ad Set: "${input.adSetName}" (daily budget: $${input.adSetDailyBudget?.toFixed(0
 
 Other ads in this ad set:
 ${siblingBlock}
-
+${businessContextBlock}
 Analyze this diagnosis and provide structured recommendations as JSON.`;
 
   const response = await ai.chat.completions.create({

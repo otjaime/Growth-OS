@@ -1027,6 +1027,9 @@ model AutopilotConfig {
   circuitBreakerThreshold Int       @default(3) @map("circuit_breaker_threshold")
   circuitBreakerTrippedAt DateTime? @map("circuit_breaker_tripped_at")
 
+  // Rule tuner: learned threshold overrides from feedback patterns
+  ruleOverrides        Json?        @map("rule_overrides")
+
   // Notification preferences
   slackWebhookUrl      String?      @map("slack_webhook_url")
   notifyOnCritical     Boolean      @default(true) @map("notify_on_critical")
