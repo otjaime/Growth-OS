@@ -1094,11 +1094,18 @@ export async function autopilotRoutes(app: FastifyInstance) {
       writeResult = await writeResp.json();
     }
 
+    // Step 3: Debug token info (app, scopes, validity)
+    const debugResp = await fetch(
+      `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${accessToken}`,
+    );
+    const debugBody = await debugResp.json();
+
     return {
       campaignId: targetId,
       readResponse: readBody,
       writeResponse: writeResult,
       currentBudget,
+      tokenDebug: debugBody,
     };
   });
 
