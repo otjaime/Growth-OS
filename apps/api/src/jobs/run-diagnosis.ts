@@ -610,7 +610,7 @@ export async function runDiagnosis(
             score: campaignHealth.overallScore,
             campaignName: campaignHealth.campaignName,
           };
-        } else if (campaignHealth.grade === 'A' && diag.ruleId === 'top_performer') {
+        } else if (campaignHealth.grade === 'A' && (diag.ruleId === 'top_performer' || diag.ruleId === 'winner_not_scaled')) {
           confidenceAdj += 5;
           enrichments.campaignHealth = {
             grade: campaignHealth.grade,

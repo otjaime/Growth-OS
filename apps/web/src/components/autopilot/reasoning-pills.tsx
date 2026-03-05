@@ -3,6 +3,7 @@
 import {
   TrendingUp, TrendingDown, Zap, Filter, DollarSign,
   Users, Layers, AlertTriangle, BarChart3, RefreshCw, Calendar,
+  CheckCircle, Shield,
 } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 
@@ -68,7 +69,7 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
     }
   }
 
-  // Anomaly detection
+  // Anomaly detection (warning or stable)
   if (sv.anomalyDetected === true) {
     const anomalies = sv.anomalies as Array<{ metric: string; zScore: number; direction: string }> | undefined;
     const top = anomalies?.[0];
@@ -80,6 +81,13 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
       text: detail,
       icon: <Zap className="h-3 w-3" />,
       color: 'yellow',
+    });
+  } else if (sv.anomalyDetected === false) {
+    pills.push({
+      label: 'Stability',
+      text: 'Metrics within normal range — consistent performance',
+      icon: <Shield className="h-3 w-3" />,
+      color: 'green',
     });
   }
 
@@ -142,7 +150,7 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
     });
   }
 
-  // Campaign health warning
+  // Campaign health (warning or positive)
   if (sv.campaignHealthWarning === true) {
     const ctx = sv.campaignHealth as Record<string, unknown> | undefined;
     const grade = ctx?.grade as string | undefined;
@@ -155,9 +163,20 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
       icon: <AlertTriangle className="h-3 w-3" />,
       color: 'red',
     });
+  } else if (sv.campaignHealth) {
+    const ctx = sv.campaignHealth as Record<string, unknown>;
+    const grade = ctx.grade as string | undefined;
+    if (grade === 'A' || grade === 'B') {
+      pills.push({
+        label: 'Campaign',
+        text: `Campaign graded ${grade} — healthy to scale`,
+        icon: <CheckCircle className="h-3 w-3" />,
+        color: 'green',
+      });
+    }
   }
 
-  // Portfolio disagreement
+  // Portfolio (disagreement or agreement)
   if (sv.portfolioDisagreement === true) {
     pills.push({
       label: 'Portfolio',
@@ -165,9 +184,20 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
       icon: <BarChart3 className="h-3 w-3" />,
       color: 'yellow',
     });
+  } else if (sv.portfolioSuggestion) {
+    const ps = sv.portfolioSuggestion as Record<string, unknown>;
+    const changePct = typeof ps.changePct === 'number' ? ps.changePct : null;
+    if (changePct !== null && changePct > 0) {
+      pills.push({
+        label: 'Portfolio',
+        text: `Budget optimizer confirms: scale by ${Math.round(changePct)}%`,
+        icon: <BarChart3 className="h-3 w-3" />,
+        color: 'green',
+      });
+    }
   }
 
-  // Creative decay
+  // Creative decay (warning or healthy)
   const decay = sv.decayAnalysis as Record<string, unknown> | undefined;
   if (decay) {
     const rec = decay.recommendation as string;
@@ -181,7 +211,31 @@ function extractPills(sv: Record<string, unknown>): readonly PillConfig[] {
         icon: <RefreshCw className="h-3 w-3" />,
         color: rec === 'replace_now' ? 'red' : 'yellow',
       });
+    } else if (rec === 'healthy') {
+      pills.push({
+        label: 'Creative',
+        text: 'Creative performing well — no fatigue detected',
+        icon: <Shield className="h-3 w-3" />,
+        color: 'green',
+      });
     }
+  }
+
+  // Suggestion feedback signals
+  if (sv.suggestionFeedbackBoost === true) {
+    pills.push({
+      label: 'Track Record',
+      text: 'Similar suggestions have been approved — good track record',
+      icon: <CheckCircle className="h-3 w-3" />,
+      color: 'green',
+    });
+  } else if (sv.suggestionFeedbackPenalty === true) {
+    pills.push({
+      label: 'Track Record',
+      text: 'Similar suggestions are often rejected — proceed with caution',
+      icon: <AlertTriangle className="h-3 w-3" />,
+      color: 'yellow',
+    });
   }
 
   // Seasonal context
