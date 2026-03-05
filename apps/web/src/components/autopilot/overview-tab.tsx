@@ -5,6 +5,7 @@ import { CheckCircle, AlertTriangle, TrendingUp, ArrowRight, Zap } from 'lucide-
 import { motion } from 'motion/react';
 import { apiFetch } from '@/lib/api';
 import { ActionCard } from './action-card';
+import { ForecastWidget } from './forecast-widget';
 import type { Diagnosis, DiagnosisStats, AutopilotStats, CampaignHealthScore, AutopilotTab } from './types';
 
 interface OverviewTabProps {
@@ -133,6 +134,9 @@ export function OverviewTab({
           </div>
         </motion.div>
       )}
+
+      {/* ═══ Section 1.5: Revenue Forecast ═══════════════════ */}
+      <ForecastWidget />
 
       {/* ═══ Section 2: Priority Actions ══════════════════════ */}
       <div>

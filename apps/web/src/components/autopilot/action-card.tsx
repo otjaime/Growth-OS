@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AdThumbnail } from './ad-thumbnail';
 import { TrustIndicator } from './trust-indicator';
 import { AIInsightCard } from './ai-insight-card';
+import { ReasoningPills } from './reasoning-pills';
+import { ConfidenceBreakdown } from './confidence-breakdown';
 import { ConfirmationModal } from './confirmation-modal';
 import { ExecutionStatus } from './execution-status';
 import { getActionLabel } from './human-labels';
@@ -291,6 +293,12 @@ export function ActionCard({
                     </p>
                   </div>
                 </div>
+
+                {/* Intelligence reasoning */}
+                <ReasoningPills suggestedValue={d.suggestedValue} />
+
+                {/* Confidence breakdown */}
+                <ConfidenceBreakdown confidence={d.confidence} suggestedValue={d.suggestedValue} />
 
                 {/* Human description */}
                 <p className="text-sm text-[var(--foreground-secondary)]">{humanAction.description}</p>
