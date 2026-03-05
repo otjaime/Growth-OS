@@ -1115,6 +1115,34 @@ model AppSetting {
 }
 
 // ══════════════════════════════════════════════════════════════
+// COPY VARIANTS — Creative variant tracking for A/B testing
+// ══════════════════════════════════════════════════════════════
+
+model CopyVariant {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  diagnosisId    String       @map("diagnosis_id")
+  originalAdId   String       @map("original_ad_id")
+  createdAdId    String?      @map("created_ad_id")
+  angle          String       // benefit | pain_point | urgency
+  headline       String
+  primaryText    String       @map("primary_text") @db.Text
+  description    String?
+  status         String       @default("DRAFT") // DRAFT | APPROVED | REJECTED | ACTIVE | WINNER | LOSER
+  spend          Decimal?     @db.Decimal(12, 2)
+  roas           Decimal?     @db.Decimal(8, 4)
+  ctr            Decimal?     @db.Decimal(8, 6)
+  conversions    Int?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([diagnosisId])
+  @@index([organizationId, status])
+  @@map("copy_variants")
+}
+
+// ══════════════════════════════════════════════════════════════
 // PRODUCT PERFORMANCE — Aggregated product-level analytics
 // ══════════════════════════════════════════════════════════════
 
