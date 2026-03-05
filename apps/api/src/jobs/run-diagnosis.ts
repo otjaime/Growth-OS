@@ -495,12 +495,16 @@ export async function runDiagnosis(
           confidenceAdj -= 5;
           enrichments.anomalyDetected = false;
         }
+      } else {
+        // No anomaly data for this ad — mark as stable (no spikes detected)
+        enrichments.anomalyDetected = false;
       }
 
-      // Phase 1.3: Creative decay — boost/reduce for fatigue-related rules
-      if (diag.ruleId === 'creative_fatigue' || diag.ruleId === 'audience_saturation') {
-        const decay = decayByAd.get(ad.id);
-        if (decay) {
+      // Phase 1.3: Creative decay — attach for all diagnoses; adjust confidence for fatigue-related rules
+      const decay = decayByAd.get(ad.id);
+      if (decay) {
+        // Only adjust confidence for fatigue/saturation rules
+        if (diag.ruleId === 'creative_fatigue' || diag.ruleId === 'audience_saturation') {
           if (decay.recommendation === 'replace_now') {
             confidenceAdj += 15;
           } else if (decay.recommendation === 'accelerating_decay') {
@@ -508,13 +512,13 @@ export async function runDiagnosis(
           } else if (decay.recommendation === 'healthy') {
             confidenceAdj -= 15;
           }
-          enrichments.decayAnalysis = {
-            decayRate: decay.decayRate,
-            estimatedDaysToBreakeven: decay.estimatedDaysToBreakeven,
-            peakRoas: decay.peakRoas,
-            recommendation: decay.recommendation,
-          };
         }
+        enrichments.decayAnalysis = {
+          decayRate: decay.decayRate,
+          estimatedDaysToBreakeven: decay.estimatedDaysToBreakeven,
+          peakRoas: decay.peakRoas,
+          recommendation: decay.recommendation,
+        };
       }
 
       // Phase 1.2: Portfolio validation — penalize budget changes that conflict with optimizer
@@ -599,24 +603,24 @@ export async function runDiagnosis(
         }
       }
 
-      // Phase 3.4: Campaign health — penalize budget increases for ads in unhealthy campaigns
+      // Phase 3.4: Campaign health — penalize/boost based on grade; always attach enrichment
       const campaignHealth = campaignHealthByAd.get(ad.id);
       if (campaignHealth) {
+        // Always attach the enrichment so the UI can show it
+        enrichments.campaignHealth = {
+          grade: campaignHealth.grade,
+          score: campaignHealth.overallScore,
+          campaignName: campaignHealth.campaignName,
+        };
+
         if (campaignHealth.grade === 'F' && diag.actionType === 'INCREASE_BUDGET') {
           confidenceAdj -= 25;
           enrichments.campaignHealthWarning = true;
-          enrichments.campaignHealth = {
-            grade: campaignHealth.grade,
-            score: campaignHealth.overallScore,
-            campaignName: campaignHealth.campaignName,
-          };
-        } else if (campaignHealth.grade === 'A' && (diag.ruleId === 'top_performer' || diag.ruleId === 'winner_not_scaled')) {
+        } else if (
+          (campaignHealth.grade === 'A' || campaignHealth.grade === 'B') &&
+          (diag.actionType === 'INCREASE_BUDGET' || diag.ruleId === 'top_performer' || diag.ruleId === 'winner_not_scaled')
+        ) {
           confidenceAdj += 5;
-          enrichments.campaignHealth = {
-            grade: campaignHealth.grade,
-            score: campaignHealth.overallScore,
-            campaignName: campaignHealth.campaignName,
-          };
         }
       }
 

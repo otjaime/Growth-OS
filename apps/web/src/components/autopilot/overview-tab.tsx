@@ -232,31 +232,7 @@ export function OverviewTab({
         </div>
       )}
 
-      {/* ═══ Section 4: Quick Stats ═══════════════════════════ */}
-      {autopilotStats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="card px-3 py-2.5 text-center">
-            <p className="text-caption text-[var(--foreground-secondary)]">Active ads</p>
-            <p className="text-lg font-bold text-[var(--foreground)]">{autopilotStats.activeAds}</p>
-          </div>
-          <div className="card px-3 py-2.5 text-center">
-            <p className="text-caption text-[var(--foreground-secondary)]">Spent this week</p>
-            <p className="text-lg font-bold text-[var(--foreground)]">{formatCurrency(autopilotStats.metrics7d.totalSpend)}</p>
-          </div>
-          <div className="card px-3 py-2.5 text-center">
-            <p className="text-caption text-[var(--foreground-secondary)]">Revenue</p>
-            <p className="text-lg font-bold text-[var(--foreground)]">{formatCurrency(autopilotStats.metrics7d.totalRevenue)}</p>
-          </div>
-          <div className="card px-3 py-2.5 text-center">
-            <p className="text-caption text-[var(--foreground-secondary)]">Return</p>
-            <p className="text-lg font-bold text-[var(--foreground)]">
-              {autopilotStats.metrics7d.blendedRoas != null
-                ? `${autopilotStats.metrics7d.blendedRoas.toFixed(2)}x`
-                : '—'}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Section 4: Quick Stats removed — already shown in hero cards above tab bar */}
     </div>
   );
 }
