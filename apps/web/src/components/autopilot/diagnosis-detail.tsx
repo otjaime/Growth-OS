@@ -224,7 +224,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
         setConfirmModal({
           title: 'Increase Budget?',
           message: `Scale from $${sv.currentBudget ?? '?'}/day to $${sv.suggestedBudget ?? '?'}/day.`,
-          detail: `Additional weekly spend: ~$${((Number(sv.suggestedBudget) || 0) - (Number(sv.currentBudget) || 0)) * 7}/week.`,
+          detail: `Additional spend: +$${(Number(sv.suggestedBudget) || 0) - (Number(sv.currentBudget) || 0)}/day · +$${Math.round(((Number(sv.suggestedBudget) || 0) - (Number(sv.currentBudget) || 0)) * 30)}/mo.`,
           confirmLabel: 'Scale Budget',
           confirmColor: 'green',
         });
