@@ -154,7 +154,13 @@ export interface AdVariant {
   headline: string;
   primaryText: string;
   description: string | null;
-  status: 'DRAFT' | 'APPROVED' | 'PUBLISHED' | 'REJECTED';
+  status: 'DRAFT' | 'APPROVED' | 'PUBLISHED' | 'REJECTED' | 'WINNER' | 'LOSER';
+  metaAdId: string | null;
+  spend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  conversions: number | null;
+  revenue: number | null;
   createdAt: string;
 }
 
