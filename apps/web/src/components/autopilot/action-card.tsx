@@ -215,7 +215,7 @@ export function ActionCard({
               {humanAction.verb}
             </p>
             <p className="text-caption text-[var(--foreground-secondary)] truncate mt-0.5">
-              {ad.name} &middot; {formatSpend(ad.spend7d)}/week
+              {ad.name} &middot; {formatSpend(Math.round(ad.spend7d / 7))}/day &middot; {formatSpend(Math.round(ad.spend7d / 7 * 30))}/mo
               {d.actionType === 'PAUSE_AD' && ad.spend7d > 0 && (
                 <span className="text-apple-red"> &middot; losing money</span>
               )}
