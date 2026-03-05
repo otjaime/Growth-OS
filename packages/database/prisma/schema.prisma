@@ -70,7 +70,8 @@ model Organization {
   autopilotActionLogs  AutopilotActionLog[]
   diagnosisFeedback    DiagnosisFeedback[]
   copyVariants         CopyVariant[]
-
+  productPerformance   ProductPerformance[]
+  proactiveAdJobs      ProactiveAdJob[]
   @@map("organizations")
 }
 
@@ -1040,6 +1041,14 @@ model AutopilotConfig {
   notifyOnAutoAction   Boolean      @default(true) @map("notify_on_auto_action")
   notifyOnPendingApproval Boolean   @default(true) @map("notify_on_pending_approval")
 
+  // Proactive ad settings
+  proactiveEnabled       Boolean    @default(false) @map("proactive_enabled")
+  maxProactiveAdsPerMonth Int       @default(5) @map("max_proactive_ads_per_month")
+  minAdFitnessScore      Int        @default(60) @map("min_ad_fitness_score")
+  maxTestRounds          Int        @default(3) @map("max_test_rounds")
+  proactiveDefaultBudget Decimal?   @map("proactive_default_budget") @db.Decimal(12, 2)
+  useAIImages            Boolean    @default(false) @map("use_ai_images")
+
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
@@ -1131,4 +1140,81 @@ model AppSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+// ══════════════════════════════════════════════════════════════
+// PRODUCT PERFORMANCE — Aggregated product-level analytics
+// ══════════════════════════════════════════════════════════════
+
+model ProductPerformance {
+  id                String        @id @default(cuid())
+  organizationId    String?       @map("organization_id")
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+  productTitle      String        @map("product_title")
+  productType       String        @map("product_type")
+  unitsSold30d      Int           @default(0) @map("units_sold_30d")
+  revenue30d        Decimal       @default(0) @map("revenue_30d") @db.Decimal(12, 2)
+  orderCount30d     Int           @default(0) @map("order_count_30d")
+  avgPrice          Decimal       @default(0) @map("avg_price") @db.Decimal(12, 2)
+  estimatedMargin   Decimal       @default(0) @map("estimated_margin") @db.Decimal(5, 4)
+  grossProfit30d    Decimal       @default(0) @map("gross_profit_30d") @db.Decimal(12, 2)
+  avgDailyUnits     Decimal       @default(0) @map("avg_daily_units") @db.Decimal(8, 2)
+  repeatBuyerPct    Decimal       @default(0) @map("repeat_buyer_pct") @db.Decimal(5, 4)
+  adFitnessScore    Decimal?      @map("ad_fitness_score") @db.Decimal(5, 2)
+  shopifyProductId  String?       @map("shopify_product_id")
+  imageUrl          String?       @map("image_url")
+  productUrl        String?       @map("product_url")
+  description       String?       @db.Text
+  lastComputedAt    DateTime      @default(now()) @map("last_computed_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  @@unique([organizationId, productTitle, productType])
+  @@index([organizationId])
+  @@index([adFitnessScore])
+  @@map("product_performance")
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROACTIVE AD JOBS — Tracks lifecycle of proactively created ads
+// ══════════════════════════════════════════════════════════════
+
+enum ProactiveAdStatus {
+  PENDING
+  GENERATING
+  READY
+  APPROVED
+  PUBLISHED
+  TESTING
+  WINNER
+  PAUSED
+  FAILED
+}
+
+model ProactiveAdJob {
+  id                String             @id @default(cuid())
+  organizationId    String             @map("organization_id")
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  productTitle      String             @map("product_title")
+  productType       String             @map("product_type")
+  productImageUrl   String?            @map("product_image_url")
+  adFitnessScore    Decimal            @map("ad_fitness_score") @db.Decimal(5, 2)
+  status            ProactiveAdStatus  @default(PENDING)
+  copyVariants      Json?              @map("copy_variants")
+  imageHash         String?            @map("image_hash")
+  imageUrl          String?            @map("image_url")
+  imageSource       String?            @map("image_source")
+  metaAdSetId       String?            @map("meta_ad_set_id")
+  metaAdIds         Json?              @map("meta_ad_ids")
+  testRoundNumber   Int                @default(1) @map("test_round_number")
+  testStartedAt     DateTime?          @map("test_started_at")
+  winnerId          String?            @map("winner_id")
+  dailyBudget       Decimal?           @map("daily_budget") @db.Decimal(12, 2)
+  errorMessage      String?            @map("error_message") @db.Text
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("proactive_ad_jobs")
 }

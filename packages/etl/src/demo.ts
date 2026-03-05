@@ -8,6 +8,7 @@ import { generateAllDemoData } from './connectors/index.js';
 import { ingestRaw } from './pipeline/step1-ingest-raw.js';
 import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
+import { buildProductPerformance } from './pipeline/step4-build-product-performance.js';
 import { validateData } from './pipeline/validate.js';
 import { seedDemoExperiments } from './demo-experiments.js';
 import { seedDemoOpportunities } from './demo-opportunities.js';
@@ -39,6 +40,7 @@ async function runDemo() {
       klaviyoFlows: demoData.klaviyoFlows.length,
       stripeCharges: demoData.stripeCharges.length,
       stripeRefunds: demoData.stripeRefunds.length,
+      shopifyProducts: demoData.shopifyProducts.length,
     }, 'Demo data generated');
 
     // Step 2: Ingest raw
@@ -54,6 +56,7 @@ async function runDemo() {
       ...demoData.klaviyoFlows,
       ...demoData.stripeCharges,
       ...demoData.stripeRefunds,
+      ...demoData.shopifyProducts,
     ];
 
     // Record job run
@@ -70,6 +73,11 @@ async function runDemo() {
     // Step 4: Build marts
     log.info('Step 4: Building marts...');
     const martResult = await buildMarts();
+
+    // Step 4.5: Build product performance
+    log.info('Step 4.5: Building product performance...');
+    const productResult = await buildProductPerformance();
+    log.info({ products: productResult.products }, 'Product performance built');
 
     // Step 5: Validate
     log.info('Step 5: Validating data...');

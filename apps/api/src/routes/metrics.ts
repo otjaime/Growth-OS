@@ -1187,6 +1187,68 @@ export async function metricsRoutes(app: FastifyInstance) {
       },
     };
   });
+
+  // ── Product Performance ─────────────────────────────────────
+  app.get('/metrics/products', {
+    schema: {
+      tags: ['metrics'],
+      summary: 'Product performance with ad fitness scores',
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'string', description: 'Max products to return (default 20)' },
+          sortBy: { type: 'string', description: 'Sort field: grossProfit, revenue, units, adFitness (default grossProfit)' },
+        },
+      },
+    },
+  }, async (request) => {
+    const query = request.query as { limit?: string; sortBy?: string };
+    const limit = Math.min(parseInt(query.limit ?? '20', 10), 100);
+    const sortBy = query.sortBy ?? 'grossProfit';
+
+    const orderBy: Record<string, 'desc'> = {};
+    switch (sortBy) {
+      case 'revenue':
+        orderBy['revenue30d'] = 'desc';
+        break;
+      case 'units':
+        orderBy['unitsSold30d'] = 'desc';
+        break;
+      case 'adFitness':
+        orderBy['adFitnessScore'] = 'desc';
+        break;
+      default:
+        orderBy['grossProfit30d'] = 'desc';
+    }
+
+    const products = await prisma.productPerformance.findMany({
+      where: orgWhere(request),
+      orderBy,
+      take: limit,
+    });
+
+    return {
+      products: products.map((p) => ({
+        id: p.id,
+        productTitle: p.productTitle,
+        productType: p.productType,
+        unitsSold30d: p.unitsSold30d,
+        revenue30d: Number(p.revenue30d),
+        orderCount30d: p.orderCount30d,
+        avgPrice: Number(p.avgPrice),
+        estimatedMargin: Number(p.estimatedMargin),
+        grossProfit30d: Number(p.grossProfit30d),
+        avgDailyUnits: Number(p.avgDailyUnits),
+        repeatBuyerPct: Number(p.repeatBuyerPct),
+        adFitnessScore: p.adFitnessScore ? Number(p.adFitnessScore) : null,
+        imageUrl: p.imageUrl,
+        productUrl: p.productUrl,
+        description: p.description,
+        lastComputedAt: p.lastComputedAt,
+      })),
+      total: products.length,
+    };
+  });
 }
 
 // ── Helpers ─────────────────────────────────────────────────────

@@ -15,7 +15,81 @@ export type DiagnosisAction =
   | 'DUPLICATE_AD_SET'
   | 'NONE';
 
-export type AutopilotTab = 'overview' | 'actions' | 'ads';
+export type AutopilotTab = 'overview' | 'actions' | 'ads' | 'products';
+
+// ── Proactive product types ─────────────────────────────────
+
+export type ProactiveAdStatus =
+  | 'PENDING'
+  | 'GENERATING'
+  | 'READY'
+  | 'APPROVED'
+  | 'PUBLISHED'
+  | 'TESTING'
+  | 'WINNER'
+  | 'PAUSED'
+  | 'FAILED';
+
+export interface ProductPerformanceRow {
+  id: string;
+  productTitle: string;
+  productType: string;
+  unitsSold30d: number;
+  revenue30d: number;
+  orderCount30d: number;
+  avgPrice: number;
+  estimatedMargin: number;
+  grossProfit30d: number;
+  avgDailyUnits: number;
+  repeatBuyerPct: number;
+  adFitnessScore: number | null;
+  shopifyProductId: string | null;
+  imageUrl: string | null;
+  productUrl: string | null;
+  description: string | null;
+  lastComputedAt: string;
+}
+
+export interface ProactiveRecommendation {
+  productTitle: string;
+  productType: string;
+  adFitnessScore: number;
+  reason: string;
+  estimatedRoas: number;
+  metrics: {
+    revenue30d: number;
+    grossProfit30d: number;
+    avgDailyUnits: number;
+    repeatBuyerPct: number;
+    estimatedMargin: number;
+    avgPrice: number;
+    hasImage: boolean;
+    hasDescription: boolean;
+  };
+}
+
+export interface ProactiveAdJob {
+  id: string;
+  productTitle: string;
+  productType: string;
+  productImageUrl: string | null;
+  adFitnessScore: number;
+  status: ProactiveAdStatus;
+  copyVariants: Array<{
+    angle: string;
+    headline: string;
+    primaryText: string;
+    description: string | null;
+  }> | null;
+  imageUrl: string | null;
+  testRoundNumber: number;
+  testStartedAt: string | null;
+  winnerId: string | null;
+  dailyBudget: number | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ── Human-readable label types ───────────────────────────────
 

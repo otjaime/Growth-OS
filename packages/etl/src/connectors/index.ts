@@ -22,3 +22,4 @@ export { generateKlaviyoCampaigns as generateDemoKlaviyoCampaigns } from './demo
 export { generateKlaviyoFlows as generateDemoKlaviyoFlows } from './demo-klaviyo.js';
 export { generateStripeCharges as generateDemoStripeCharges } from './demo-stripe.js';
 export { generateStripeRefunds as generateDemoStripeRefunds } from './demo-stripe.js';
+export { generateShopifyProducts } from './demo-products.js';

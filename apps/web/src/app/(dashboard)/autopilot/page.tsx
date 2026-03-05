@@ -32,6 +32,7 @@ import { UndoToastProvider } from '@/components/autopilot/undo-toast';
 import { HelpDrawer } from '@/components/autopilot/help-drawer';
 import { AdsSearchBar } from '@/components/autopilot/ads-search-bar';
 import { AdDetailSheet } from '@/components/autopilot/ad-detail-sheet';
+import { ProductsTab } from '@/components/autopilot/products-tab';
 import { ReflectiveCard } from '@/components/ui/reflective-card';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -692,6 +693,9 @@ export default function AutopilotPage() {
               />
             </div>
           )}
+
+          {/* ── Products Tab ────────────────────────────────────── */}
+          {activeTab === 'products' && <ProductsTab />}
         </motion.div>
       </AnimatePresence>
 

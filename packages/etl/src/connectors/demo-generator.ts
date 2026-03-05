@@ -11,6 +11,7 @@ import { CATEGORY_MARGINS } from '../types.js';
 import { generateTikTokInsights } from './demo-tiktok.js';
 import { generateKlaviyoCampaigns, generateKlaviyoFlows } from './demo-klaviyo.js';
 import { generateStripeCharges, generateStripeRefunds } from './demo-stripe.js';
+import { generateShopifyProducts } from './demo-products.js';
 
 const SEED = process.env.DEMO_SEED ?? '42';
 const DEMO_DAYS = parseInt(process.env.DEMO_DAYS ?? '180', 10);
@@ -495,6 +496,7 @@ export function generateAllDemoData(): {
   klaviyoFlows: RawRecord[];
   stripeCharges: RawRecord[];
   stripeRefunds: RawRecord[];
+  shopifyProducts: RawRecord[];
 } {
   const ctx = createContext();
   generateCustomers(ctx, 2400);
@@ -512,5 +514,6 @@ export function generateAllDemoData(): {
     klaviyoFlows: generateKlaviyoFlows(ctx),
     stripeCharges: generateStripeCharges(ctx, orders),
     stripeRefunds: generateStripeRefunds(ctx),
+    shopifyProducts: generateShopifyProducts(ctx),
   };
 }
