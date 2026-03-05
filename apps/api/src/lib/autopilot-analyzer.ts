@@ -94,7 +94,7 @@ STRICT RULES — violating these makes your output useless:
 2. ALWAYS compare to sibling ads when available (e.g., "This ad's 0.8x ROAS underperforms sibling 'Summer Sale V2' at 3.2x").
 3. Every action MUST be immediately executable — not "consider testing" but "Pause this ad" or "Reduce daily budget from $120 to $60".
 4. Include specific dollar amounts, percentages, and timeframes in every detail field.
-5. Estimated impact MUST be a specific dollar range based on the actual spend/revenue data (e.g., "Could save $850-$1,200/week" or "Potential +$2,400/week revenue at current CVR").
+5. Estimated impact MUST show daily and monthly pacing based on actual spend/revenue data (e.g., "Daily: +$120/day | Monthly: +$3,600/mo potential revenue at current ROAS" or "Saves ~$85/day | ~$2,550/mo by pausing this ad").
 6. Priority: high = execute today (revenue leak), medium = execute this week (optimization), low = schedule next week.
 7. rootCause: exactly 1-2 sentences explaining WHY this is happening (not WHAT is happening — the diagnosis already says what).
 8. Each "action" field: max 12 words, starts with a verb (Pause, Scale, Reduce, Split-test, Duplicate, Reallocate).
@@ -107,7 +107,7 @@ EXAMPLE output for a wasted budget ad with $500 spend, 0 conversions, sibling at
   "adRecommendation": {"action": "Pause ad immediately to stop $71/day bleed", "detail": "This ad burned $500 in 7 days with 0 conversions while sibling 'Hero Banner V2' generated 2.1x ROAS on $320 spend. The creative is not converting this audience.", "priority": "high"},
   "adSetRecommendation": {"action": "Reallocate $71/day budget to winning sibling ad", "detail": "Shift the paused ad's daily budget to 'Hero Banner V2' which is converting at 2.1x ROAS. This consolidates spend on what works and could add ~$149/week in revenue.", "priority": "high"},
   "campaignRecommendation": {"action": "Duplicate winning creative into 2 new ad sets", "detail": "The converting creative has proven product-market fit. Test it with lookalike audiences (1% and 3%) to scale beyond the current $45/day ad set budget.", "priority": "medium"},
-  "estimatedImpact": "Pausing saves ~$500/week in wasted spend. Reallocating to the 2.1x ROAS sibling could generate ~$1,050/week in additional revenue."
+  "estimatedImpact": "Pausing saves ~$71/day | ~$2,130/mo. Reallocating to the 2.1x ROAS sibling: +$150/day | +$4,500/mo in revenue."
 }
 
 JSON schema:
@@ -226,7 +226,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'Multiple non-converting ads suggest the campaign audience may need refinement. Consider narrowing targeting or testing lookalike audiences.',
           priority: 'medium',
         },
-        estimatedImpact: `Could save ~$${Math.round(input.spend7d * 0.8)}/week by pausing this ad.`,
+        estimatedImpact: `Saves ~$${Math.round((input.spend7d * 0.8) / 7)}/day | ~$${Math.round((input.spend7d * 0.8) / 7 * 30)}/mo by pausing this ad.`,
       };
 
     case 'negative_roas':
@@ -247,7 +247,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'Negative ROAS at the ad level often signals broader issues — check if the campaign objective aligns with your conversion goals.',
           priority: 'medium',
         },
-        estimatedImpact: `Could recover ~$${Math.max(0, Math.round(input.spend7d - input.revenue7d))}/week in wasted spend.`,
+        estimatedImpact: `Recovers ~$${Math.max(0, Math.round((input.spend7d - input.revenue7d) / 7))}/day | ~$${Math.max(0, Math.round((input.spend7d - input.revenue7d) / 7 * 30))}/mo in wasted spend.`,
       };
 
     case 'creative_fatigue':
@@ -268,7 +268,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'Set up a cadence to refresh creatives every 2-3 weeks before fatigue sets in. Track frequency as a leading indicator.',
           priority: 'low',
         },
-        estimatedImpact: `Fresh creatives typically recover 15-30% of lost CTR, potentially adding ~$${Math.round(input.revenue7d * 0.2)}/week in revenue.`,
+        estimatedImpact: `Fresh creatives recover 15-30% of lost CTR. Potential: +$${Math.round((input.revenue7d * 0.2) / 7)}/day | +$${Math.round((input.revenue7d * 0.2) / 7 * 30)}/mo in revenue.`,
       };
 
     case 'low_ctr':
@@ -289,7 +289,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'If using static images, test video or carousel. Different formats perform differently across placements (Feed vs Stories vs Reels).',
           priority: 'medium',
         },
-        estimatedImpact: `Improving CTR to 1.2% could increase clicks by ~${Math.round(input.impressions7d * 0.004)}/week with no extra spend.`,
+        estimatedImpact: `Improving CTR to 1.2%: +${Math.round(input.impressions7d * 0.004 / 7)} clicks/day | +${Math.round(input.impressions7d * 0.004 / 7 * 30)} clicks/mo with no extra spend.`,
       };
 
     case 'click_no_buy':
@@ -310,7 +310,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'If optimizing for link clicks, switch to purchase optimization. Meta will find users more likely to convert, not just click.',
           priority: 'high',
         },
-        estimatedImpact: `Converting just ${Math.max(1, Math.round(input.clicks7d * 0.02))} more clicks/week could add ~$${Math.round(input.revenue7d * 0.5)} in revenue.`,
+        estimatedImpact: `Converting ${Math.max(1, Math.round(input.clicks7d * 0.02 / 7))} more clicks/day: +$${Math.round((input.revenue7d * 0.5) / 7)}/day | +$${Math.round((input.revenue7d * 0.5) / 7 * 30)}/mo in revenue.`,
       };
 
     case 'winner_not_scaled':
@@ -331,7 +331,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'Test this creative with different audience segments. Create 2-3 new ad sets with lookalike audiences based on your best customers.',
           priority: 'medium',
         },
-        estimatedImpact: `Scaling budget 50% could add ~$${Math.round(input.revenue7d * 0.4)}/week in revenue at similar ROAS.`,
+        estimatedImpact: `Scaling 50%: +$${Math.round((input.revenue7d * 0.4) / 7)}/day | +$${Math.round((input.revenue7d * 0.4) / 7 * 30)}/mo in revenue at similar ROAS.`,
       };
 
     case 'paused_positive':
@@ -352,7 +352,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: 'Check if it was paused intentionally (seasonal, inventory) or by mistake. Set up alerts to prevent accidentally pausing profitable ads.',
           priority: 'low',
         },
-        estimatedImpact: `Reactivating could recover ~$${Math.round((input.spend14d / 14) * 7 * (input.roas14d ?? 2))}/week in revenue.`,
+        estimatedImpact: `Reactivating: +$${Math.round((input.spend14d / 14) * (input.roas14d ?? 2))}/day | +$${Math.round((input.spend14d / 14) * (input.roas14d ?? 2) * 30)}/mo in revenue.`,
       };
 
     case 'learning_phase':
@@ -399,7 +399,7 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
           detail: `This proven creative should be tested in 2-3 new ad sets with lookalike audiences (1%, 3%, 5%) to find additional profitable reach.`,
           priority: 'medium',
         },
-        estimatedImpact: `Scaling spend 50% could add ~$${Math.round(input.revenue7d * 0.4)}/week in revenue at similar ${input.roas7d?.toFixed(2) ?? '?'}x ROAS.`,
+        estimatedImpact: `Scaling 50%: +$${Math.round((input.revenue7d * 0.4) / 7)}/day | +$${Math.round((input.revenue7d * 0.4) / 7 * 30)}/mo in revenue at ${input.roas7d?.toFixed(2) ?? '?'}x ROAS.`,
       };
     }
 
