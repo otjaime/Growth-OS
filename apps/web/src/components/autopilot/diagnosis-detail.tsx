@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   Sparkles, Pause, Play, TrendingUp, TrendingDown,
   RefreshCw, Eye, Loader2, Check, X, Copy, CheckCircle2, AlertCircle,
+  Rocket, Trophy,
 } from 'lucide-react';
 import { SeverityBadge } from './severity-badge';
 import { ExpiryCountdown } from './expiry-countdown';
@@ -14,6 +15,7 @@ import type { Diagnosis, AdVariant } from './types';
 import { AIInsightCard } from './ai-insight-card';
 import { ConfirmationModal } from './confirmation-modal';
 import { ExecutionStatus } from './execution-status';
+import { VariantPerformance } from './variant-performance';
 import { apiFetch } from '@/lib/api';
 
 interface DiagnosisDetailProps {
@@ -74,11 +76,15 @@ function CopyVariantCard({
   original,
   onApprove,
   onReject,
+  onActivate,
+  activating,
 }: {
   variant: AdVariant;
   original: { headline: string | null; primaryText: string | null; description: string | null };
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onActivate: (id: string) => void;
+  activating: boolean;
 }) {
   const angleName = variant.angle === 'pain_point' ? 'Pain Point' : variant.angle === 'benefit' ? 'Benefit' : 'Urgency';
   const angleColor = variant.angle === 'benefit' ? 'text-apple-green bg-[var(--tint-green)]'
@@ -98,6 +104,17 @@ function CopyVariantCard({
         )}
         {variant.status === 'REJECTED' && (
           <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">REJECTED</span>
+        )}
+        {variant.status === 'PUBLISHED' && (
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-blue)] text-apple-blue font-semibold">LIVE</span>
+        )}
+        {variant.status === 'WINNER' && (
+          <span className="flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-[var(--tint-green)] text-apple-green font-semibold">
+            <Trophy className="h-3 w-3" /> WINNER
+          </span>
+        )}
+        {variant.status === 'LOSER' && (
+          <span className="text-caption px-2 py-0.5 rounded-full bg-[var(--tint-red)] text-apple-red font-semibold">UNDERPERFORMER</span>
         )}
       </div>
 
@@ -133,6 +150,19 @@ function CopyVariantCard({
           </button>
         </div>
       )}
+
+      {variant.status === 'APPROVED' && (
+        <div className="pt-1">
+          <button
+            onClick={() => onActivate(variant.id)}
+            disabled={activating}
+            className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-apple-purple bg-[var(--tint-purple)] hover:bg-apple-purple/20 px-3 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+          >
+            {activating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+            {activating ? 'Publishing...' : 'Activate in Meta'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -144,6 +174,7 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
   const [dismissing, setDismissing] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveResult, setApproveResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
@@ -263,6 +294,25 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
       }
     } catch {
       // ignore
+    }
+  };
+
+  const handleActivateVariant = async (variantId: string) => {
+    setActivatingId(variantId);
+    try {
+      const res = await apiFetch(`/api/autopilot/variants/${variantId}/activate`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setVariants((prev) => prev.map((v) =>
+          v.id === variantId
+            ? { ...v, status: 'PUBLISHED' as const, metaAdId: data.metaAdId ?? null }
+            : v
+        ));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setActivatingId(null);
     }
   };
 
@@ -440,6 +490,29 @@ export function DiagnosisDetail({ diagnosis, onDismiss, onRefresh }: DiagnosisDe
               }}
               onApprove={(id) => handleVariantAction(id, 'APPROVED')}
               onReject={(id) => handleVariantAction(id, 'REJECTED')}
+              onActivate={handleActivateVariant}
+              activating={activatingId === v.id}
+            />
+          ))}
+
+          {/* Variant Performance Comparison */}
+          {variants.filter((v) => ['PUBLISHED', 'WINNER', 'LOSER'].includes(v.status)).map((v) => (
+            <VariantPerformance
+              key={`perf-${v.id}`}
+              variant={{
+                status: v.status,
+                spend: v.spend ?? null,
+                impressions: v.impressions ?? null,
+                clicks: v.clicks ?? null,
+                conversions: v.conversions ?? null,
+                revenue: v.revenue ?? null,
+              }}
+              original={{
+                spend7d: Number(ad.spend7d),
+                roas7d: ad.roas7d !== null ? Number(ad.roas7d) : null,
+                ctr7d: ad.ctr7d !== null ? Number(ad.ctr7d) : null,
+                conversions7d: 0,
+              }}
             />
           ))}
         </div>

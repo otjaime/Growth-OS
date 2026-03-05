@@ -347,6 +347,82 @@ export async function syncMetaAds(organizationId: string): Promise<SyncMetaAdsRe
     }
   }
 
+  // 9. Sync performance data for PUBLISHED ad variants
+  const publishedVariants = await prisma.adVariant.findMany({
+    where: {
+      status: 'PUBLISHED',
+      metaAdId: { not: null },
+      diagnosis: { organizationId },
+    },
+    select: {
+      id: true,
+      metaAdId: true,
+      adId: true,
+      createdAt: true,
+    },
+  });
+
+  if (publishedVariants.length > 0) {
+    // Look up MetaAd records for each published variant's metaAdId
+    const variantMetaAdIds = publishedVariants
+      .map((v) => v.metaAdId)
+      .filter((id): id is string => id !== null);
+
+    const variantAds = await prisma.metaAd.findMany({
+      where: { organizationId, adId: { in: variantMetaAdIds } },
+      select: {
+        adId: true,
+        spend7d: true,
+        impressions7d: true,
+        clicks7d: true,
+        conversions7d: true,
+        revenue7d: true,
+        roas7d: true,
+        ctr7d: true,
+      },
+    });
+
+    const variantAdMap = new Map(variantAds.map((a) => [a.adId, a]));
+
+    for (const variant of publishedVariants) {
+      const metaAd = variantAdMap.get(variant.metaAdId!);
+      if (!metaAd) continue;
+
+      // Determine if enough data for WINNER/LOSER detection
+      const daysSincePublished = (Date.now() - new Date(variant.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      const spend = Number(metaAd.spend7d);
+
+      // Get original ad's ROAS for comparison
+      const originalAd = await prisma.metaAd.findFirst({
+        where: { id: variant.adId },
+        select: { roas7d: true },
+      });
+      const originalRoas = originalAd?.roas7d ? Number(originalAd.roas7d) : null;
+      const variantRoas = metaAd.roas7d ? Number(metaAd.roas7d) : null;
+
+      let newStatus: 'PUBLISHED' | 'WINNER' | 'LOSER' = 'PUBLISHED';
+      if (daysSincePublished >= 7 && spend >= 50 && originalRoas !== null && variantRoas !== null) {
+        if (variantRoas > originalRoas * 1.1) {
+          newStatus = 'WINNER';
+        } else if (variantRoas < originalRoas * 0.5) {
+          newStatus = 'LOSER';
+        }
+      }
+
+      await prisma.adVariant.update({
+        where: { id: variant.id },
+        data: {
+          spend: metaAd.spend7d,
+          impressions: metaAd.impressions7d,
+          clicks: metaAd.clicks7d,
+          conversions: metaAd.conversions7d,
+          revenue: metaAd.revenue7d,
+          ...(newStatus !== 'PUBLISHED' ? { status: newStatus } : {}),
+        },
+      });
+    }
+  }
+
   return {
     accountsUpserted: 1,
     campaignsUpserted,

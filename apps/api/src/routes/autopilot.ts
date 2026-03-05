@@ -888,6 +888,140 @@ export async function autopilotRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  // ── POST /autopilot/variants/:id/activate — Publish approved variant to Meta ─
+  app.post('/autopilot/variants/:id/activate', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Activate an approved variant',
+      description: 'Publishes an APPROVED ad variant to Meta Ads and marks it PUBLISHED.',
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const organizationId = await resolveOrgId(request);
+
+    // 1. Fetch variant with diagnosis + ad context
+    const variant = await prisma.adVariant.findFirst({
+      where: { id },
+      include: {
+        diagnosis: {
+          select: {
+            organizationId: true,
+            ad: {
+              select: {
+                adId: true,
+                adSet: { select: { adSetId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!variant || variant.diagnosis.organizationId !== organizationId) {
+      return reply.status(404).send({ error: 'Variant not found' });
+    }
+
+    if (variant.status !== 'APPROVED') {
+      return reply.status(400).send({ error: `Cannot activate variant with status ${variant.status}. Must be APPROVED first.` });
+    }
+
+    // 2. Get Meta credentials
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { connectorType: 'meta_ads', organizationId },
+    });
+
+    if (!credential) {
+      return reply.status(400).send({ error: 'No Meta Ads credentials found' });
+    }
+
+    let decrypted: Record<string, string>;
+    try {
+      decrypted = JSON.parse(decrypt(credential.encryptedData, credential.iv, credential.authTag)) as Record<string, string>;
+    } catch {
+      return reply.status(500).send({ error: 'Failed to decrypt credentials' });
+    }
+
+    const accessToken = decrypted.accessToken ?? '';
+    const meta = (credential.metadata ?? {}) as Record<string, string>;
+    const adAccountId = ((meta.adAccountId as string) ?? '').trim();
+
+    if (!accessToken || !adAccountId) {
+      return reply.status(400).send({ error: 'Meta Ads credentials incomplete' });
+    }
+
+    // 3. Create ad in Meta
+    const { createAdFromVariant } = await import('../lib/meta-executor.js');
+    const result = await createAdFromVariant(accessToken, adAccountId, variant.diagnosis.ad.adSet.adSetId, {
+      name: variant.headline,
+      headline: variant.headline,
+      primaryText: variant.primaryText,
+      description: variant.description ?? undefined,
+    });
+
+    if (!result.success) {
+      return reply.status(500).send({ error: result.error ?? 'Failed to create ad in Meta' });
+    }
+
+    // 4. Update variant to PUBLISHED with Meta ad ID
+    const metaResp = result.metaResponse as { adId?: string } | undefined;
+    const newMetaAdId = metaResp?.adId ?? null;
+
+    const updated = await prisma.adVariant.update({
+      where: { id },
+      data: {
+        status: 'PUBLISHED',
+        metaAdId: newMetaAdId,
+      },
+    });
+
+    return { variant: updated, metaAdId: newMetaAdId };
+  });
+
+  // ── GET /autopilot/variants — List variants with performance data ─
+  app.get('/autopilot/variants', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'List ad variants',
+      description: 'List all ad variants with optional filtering by diagnosisId.',
+      querystring: {
+        type: 'object',
+        properties: {
+          diagnosisId: { type: 'string' },
+        },
+      },
+    },
+  }, async (request) => {
+    const { diagnosisId } = request.query as { diagnosisId?: string };
+    const organizationId = await resolveOrgId(request);
+
+    const where: Record<string, unknown> = {
+      diagnosis: { organizationId },
+    };
+    if (diagnosisId) {
+      where.diagnosisId = diagnosisId;
+    }
+
+    const variants = await prisma.adVariant.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        ad: {
+          select: {
+            adId: true,
+            name: true,
+            spend7d: true,
+            roas7d: true,
+            ctr7d: true,
+            conversions7d: true,
+          },
+        },
+      },
+    });
+
+    return { variants };
+  });
+
   // ── POST /autopilot/diagnoses/:id/approve — approve + execute ─
   app.post('/autopilot/diagnoses/:id/approve', {
     schema: {
