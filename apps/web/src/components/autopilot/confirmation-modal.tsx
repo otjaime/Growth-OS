@@ -9,7 +9,7 @@ interface ConfirmationModalProps {
   message: string;
   detail?: string;
   confirmLabel: string;
-  confirmColor: 'red' | 'green' | 'yellow' | 'blue';
+  confirmColor: 'red' | 'green' | 'yellow' | 'blue' | 'purple';
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,6 +19,7 @@ const COLOR_MAP: Record<string, string> = {
   green: 'bg-apple-green hover:bg-apple-green/80 text-white',
   yellow: 'bg-apple-yellow hover:bg-apple-yellow/80 text-black',
   blue: 'bg-apple-blue hover:bg-apple-blue/80 text-white',
+  purple: 'bg-apple-purple hover:bg-apple-purple/80 text-white',
 };
 
 const ICON_COLOR_MAP: Record<string, string> = {
@@ -26,6 +27,7 @@ const ICON_COLOR_MAP: Record<string, string> = {
   green: 'text-apple-green bg-[var(--tint-green)]',
   yellow: 'text-apple-yellow bg-[var(--tint-yellow)]',
   blue: 'text-apple-blue bg-[var(--tint-blue)]',
+  purple: 'text-apple-purple bg-[var(--tint-purple)]',
 };
 
 export function ConfirmationModal({

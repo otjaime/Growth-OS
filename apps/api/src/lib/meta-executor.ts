@@ -170,6 +170,108 @@ export async function createAdFromVariant(
   }
 }
 
+/**
+ * Duplicate an ad set with its winning ad to target fresh audiences.
+ * Steps:
+ *   1. Read source ad set configuration (targeting, budget, bid strategy)
+ *   2. Create a new ad set under the same campaign (status: PAUSED)
+ *   3. Read the winning ad's creative
+ *   4. Create a new ad in the new ad set using the same creative
+ */
+export async function duplicateAdSet(
+  accessToken: string,
+  adAccountId: string,
+  sourceAdSetId: string,
+  sourceAdId: string,
+  newName: string,
+): Promise<ExecutionResult> {
+  // Step 1: Read source ad set config
+  const readUrl = `${META_BASE}/${sourceAdSetId}?fields=name,daily_budget,targeting,billing_event,optimization_goal,bid_strategy,campaign_id,status&access_token=${accessToken}`;
+
+  let sourceConfig: Record<string, unknown>;
+  try {
+    const readRes = await fetch(readUrl);
+    sourceConfig = (await readRes.json()) as Record<string, unknown>;
+    if (sourceConfig.error) {
+      return { success: false, error: `Failed to read source ad set: ${JSON.stringify(sourceConfig.error)}` };
+    }
+  } catch (err) {
+    return { success: false, error: `Network error reading source ad set: ${String(err)}`, retryable: true };
+  }
+
+  // Step 2: Create new ad set under same campaign
+  const campaignId = String(sourceConfig.campaign_id ?? '');
+  if (!campaignId) {
+    return { success: false, error: 'Source ad set has no campaign_id', retryable: false };
+  }
+
+  const adSetFields: Record<string, string> = {
+    name: newName,
+    campaign_id: campaignId,
+    status: 'PAUSED',
+    billing_event: String(sourceConfig.billing_event ?? 'IMPRESSIONS'),
+    optimization_goal: String(sourceConfig.optimization_goal ?? 'OFFSITE_CONVERSIONS'),
+  };
+
+  // Copy budget (daily_budget is in cents)
+  if (sourceConfig.daily_budget) {
+    adSetFields.daily_budget = String(sourceConfig.daily_budget);
+  }
+
+  // Copy targeting if available
+  if (sourceConfig.targeting) {
+    adSetFields.targeting = JSON.stringify(sourceConfig.targeting);
+  }
+
+  // Copy bid strategy if available
+  if (sourceConfig.bid_strategy) {
+    adSetFields.bid_strategy = String(sourceConfig.bid_strategy);
+  }
+
+  const createAdSetResult = await metaPost(accessToken, `act_${adAccountId}/adsets`, adSetFields);
+  if (!createAdSetResult.success) {
+    return { ...createAdSetResult, error: `Failed to create ad set: ${createAdSetResult.error}` };
+  }
+
+  const newAdSetId = (createAdSetResult.metaResponse as Record<string, unknown>)?.id;
+  if (!newAdSetId) {
+    return { success: false, error: 'Ad set created but no ID returned', retryable: false };
+  }
+
+  // Step 3: Get the winning ad's creative
+  const creativeUrl = `${META_BASE}/${sourceAdId}?fields=creative{id}&access_token=${accessToken}`;
+  let creativeId: string | null = null;
+  try {
+    const creativeRes = await fetch(creativeUrl);
+    const creativeData = (await creativeRes.json()) as Record<string, unknown>;
+    const creative = creativeData.creative as Record<string, unknown> | undefined;
+    creativeId = creative?.id ? String(creative.id) : null;
+  } catch {
+    // Non-fatal: we'll skip ad creation
+  }
+
+  // Step 4: Create new ad in the new ad set
+  let newAdId: unknown = null;
+  if (creativeId) {
+    const adFields: Record<string, string> = {
+      name: `${newName} — Ad`,
+      adset_id: String(newAdSetId),
+      creative: JSON.stringify({ creative_id: creativeId }),
+      status: 'PAUSED',
+    };
+
+    const createAdResult = await metaPost(accessToken, `act_${adAccountId}/ads`, adFields);
+    if (createAdResult.success) {
+      newAdId = (createAdResult.metaResponse as Record<string, unknown>)?.id;
+    }
+  }
+
+  return {
+    success: true,
+    metaResponse: { newAdSetId, newAdId, sourceAdSetId, sourceAdId },
+  };
+}
+
 // ── Internals ───────────────────────────────────────────────────
 
 interface MetaErrorResponse {

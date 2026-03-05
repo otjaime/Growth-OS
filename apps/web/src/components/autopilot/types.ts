@@ -12,6 +12,7 @@ export type DiagnosisAction =
   | 'INCREASE_BUDGET'
   | 'DECREASE_BUDGET'
   | 'REFRESH_CREATIVE'
+  | 'DUPLICATE_AD_SET'
   | 'NONE';
 
 export type AutopilotTab = 'overview' | 'actions' | 'ads';

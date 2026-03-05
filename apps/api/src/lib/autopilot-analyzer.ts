@@ -403,6 +403,45 @@ export function generateRuleBasedInsight(input: DiagnosisAnalyzerInput): Diagnos
       };
     }
 
+    case 'duplicate_winner':
+      return {
+        rootCause: `This ad has ${input.roas7d?.toFixed(2) ?? '?'}x ROAS but frequency at ${input.frequency7d?.toFixed(1) ?? '?'}x signals audience saturation. Increasing budget in the same audience will hit diminishing returns.${siblingContext}`,
+        adRecommendation: {
+          action: 'Keep this ad running — it\'s the creative winner',
+          detail: `Maintain the current creative with ${input.roas7d?.toFixed(2) ?? '?'}x ROAS. Don't modify anything that could reset the learning phase.`,
+          priority: 'low',
+        },
+        adSetRecommendation: {
+          action: 'Clone ad set to fresh lookalike audiences',
+          detail: `Create a duplicate ad set targeting 1-3% lookalike audiences. Use the same ${input.adSetDailyBudget ? `$${input.adSetDailyBudget.toFixed(0)}/day` : ''} budget to test new reach.`,
+          priority: 'high',
+        },
+        campaignRecommendation: {
+          action: 'Expand campaign with 2-3 audience variants',
+          detail: 'Test the winning creative across different audience segments: lookalikes, interest-based, and broad targeting.',
+          priority: 'medium',
+        },
+        estimatedImpact: `Duplicating to fresh audiences: +$${Math.round((input.revenue7d * 0.3) / 7)}/day | +$${Math.round((input.revenue7d * 0.3) / 7 * 30)}/mo potential at similar ROAS.`,
+      };
+
+    case 'portfolio_rebalance':
+      return {
+        rootCause: `The portfolio optimizer identified this ad set as ${input.roas7d && input.roas7d > 2 ? 'a top performer that deserves more budget' : 'underperforming relative to other ad sets'}.${siblingContext}`,
+        adRecommendation: { action: 'No ad-level changes needed', detail: 'This is a budget reallocation at the ad set level, not an ad-level issue.', priority: 'low' },
+        adSetRecommendation: { action: `Adjust budget to $${input.suggestedValue?.suggestedBudget ?? '?'}/day`, detail: 'Portfolio-level optimization suggests this budget will improve overall blended ROAS.', priority: 'high' },
+        campaignRecommendation: { action: 'Review campaign budget cap', detail: 'Ensure the campaign-level budget allows the ad set to scale or contract as suggested.', priority: 'medium' },
+        estimatedImpact: 'Portfolio-level optimization aims to improve blended ROAS by shifting budget to higher-performing ad sets.',
+      };
+
+    case 'cross_campaign_rebalance':
+      return {
+        rootCause: `This campaign has ${input.roas7d?.toFixed(2) ?? '?'}x ROAS. Budget would perform better in higher-ROAS campaigns.${siblingContext}`,
+        adRecommendation: { action: 'No ad-level changes needed', detail: 'This is a campaign-level budget reallocation.', priority: 'low' },
+        adSetRecommendation: { action: 'Budget change follows campaign adjustment', detail: 'Ad set budgets will adjust proportionally as campaign budget changes.', priority: 'medium' },
+        campaignRecommendation: { action: 'Adjust campaign budget to optimize allocation', detail: 'Shifting budget to campaigns with better ROAS improves overall marketing efficiency.', priority: 'high' },
+        estimatedImpact: 'Cross-campaign optimization reallocates spend to maximize overall return on ad spend.',
+      };
+
     default:
       return {
         rootCause: `${input.title}: ${input.message}`,

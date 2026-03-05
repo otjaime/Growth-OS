@@ -11,6 +11,7 @@ export type DiagnosisActionType =
   | 'INCREASE_BUDGET'
   | 'DECREASE_BUDGET'
   | 'REFRESH_CREATIVE'
+  | 'DUPLICATE_AD_SET'
   | 'NONE';
 
 export type DiagnosisSeverityLevel = 'CRITICAL' | 'WARNING' | 'INFO';
@@ -511,6 +512,31 @@ function evaluatePredictiveRoasDecline(input: DiagnosisRuleInput): DiagnosisResu
   };
 }
 
+/**
+ * Rule 15: Duplicate Winner (scale via audience duplication)
+ * Trigger: ROAS > 3.0 AND frequency > 2.5 AND spend > $100 (7d)
+ * Does NOT overlap with winner_not_scaled (which requires freq < 2.0).
+ * High frequency means the current audience is saturated — duplicating the
+ * ad set to fresh lookalike audiences captures incremental revenue without
+ * inflating frequency further.
+ */
+function evaluateDuplicateWinner(input: DiagnosisRuleInput): DiagnosisResult | null {
+  if (input.status !== 'ACTIVE') return null;
+  if (input.roas7d === null || input.roas7d <= 3.0) return null;
+  if (input.frequency7d === null || input.frequency7d <= 2.5) return null;
+  if (input.spend7d <= 100) return null;
+
+  return {
+    ruleId: 'duplicate_winner',
+    severity: 'INFO',
+    title: 'Scale to new audiences',
+    message: `${input.adName} has ${input.roas7d.toFixed(1)}x ROAS but ${input.frequency7d.toFixed(1)}x frequency — duplicate to fresh audiences instead of increasing budget.`,
+    actionType: 'DUPLICATE_AD_SET',
+    suggestedValue: { currentRoas: input.roas7d, frequency: input.frequency7d },
+    confidence: computeConfidence(65, input),
+  };
+}
+
 // ── Main Evaluator ───────────────────────────────────────────
 
 /**
@@ -577,6 +603,13 @@ export function evaluateDiagnosisRules(
   if (!winner) {
     const topPerf = evaluateTopPerformer(input, config);
     if (topPerf) results.push(topPerf);
+  }
+
+  // Rule 15: Duplicate winner — only if winner_not_scaled didn't fire
+  // (winner_not_scaled requires freq < 2.0; duplicate_winner requires freq > 2.5 — no overlap)
+  if (!winner) {
+    const dupWinner = evaluateDuplicateWinner(input);
+    if (dupWinner) results.push(dupWinner);
   }
 
   return results;

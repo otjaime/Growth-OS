@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import {
   Sparkles, Pause, Play, TrendingUp, TrendingDown,
   RefreshCw, Eye, Loader2, CheckCircle2, AlertCircle,
-  ChevronDown, ChevronUp, X,
+  ChevronDown, ChevronUp, X, Copy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdThumbnail } from './ad-thumbnail';
@@ -35,6 +35,7 @@ function ActionIconComponent({ actionType }: { actionType: DiagnosisAction }): J
     case 'INCREASE_BUDGET': return <TrendingUp className="h-3.5 w-3.5" />;
     case 'DECREASE_BUDGET': return <TrendingDown className="h-3.5 w-3.5" />;
     case 'REFRESH_CREATIVE': return <RefreshCw className="h-3.5 w-3.5" />;
+    case 'DUPLICATE_AD_SET': return <Copy className="h-3.5 w-3.5" />;
     default: return <Eye className="h-3.5 w-3.5" />;
   }
 }
@@ -50,6 +51,8 @@ function actionButtonStyle(action: DiagnosisAction): string {
     case 'GENERATE_COPY_VARIANTS':
     case 'REFRESH_CREATIVE':
       return 'text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20';
+    case 'DUPLICATE_AD_SET':
+      return 'bg-[var(--tint-purple)] text-apple-purple';
     default:
       return 'text-[var(--foreground-secondary)] bg-glass-hover hover:bg-glass-active';
   }
@@ -84,7 +87,7 @@ export function ActionCard({
     message: string;
     detail?: string;
     confirmLabel: string;
-    confirmColor: 'red' | 'green' | 'yellow' | 'blue';
+    confirmColor: 'red' | 'green' | 'yellow' | 'blue' | 'purple';
   } | null>(null);
 
   const d = diagnosis;
@@ -160,6 +163,16 @@ export function ActionCard({
           confirmColor: 'green',
         });
         break;
+      case 'DUPLICATE_AD_SET': {
+        const adSetName = ad.adSet?.name ?? 'this ad set';
+        setConfirmModal({
+          title: 'Duplicate Ad Set?',
+          message: `Clone "${adSetName}" with the winning creative to reach new audiences. The new ad set will be created as PAUSED.`,
+          confirmLabel: 'Duplicate',
+          confirmColor: 'purple',
+        });
+        break;
+      }
       default:
         handleApprove();
         break;
@@ -212,10 +225,23 @@ export function ActionCard({
 
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-[var(--foreground)] truncate">
-              {humanAction.verb}
+              {d.ruleId === 'portfolio_rebalance'
+                ? 'Rebalance portfolio'
+                : d.ruleId === 'cross_campaign_rebalance'
+                  ? 'Move budget between campaigns'
+                  : humanAction.verb}
             </p>
             <p className="text-caption text-[var(--foreground-secondary)] truncate mt-0.5">
-              {ad.name} &middot; {formatSpend(Math.round(ad.spend7d / 7))}/day &middot; {formatSpend(Math.round(ad.spend7d / 7 * 30))}/mo
+              {(d.ruleId === 'portfolio_rebalance' || d.ruleId === 'cross_campaign_rebalance') && (() => {
+                const sv = d.suggestedValue as Record<string, unknown> | null;
+                const changePct = typeof sv?.changePct === 'number' ? sv.changePct : null;
+                return changePct !== null
+                  ? `${ad.name} \u00b7 ${changePct > 0 ? '+' : ''}${Math.round(changePct)}% budget`
+                  : `${ad.name} \u00b7 ${formatSpend(Math.round(ad.spend7d / 7))}/day \u00b7 ${formatSpend(Math.round(ad.spend7d / 7 * 30))}/mo`;
+              })()}
+              {d.ruleId !== 'portfolio_rebalance' && d.ruleId !== 'cross_campaign_rebalance' && (
+                <>{ad.name} &middot; {formatSpend(Math.round(ad.spend7d / 7))}/day &middot; {formatSpend(Math.round(ad.spend7d / 7 * 30))}/mo</>
+              )}
               {d.actionType === 'PAUSE_AD' && ad.spend7d > 0 && (
                 <span className="text-apple-red"> &middot; losing money</span>
               )}
