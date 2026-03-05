@@ -42,11 +42,12 @@ function baseInput(overrides: Partial<DiagnosisRuleInput> = {}): DiagnosisRuleIn
 // ── Rule 7: Learning Phase (blocks all others) ───────────────
 
 describe('Rule 7: Learning Phase', () => {
-  it('fires for ad younger than 48h', () => {
+  it('fires for new ad with low impressions and low spend', () => {
     const input = baseInput({
       createdAt: new Date('2026-02-25T00:00:00Z'), // 12h old
-      roas7d: 0.5, // Would trigger negative ROAS, but learning should block it
-      spend7d: 200,
+      impressions7d: 200,
+      spend7d: 30, // < $100 threshold
+      roas7d: 0.5,
     });
     const results = evaluateDiagnosisRules(input, NOW);
     expect(results).toHaveLength(1);
@@ -54,30 +55,43 @@ describe('Rule 7: Learning Phase', () => {
     expect(results[0]!.actionType).toBe('NONE');
   });
 
-  it('fires for ad with fewer than 500 impressions', () => {
+  it('does NOT fire for old ad with low impressions (high-CPC niche)', () => {
+    // An old ad with $100+ spend but few impressions is NOT learning — it's
+    // just a high-CPC niche. Other rules (negative_roas, wasted_budget) should fire.
     const input = baseInput({
       impressions7d: 300,
-      roas7d: 0.3, // Would trigger negative ROAS
+      roas7d: 0.3,
       spend7d: 100,
+    });
+    const results = evaluateDiagnosisRules(input, NOW);
+    expect(results.every((r) => r.ruleId !== 'learning_phase')).toBe(true);
+    expect(results.some((r) => r.ruleId === 'negative_roas')).toBe(true);
+  });
+
+  it('blocks ALL other rules when in learning phase', () => {
+    const input = baseInput({
+      createdAt: new Date('2026-02-25T06:00:00Z'), // 6h old
+      impressions7d: 100, // low impressions
+      spend7d: 20, // low spend — genuinely learning
+      roas7d: 0.5,
+      conversions7d: 0,
+      ctr7d: 0.002,
+      frequency7d: 5.0,
     });
     const results = evaluateDiagnosisRules(input, NOW);
     expect(results).toHaveLength(1);
     expect(results[0]!.ruleId).toBe('learning_phase');
   });
 
-  it('blocks ALL other rules when in learning phase', () => {
+  it('does NOT fire for new ad with significant spend', () => {
+    // Even if < 48h old, $200+ spend means real delivery data exists
     const input = baseInput({
-      createdAt: new Date('2026-02-25T06:00:00Z'), // 6h old
-      // These would normally fire multiple rules:
-      roas7d: 0.5,    // negative ROAS
-      spend7d: 200,    // wasted budget
-      conversions7d: 0,
-      ctr7d: 0.002,   // low CTR
-      frequency7d: 5.0, // creative fatigue
+      createdAt: new Date('2026-02-25T00:00:00Z'), // 12h old
+      spend7d: 200,
+      roas7d: 0.5,
     });
     const results = evaluateDiagnosisRules(input, NOW);
-    expect(results).toHaveLength(1);
-    expect(results[0]!.ruleId).toBe('learning_phase');
+    expect(results.every((r) => r.ruleId !== 'learning_phase')).toBe(true);
   });
 
   it('does NOT fire for mature ad with sufficient impressions', () => {

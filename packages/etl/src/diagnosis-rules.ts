@@ -107,8 +107,10 @@ function evaluateLearningPhase(input: DiagnosisRuleInput, now: Date): DiagnosisR
   const isNew = ageHours < 48;
   const lowImpressions = input.impressions7d < 500;
 
-  // Either condition triggers learning phase
-  if (isNew || lowImpressions) {
+  // Both conditions must be true — an old ad with low impressions is likely
+  // just a high-CPC niche (not learning), and a new ad with data is past learning.
+  // Also skip if significant spend exists (real delivery data available).
+  if (isNew && lowImpressions && input.spend7d < 100) {
     return {
       ruleId: 'learning_phase',
       severity: 'INFO',
