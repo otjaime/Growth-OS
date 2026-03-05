@@ -21,6 +21,10 @@ export type {
   HumanAction,
   MetricKey,
   MetricExplanation,
+  ProductPerformanceRow,
+  ProactiveRecommendation,
+  ProactiveAdJob,
+  ProactiveAdStatus,
 } from './types';
 export { SeverityBadge, SeverityIcon, SeverityDot } from './severity-badge';
 export { ExpiryCountdown } from './expiry-countdown';
@@ -54,6 +58,8 @@ export { UndoToastProvider, showUndoToast } from './undo-toast';
 export { HelpDrawer } from './help-drawer';
 export { AdsSearchBar } from './ads-search-bar';
 export { AdDetailSheet } from './ad-detail-sheet';
+export { ProductsTab } from './products-tab';
+export { ProactiveJobCard } from './proactive-job-card';
 export {
   ACTION_LABELS,
   SEVERITY_LABELS,

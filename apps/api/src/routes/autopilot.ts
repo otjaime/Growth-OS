@@ -2308,4 +2308,238 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     return { success: true, message: 'Circuit breaker reset. Auto mode re-enabled.' };
   });
+
+  // ── GET /autopilot/product-opportunities ───────────────────
+  app.get('/autopilot/product-opportunities', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Proactive product ad recommendations',
+      description: 'Returns products with high ad fitness scores not yet being advertised.',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    // Get top products by fitness score
+    const products = await prisma.productPerformance.findMany({
+      where: { organizationId },
+      orderBy: { adFitnessScore: 'desc' },
+      take: 20,
+    });
+
+    // Get existing ad headlines to match against product titles
+    const existingAds = await prisma.metaAd.findMany({
+      where: { organizationId, status: 'ACTIVE' },
+      select: { headline: true, primaryText: true },
+    });
+    const adTexts = new Set(
+      existingAds
+        .flatMap((a) => [a.headline, a.primaryText])
+        .filter((t): t is string => !!t)
+        .map((t) => t.toLowerCase()),
+    );
+
+    // Determine which products are already being advertised
+    const existingProductAds = new Set<string>();
+    for (const p of products) {
+      const titleLower = p.productTitle.toLowerCase();
+      for (const text of adTexts) {
+        if (text.includes(titleLower) || titleLower.includes(text)) {
+          existingProductAds.add(p.productTitle);
+          break;
+        }
+      }
+    }
+
+    const { evaluateProactiveRules } = await import('@growth-os/etl');
+
+    const recommendations = evaluateProactiveRules({
+      products: products.map((p) => ({
+        productTitle: p.productTitle,
+        productType: p.productType,
+        adFitnessScore: Number(p.adFitnessScore ?? 0),
+        revenue30d: Number(p.revenue30d),
+        grossProfit30d: Number(p.grossProfit30d),
+        estimatedMargin: Number(p.estimatedMargin),
+        avgPrice: Number(p.avgPrice),
+        avgDailyUnits: Number(p.avgDailyUnits),
+        imageUrl: p.imageUrl,
+      })),
+      existingProductAds,
+    });
+
+    return {
+      recommendations,
+      totalProducts: products.length,
+      eligibleCount: products.filter((p) => Number(p.adFitnessScore ?? 0) >= 60).length,
+      alreadyAdvertised: existingProductAds.size,
+    };
+  });
+
+  // ── GET /autopilot/proactive/jobs ──────────────────────────
+  app.get('/autopilot/proactive/jobs', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'List proactive ad jobs',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+
+    const jobs = await prisma.proactiveAdJob.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return {
+      jobs: jobs.map((j) => ({
+        id: j.id,
+        productTitle: j.productTitle,
+        productType: j.productType,
+        productImageUrl: j.productImageUrl,
+        adFitnessScore: Number(j.adFitnessScore),
+        status: j.status,
+        copyVariants: j.copyVariants,
+        imageUrl: j.imageUrl,
+        imageSource: j.imageSource,
+        testRoundNumber: j.testRoundNumber,
+        testStartedAt: j.testStartedAt,
+        winnerId: j.winnerId,
+        dailyBudget: j.dailyBudget ? Number(j.dailyBudget) : null,
+        errorMessage: j.errorMessage,
+        createdAt: j.createdAt,
+        updatedAt: j.updatedAt,
+      })),
+    };
+  });
+
+  // ── POST /autopilot/proactive/generate ───────────────────
+  app.post('/autopilot/proactive/generate', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Trigger proactive ad pipeline for top products',
+    },
+  }, async (request) => {
+    const organizationId = await resolveOrgId(request);
+    const { runProactiveDiscovery } = await import('../jobs/proactive-ad-pipeline.js');
+    const result = await runProactiveDiscovery(organizationId);
+    return result;
+  });
+
+  // ── GET /autopilot/proactive/jobs/:id ─────────────────────
+  app.get<{ Params: { id: string } }>('/autopilot/proactive/jobs/:id', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Get single proactive ad job detail',
+    },
+  }, async (request) => {
+    const job = await prisma.proactiveAdJob.findUnique({
+      where: { id: request.params.id },
+    });
+
+    if (!job) {
+      return { error: 'Job not found' };
+    }
+
+    return {
+      id: job.id,
+      productTitle: job.productTitle,
+      productType: job.productType,
+      productImageUrl: job.productImageUrl,
+      adFitnessScore: Number(job.adFitnessScore),
+      status: job.status,
+      copyVariants: job.copyVariants,
+      imageHash: job.imageHash,
+      imageUrl: job.imageUrl,
+      imageSource: job.imageSource,
+      metaAdSetId: job.metaAdSetId,
+      metaAdIds: job.metaAdIds,
+      testRoundNumber: job.testRoundNumber,
+      testStartedAt: job.testStartedAt,
+      winnerId: job.winnerId,
+      dailyBudget: job.dailyBudget ? Number(job.dailyBudget) : null,
+      errorMessage: job.errorMessage,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    };
+  });
+
+  // ── POST /autopilot/proactive/jobs/:id/approve ────────────
+  app.post<{ Params: { id: string } }>('/autopilot/proactive/jobs/:id/approve', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Approve a READY proactive job → generate assets + publish to Meta',
+    },
+  }, async (request) => {
+    const job = await prisma.proactiveAdJob.findUnique({
+      where: { id: request.params.id },
+    });
+
+    if (!job) return { error: 'Job not found' };
+
+    // If PENDING, generate assets first, then approve
+    if (job.status === 'PENDING') {
+      const { generateProactiveAssets } = await import('../jobs/proactive-ad-pipeline.js');
+      const genResult = await generateProactiveAssets(job.id);
+      if (!genResult.success) {
+        return { error: `Generation failed: ${genResult.error}` };
+      }
+    }
+
+    // Mark approved
+    await prisma.proactiveAdJob.update({
+      where: { id: request.params.id },
+      data: { status: 'APPROVED' },
+    });
+
+    // Publish to Meta
+    const { publishProactiveJob } = await import('../jobs/proactive-ad-pipeline.js');
+    const pubResult = await publishProactiveJob(request.params.id);
+
+    return { success: pubResult.success, error: pubResult.error };
+  });
+
+  // ── POST /autopilot/proactive/jobs/:id/reject ─────────────
+  app.post<{ Params: { id: string } }>('/autopilot/proactive/jobs/:id/reject', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Reject a proactive job',
+    },
+  }, async (request) => {
+    await prisma.proactiveAdJob.update({
+      where: { id: request.params.id },
+      data: { status: 'PAUSED' },
+    });
+
+    return { success: true };
+  });
+
+  // ── POST /autopilot/proactive/jobs/:id/activate ───────────
+  app.post<{ Params: { id: string } }>('/autopilot/proactive/jobs/:id/activate', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Activate a PUBLISHED job for A/B testing',
+    },
+  }, async (request) => {
+    const job = await prisma.proactiveAdJob.findUnique({
+      where: { id: request.params.id },
+    });
+
+    if (!job) return { error: 'Job not found' };
+    if (job.status !== 'PUBLISHED') {
+      return { error: `Job must be PUBLISHED, got ${job.status}` };
+    }
+
+    // In demo mode, just set status
+    await prisma.proactiveAdJob.update({
+      where: { id: request.params.id },
+      data: {
+        status: 'TESTING',
+        testStartedAt: new Date(),
+      },
+    });
+
+    // TODO: In live mode, activate the Meta ads via reactivateAd()
+
+    return { success: true };
+  });
 }

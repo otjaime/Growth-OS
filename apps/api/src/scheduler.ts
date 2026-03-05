@@ -98,15 +98,21 @@ async function startScheduler() {
           }
         } else if (job.data.type === 'build-marts') {
           await buildMarts();
+          const { buildProductPerformance } = await import('@growth-os/etl');
+          await buildProductPerformance();
         } else if (job.data.type === 'autopilot') {
           const { syncMetaAds } = await import('./jobs/sync-meta-ads.js');
           const { runDiagnosis } = await import('./jobs/run-diagnosis.js');
+          const { runProactiveDiscovery, runProactiveABLoop } = await import('./jobs/proactive-ad-pipeline.js');
           // Run for all orgs
           const orgs = await prisma.organization.findMany({ select: { id: true } });
           for (const org of orgs) {
             try {
               await syncMetaAds(org.id);
               await runDiagnosis(org.id);
+              // Proactive: discover new product opportunities + evaluate A/B tests
+              await runProactiveDiscovery(org.id);
+              await runProactiveABLoop(org.id);
             } catch (err) {
               log.error({ orgId: org.id, error: String(err) }, 'Autopilot sync failed for org');
             }
