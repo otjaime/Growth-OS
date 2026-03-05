@@ -118,7 +118,7 @@ export async function executeAction(
     include: {
       ad: {
         include: {
-          adSet: { select: { adSetId: true, dailyBudget: true } },
+          adSet: { select: { id: true, adSetId: true, dailyBudget: true } },
           campaign: { select: { campaignId: true } },
           account: { select: { adAccountId: true, currency: true } },
         },
@@ -293,6 +293,26 @@ export async function executeAction(
         executionResult: result as never,
       },
     });
+
+    // Update MetaAdSet.dailyBudget in DB immediately after successful budget change
+    // so the next diagnosis run sees the current budget (not stale pre-change value)
+    if (
+      (diagnosis.actionType === 'INCREASE_BUDGET' || diagnosis.actionType === 'DECREASE_BUDGET') &&
+      diagnosis.ad.adSet?.id
+    ) {
+      const sv = diagnosis.suggestedValue as Record<string, unknown> | null;
+      const newBudget = Number(sv?.newBudget ?? sv?.suggestedBudget ?? 0);
+      if (newBudget > 0) {
+        try {
+          await prisma.metaAdSet.update({
+            where: { id: diagnosis.ad.adSet.id },
+            data: { dailyBudget: newBudget },
+          });
+        } catch {
+          // Non-fatal: sync will eventually update from Meta API
+        }
+      }
+    }
 
     // Audit log
     await prisma.autopilotActionLog.create({
