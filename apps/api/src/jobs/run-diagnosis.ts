@@ -41,6 +41,8 @@ import { enrichDiagnosis } from './enrich-diagnosis.js';
 import type { DiagnosisEnrichment } from './enrich-diagnosis.js';
 import { computeForecastBudgetContext } from './forecast-aware-budget.js';
 import type { ForecastBudgetContext } from './forecast-aware-budget.js';
+import { optimizeCampaignAllocation } from './campaign-optimizer.js';
+import type { CampaignMetricsInput } from './campaign-optimizer.js';
 
 export interface RunDiagnosisResult {
   adsEvaluated: number;
@@ -778,6 +780,204 @@ export async function runDiagnosis(
             suggestedValue: enrichedSuggestedValue as never,
             confidence: adjustedConfidence,
             expiresAt,
+          },
+        });
+        diagnosesCreated++;
+      }
+    }
+  }
+
+  // ── Feature 2: Portfolio rebalancing → create diagnoses from optimizer ──
+  if (portfolioResult) {
+    for (const alloc of portfolioResult.allocations) {
+      if (Math.abs(alloc.changePct) < 15) continue; // Only significant changes
+
+      // Find the top-ROAS active ad in this ad set to use as diagnosis target
+      const topAd = ads
+        .filter(a => a.adSet?.id === alloc.adSetId && a.status === 'ACTIVE')
+        .sort((a, b) => (b.roas7d?.toNumber() ?? 0) - (a.roas7d?.toNumber() ?? 0))[0];
+      if (!topAd) continue;
+
+      const ruleId = 'portfolio_rebalance';
+      firedPairs.add(`${topAd.id}::${ruleId}`);
+
+      const actionType = alloc.changePct > 0 ? 'INCREASE_BUDGET' : 'DECREASE_BUDGET';
+      const title = alloc.changePct > 0
+        ? 'Rebalance: shift budget to better performers'
+        : 'Rebalance: reduce spend on underperformer';
+      const message = `Portfolio optimizer suggests ${alloc.changePct > 0 ? 'increasing' : 'decreasing'} ${alloc.adSetName} budget by ${Math.abs(Math.round(alloc.changePct))}% (from $${Math.round(alloc.currentDailyBudget)}/day to $${Math.round(alloc.suggestedDailyBudget)}/day). Reason: ${alloc.reason}`;
+
+      const suggestedValue = {
+        currentBudget: alloc.currentDailyBudget,
+        suggestedBudget: alloc.suggestedDailyBudget,
+        newBudget: alloc.suggestedDailyBudget, // alias for executor compatibility
+        changePct: alloc.changePct,
+        reason: alloc.reason,
+        isPortfolioRebalance: true,
+      };
+
+      const portfolioExpiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+
+      // Use same upsert pattern as the per-ad loop
+      const existing = await prisma.diagnosis.findUnique({
+        where: { organizationId_adId_ruleId: { organizationId, adId: topAd.id, ruleId } },
+      });
+
+      if (existing) {
+        if (existing.status === 'PENDING' || existing.status === 'EXECUTED' || existing.status === 'EXPIRED') {
+          await prisma.diagnosis.update({
+            where: { id: existing.id },
+            data: {
+              status: 'PENDING',
+              severity: 'INFO',
+              title,
+              message,
+              actionType,
+              suggestedValue: suggestedValue as never,
+              confidence: 70,
+              expiresAt: portfolioExpiresAt,
+              executionResult: Prisma.DbNull,
+              executedAt: null,
+              aiInsight: Prisma.DbNull,
+              aiInsightAt: null,
+            },
+          });
+          diagnosesUpdated++;
+        }
+      } else {
+        await prisma.diagnosis.create({
+          data: {
+            organizationId,
+            adId: topAd.id,
+            ruleId,
+            severity: 'INFO',
+            title,
+            message,
+            actionType,
+            suggestedValue: suggestedValue as never,
+            confidence: 70,
+            expiresAt: portfolioExpiresAt,
+          },
+        });
+        diagnosesCreated++;
+      }
+    }
+  }
+
+  // ── Feature 3: Cross-campaign allocation → shift budget between campaigns ──
+  {
+    // Aggregate spend, revenue, and budgets per campaign from the ads array
+    const campaignAgg = new Map<string, {
+      campaignId: string;
+      campaignName: string;
+      totalSpend7d: number;
+      totalRevenue7d: number;
+      adSetIds: Set<string>;
+      totalDailyBudget: number;
+    }>();
+
+    for (const ad of ads) {
+      if (!ad.campaignId) continue;
+      const agg = campaignAgg.get(ad.campaignId) ?? {
+        campaignId: ad.campaignId,
+        campaignName: ad.campaign?.name ?? ad.campaignId,
+        totalSpend7d: 0,
+        totalRevenue7d: 0,
+        adSetIds: new Set<string>(),
+        totalDailyBudget: 0,
+      };
+      agg.totalSpend7d += ad.spend7d?.toNumber() ?? 0;
+      agg.totalRevenue7d += ad.revenue7d?.toNumber() ?? 0;
+      if (ad.adSet) {
+        if (!agg.adSetIds.has(ad.adSet.id)) {
+          agg.adSetIds.add(ad.adSet.id);
+          agg.totalDailyBudget += ad.adSet.dailyBudget?.toNumber() ?? 0;
+        }
+      }
+      campaignAgg.set(ad.campaignId, agg);
+    }
+
+    const campaignInputs: CampaignMetricsInput[] = Array.from(campaignAgg.values()).map(agg => ({
+      campaignId: agg.campaignId,
+      campaignName: agg.campaignName,
+      totalSpend7d: agg.totalSpend7d,
+      totalRevenue7d: agg.totalRevenue7d,
+      roas7d: agg.totalSpend7d > 0 ? agg.totalRevenue7d / agg.totalSpend7d : null,
+      adSetCount: agg.adSetIds.size,
+      currentDailyBudget: agg.totalDailyBudget,
+    }));
+
+    const campaignAllocations = optimizeCampaignAllocation(campaignInputs, {
+      targetRoas: autopilotConfig?.targetRoas?.toNumber() ?? 2.0,
+      maxChangePct: autopilotConfig?.maxBudgetIncreasePct ?? 30,
+    });
+
+    for (const alloc of campaignAllocations) {
+      // Find the top-ROAS active ad in this campaign to use as diagnosis target
+      const topAd = ads
+        .filter(a => a.campaignId === alloc.campaignId && a.status === 'ACTIVE')
+        .sort((a, b) => (b.roas7d?.toNumber() ?? 0) - (a.roas7d?.toNumber() ?? 0))[0];
+      if (!topAd) continue;
+
+      const ruleId = 'cross_campaign_rebalance';
+      firedPairs.add(`${topAd.id}::${ruleId}`);
+
+      const actionType = alloc.changePct > 0 ? 'INCREASE_BUDGET' : 'DECREASE_BUDGET';
+      const title = alloc.changePct > 0
+        ? 'Cross-campaign: scale high-ROAS campaign'
+        : 'Cross-campaign: reduce low-ROAS campaign';
+      const message = `Cross-campaign optimizer suggests ${alloc.changePct > 0 ? 'increasing' : 'decreasing'} ${alloc.campaignName} budget by ${Math.abs(Math.round(alloc.changePct))}% (from $${Math.round(alloc.currentDailyBudget)}/day to $${Math.round(alloc.suggestedDailyBudget)}/day). Reason: ${alloc.reason}`;
+
+      const suggestedValue = {
+        currentBudget: alloc.currentDailyBudget,
+        suggestedBudget: alloc.suggestedDailyBudget,
+        newBudget: alloc.suggestedDailyBudget, // alias for executor compatibility
+        changePct: alloc.changePct,
+        reason: alloc.reason,
+        isCrossCampaignRebalance: true,
+      };
+
+      const crossCampaignExpiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+
+      // Use same upsert pattern
+      const existing = await prisma.diagnosis.findUnique({
+        where: { organizationId_adId_ruleId: { organizationId, adId: topAd.id, ruleId } },
+      });
+
+      if (existing) {
+        if (existing.status === 'PENDING' || existing.status === 'EXECUTED' || existing.status === 'EXPIRED') {
+          await prisma.diagnosis.update({
+            where: { id: existing.id },
+            data: {
+              status: 'PENDING',
+              severity: 'INFO',
+              title,
+              message,
+              actionType,
+              suggestedValue: suggestedValue as never,
+              confidence: 65,
+              expiresAt: crossCampaignExpiresAt,
+              executionResult: Prisma.DbNull,
+              executedAt: null,
+              aiInsight: Prisma.DbNull,
+              aiInsightAt: null,
+            },
+          });
+          diagnosesUpdated++;
+        }
+      } else {
+        await prisma.diagnosis.create({
+          data: {
+            organizationId,
+            adId: topAd.id,
+            ruleId,
+            severity: 'INFO',
+            title,
+            message,
+            actionType,
+            suggestedValue: suggestedValue as never,
+            confidence: 65,
+            expiresAt: crossCampaignExpiresAt,
           },
         });
         diagnosesCreated++;

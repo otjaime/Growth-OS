@@ -12,6 +12,7 @@ import {
   updateAdSetBudget,
   updateCampaignBudget,
   createAdFromVariant,
+  duplicateAdSet,
 } from '../lib/meta-executor.js';
 import type { ExecutionResult } from '../lib/meta-executor.js';
 
@@ -50,6 +51,11 @@ function getBeforeValue(diagnosis: DiagnosisWithAd): Record<string, unknown> | n
       return { action: 'create_new_ad' };
     case 'REFRESH_CREATIVE':
       return { action: 'refresh_creative' };
+    case 'DUPLICATE_AD_SET':
+      return {
+        adSetId: diagnosis.ad.adSet.adSetId,
+        adSetName: diagnosis.ad.adSet.name ?? diagnosis.ad.adSet.adSetId,
+      };
     default:
       return null;
   }
@@ -81,6 +87,10 @@ function getAfterValue(
       const resp = result.metaResponse as { adId?: string } | undefined;
       return { newAdId: resp?.adId ?? null };
     }
+    case 'DUPLICATE_AD_SET': {
+      const resp = result.metaResponse as { newAdSetId?: string; newAdId?: unknown } | undefined;
+      return { newAdSetId: resp?.newAdSetId ?? null, newAdId: resp?.newAdId ?? null };
+    }
     default:
       return null;
   }
@@ -97,7 +107,7 @@ interface DiagnosisWithAd {
     readonly adId: string;
     readonly name: string;
     readonly status: string;
-    readonly adSet: { readonly adSetId: string; readonly dailyBudget: unknown };
+    readonly adSet: { readonly adSetId: string; readonly name: string | null; readonly dailyBudget: unknown };
     readonly campaign: { readonly campaignId: string };
     readonly account: { readonly adAccountId: string; readonly currency: string };
   };
@@ -118,7 +128,7 @@ export async function executeAction(
     include: {
       ad: {
         include: {
-          adSet: { select: { id: true, adSetId: true, dailyBudget: true } },
+          adSet: { select: { id: true, adSetId: true, name: true, dailyBudget: true } },
           campaign: { select: { campaignId: true } },
           account: { select: { adAccountId: true, currency: true } },
         },
@@ -274,6 +284,13 @@ export async function executeAction(
         // Same as GENERATE_COPY_VARIANTS flow
         result = { success: false, error: 'REFRESH_CREATIVE requires a variant — use generate-copy first', retryable: false };
         break;
+
+      case 'DUPLICATE_AD_SET': {
+        const adSetName = diagnosis.ad.adSet.name ?? metaAdSetId;
+        const newName = `${adSetName} — GrowthOS Duplicate`;
+        result = await duplicateAdSet(accessToken, adAccountId, metaAdSetId, metaAdId, newName);
+        break;
+      }
 
       default:
         result = { success: false, error: `Unknown action type: ${diagnosis.actionType}`, retryable: false };

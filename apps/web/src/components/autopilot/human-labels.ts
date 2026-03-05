@@ -50,6 +50,13 @@ export const ACTION_LABELS: Record<DiagnosisAction, HumanAction> = {
     activeLabel: 'Refreshing...',
     icon: 'RefreshCw',
   },
+  DUPLICATE_AD_SET: {
+    verb: 'Duplicate to new audiences',
+    description: 'This ad is profitable but the audience is saturated. Clone the ad set to reach fresh audiences.',
+    buttonLabel: 'Duplicate ad set',
+    activeLabel: 'Duplicating...',
+    icon: 'Copy',
+  },
   NONE: {
     verb: 'Keep watching',
     description: "No action needed right now. We'll keep monitoring.",
@@ -134,6 +141,18 @@ export const RULE_LABELS: Record<string, { label: string; explanation: string }>
   cost_spike: {
     label: 'Costs are rising fast',
     explanation: 'The cost per click jumped significantly. This usually means increased competition or audience fatigue.',
+  },
+  portfolio_rebalance: {
+    label: 'Budget rebalancing recommended',
+    explanation: 'The portfolio optimizer suggests redistributing budget across ad sets for better overall ROAS.',
+  },
+  cross_campaign_rebalance: {
+    label: 'Cross-campaign budget move',
+    explanation: 'Moving budget from a low-performing campaign to a high-performing one could improve overall returns.',
+  },
+  duplicate_winner: {
+    label: 'Winner ready for audience expansion',
+    explanation: 'This ad has strong ROAS but audience is saturating. Duplicating to new audiences extends reach without budget fatigue.',
   },
 };
 
