@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma, Prisma, encrypt, decrypt, isDemoMode } from '@growth-os/database';
 import crypto from 'crypto';
 import { runConnectorSync } from '../lib/run-connector-sync.js';
-import { normalizeStaging, buildMarts } from '@growth-os/etl';
+import { normalizeStaging, buildMarts, buildProductPerformance } from '@growth-os/etl';
 import { getGoogleOAuthConfig } from '../lib/google-oauth-config.js';
 import { orgWhere, orgData, orgSqlParam } from '../lib/tenant.js';
 
@@ -1016,9 +1016,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   // ── Rebuild marts from existing staging data ───────────────
   app.post('/connections/rebuild-marts', async () => {
-    // Re-run normalizeStaging + buildMarts without re-fetching from APIs
+    // Re-run normalizeStaging + buildMarts + buildProductPerformance without re-fetching from APIs
     normalizeStaging()
       .then(() => buildMarts())
+      .then(() => buildProductPerformance())
       .then((result) => {
         app.log.info({ result }, 'Marts rebuilt successfully');
       })
@@ -1077,6 +1078,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     // Trigger pipeline rebuild in background
     normalizeStaging()
       .then(() => buildMarts())
+      .then(() => buildProductPerformance())
       .then((result) => {
         app.log.info({ result, source: 'csv_upload', rows: created.count }, 'CSV upload pipeline rebuild complete');
       })

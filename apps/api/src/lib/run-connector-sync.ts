@@ -3,6 +3,7 @@ import {
   ingestRaw,
   normalizeStaging,
   buildMarts,
+  buildProductPerformance,
   fetchShopifyOrders,
   fetchShopifyCustomers,
   fetchMetaInsights,
@@ -28,6 +29,7 @@ export async function runConnectorSync(connectorType: string): Promise<{ rowsLoa
     const rowsLoaded = await ingestRaw(all);
     await normalizeStaging();
     await buildMarts();
+    await buildProductPerformance();
     return { rowsLoaded };
   }
 
@@ -56,6 +58,7 @@ export async function runConnectorSync(connectorType: string): Promise<{ rowsLoa
   const rowsLoaded = await ingestRaw(allRecords);
   await normalizeStaging();
   await buildMarts();
+  await buildProductPerformance();
 
   return { rowsLoaded };
 }
@@ -75,6 +78,7 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
     const rowsLoaded = await ingestRaw(all);
     await normalizeStaging();
     await buildMarts();
+    await buildProductPerformance();
     return { rowsLoaded };
   }
 
@@ -120,6 +124,7 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
   const rowsLoaded = await ingestRaw(allRecords);
   await normalizeStaging();
   await buildMarts();
+  await buildProductPerformance();
 
   // Update all connector credentials with successful sync timestamp
   await prisma.connectorCredential.updateMany({

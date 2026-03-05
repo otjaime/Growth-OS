@@ -7,6 +7,7 @@ import { prisma, isDemoMode, decrypt, getAppSetting } from '@growth-os/database'
 import { ingestRaw } from './pipeline/step1-ingest-raw.js';
 import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
+import { buildProductPerformance } from './pipeline/step4-build-product-performance.js';
 import { fetchShopifyOrders, fetchShopifyCustomers } from './connectors/shopify.js';
 import { fetchMetaInsights } from './connectors/meta.js';
 import { fetchGoogleAdsInsights } from './connectors/google-ads.js';
@@ -178,6 +179,7 @@ async function runSync() {
     const rowsLoaded = await ingestRaw(allRecords);
     await normalizeStaging();
     await buildMarts();
+    await buildProductPerformance();
 
     const durationMs = Date.now() - startTime;
     await prisma.jobRun.update({
