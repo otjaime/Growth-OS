@@ -269,6 +269,7 @@ export interface AutopilotStats {
   adSets: number;
   totalAds: number;
   activeAds: number;
+  currency: string;
   metrics7d: {
     totalSpend: number;
     totalRevenue: number;

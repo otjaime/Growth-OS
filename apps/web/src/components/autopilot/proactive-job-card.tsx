@@ -152,7 +152,7 @@ export function ProactiveJobCard({ job, onRefresh }: ProactiveJobCardProps): JSX
         {/* Score + Test Info */}
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-[var(--foreground-secondary)]">Ad Score:</span>
+            <span className="text-[var(--foreground-secondary)]">Readiness:</span>
             <span className="font-semibold text-[var(--foreground)]">{Number(job.adFitnessScore).toFixed(0)}</span>
           </div>
           {job.dailyBudget != null && (

@@ -131,7 +131,7 @@ export function ProactiveConfirmModal({
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5 px-3 py-2 bg-[var(--glass-bg-thin)] rounded-lg">
               <Sparkles className="h-3 w-3 text-apple-purple" />
-              <span className="text-[var(--foreground-secondary)]">Ad Score:</span>
+              <span className="text-[var(--foreground-secondary)]">Readiness:</span>
               <span className="font-semibold text-[var(--foreground)]">{Number(job.adFitnessScore).toFixed(0)}</span>
             </div>
             {job.dailyBudget != null && (

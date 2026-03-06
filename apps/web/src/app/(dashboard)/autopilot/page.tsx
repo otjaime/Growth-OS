@@ -7,6 +7,7 @@ import {
   BarChart3, DollarSign, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { formatMoney } from '@/lib/format';
 import {
   type Diagnosis,
   type DiagnosisStats,
@@ -46,11 +47,7 @@ const MODE_OPTIONS: { key: AutopilotMode; label: string; icon: typeof Eye }[] = 
   { key: 'auto', label: MODE_LABELS.auto.label, icon: Zap },
 ];
 
-function formatCompact(num: number): string {
-  if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
-  return `$${num.toFixed(0)}`;
-}
+// formatCompact is now currency-aware — see formatMoney() from @/lib/format
 
 export default function AutopilotPage() {
   // ── Core state ────────────────────────────────────────────────
@@ -469,8 +466,8 @@ export default function AutopilotPage() {
               <DollarSign className="h-3.5 w-3.5 text-apple-purple" />
               <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Spent / 7d</p>
             </div>
-            <p className="text-2xl font-bold text-[var(--foreground)]">{formatCompact(autopilotStats.metrics7d.totalSpend)}</p>
-            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">{formatCompact(autopilotStats.metrics7d.totalRevenue)} revenue</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatMoney(autopilotStats.metrics7d.totalSpend, autopilotStats.currency)}</p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">{formatMoney(autopilotStats.metrics7d.totalRevenue, autopilotStats.currency)} revenue</p>
           </ReflectiveCard>
 
           <ReflectiveCard className="card p-4" intensity="subtle">
@@ -487,7 +484,7 @@ export default function AutopilotPage() {
             }`}>
               {autopilotStats.metrics7d.blendedRoas != null ? `${autopilotStats.metrics7d.blendedRoas.toFixed(2)}x` : '--'}
             </p>
-            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">for every $1 spent</p>
+            <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">per unit spent</p>
           </ReflectiveCard>
 
           <ReflectiveCard className="card p-4" intensity="subtle">
@@ -701,7 +698,7 @@ export default function AutopilotPage() {
           {activeTab === 'products' && <ProductsTab />}
 
           {/* ── Campaigns Tab ───────────────────────────────────── */}
-          {activeTab === 'campaigns' && <CampaignsTab />}
+          {activeTab === 'campaigns' && <CampaignsTab currency={autopilotStats?.currency} />}
         </motion.div>
       </AnimatePresence>
 
