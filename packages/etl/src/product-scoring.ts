@@ -34,28 +34,34 @@ export interface AdFitnessResult {
  * Score a product's fitness for paid advertising (0-100).
  *
  * Components:
- *   - Margin (0-25):    Products below 30% margin are not viable for paid ads.
- *   - Velocity (0-25):  5+ daily units proves organic demand exists.
- *   - Profit (0-20):    $5K+ monthly gross profit means scale is proven.
- *   - Repeat (0-15):    20%+ repeat buyer rate signals product-market fit.
+ *   - Margin (0-20):    Products below 25% margin are not viable for paid ads.
+ *   - Velocity (0-20):  1+ daily units proves organic demand exists.
+ *   - Profit (0-30):    $1K+ monthly gross profit means scale is proven.
+ *   - Repeat (0-15):    10%+ repeat buyer rate signals product-market fit.
  *   - Readiness (0-15): 5 pts for image, 5 pts for description, 5 pts for price > 0.
  *
  * Products scoring 60+ are "ad-eligible."
+ *
+ * Thresholds are calibrated for specialty/DTC ecommerce where
+ * 0.3-1 daily units is healthy velocity.
  */
 export function scoreAdFitness(input: AdFitnessInput): AdFitnessResult {
-  // Margin score: scale from 30% to 65% linearly (0-25 pts)
-  const marginScore = input.estimatedMargin <= 0.30
+  // Margin score: scale from 25% to 55% linearly (0-20 pts)
+  const marginScore = input.estimatedMargin <= 0.25
     ? 0
-    : Math.min(25, ((input.estimatedMargin - 0.30) / 0.35) * 25);
+    : Math.min(20, ((input.estimatedMargin - 0.25) / 0.30) * 20);
 
-  // Velocity score: scale from 0 to 5 daily units (0-25 pts)
-  const velocityScore = Math.min(25, (input.avgDailyUnits / 5) * 25);
+  // Velocity score: scale from 0 to 1 daily unit (0-20 pts)
+  // 1+ unit/day = max score. Calibrated for specialty DTC.
+  const velocityScore = Math.min(20, (input.avgDailyUnits / 1) * 20);
 
-  // Profit score: scale from $0 to $5000 monthly gross profit (0-20 pts)
-  const profitScore = Math.min(20, (input.grossProfit30d / 5000) * 20);
+  // Profit score: scale from $0 to $1000 monthly gross profit (0-30 pts)
+  // Lower threshold rewards products that are profitable at smaller scale.
+  const profitScore = Math.min(30, (input.grossProfit30d / 1000) * 30);
 
-  // Repeat buyer score: scale from 0% to 20% repeat rate (0-15 pts)
-  const repeatScore = Math.min(15, (input.repeatBuyerPct / 0.20) * 15);
+  // Repeat buyer score: scale from 0% to 10% repeat rate (0-15 pts)
+  // 10%+ repeat rate signals product-market fit.
+  const repeatScore = Math.min(15, (input.repeatBuyerPct / 0.10) * 15);
 
   // Readiness score: 5 pts each for image, description, valid price (0-15 pts)
   const readinessScore =
@@ -86,9 +92,9 @@ export function scoreAdFitness(input: AdFitnessInput): AdFitnessResult {
           ? 'strong sales velocity'
           : 'proven profit at scale';
     reason = `Strong ad candidate — ${topFactor} (score ${score.toFixed(0)}/100)`;
-  } else if (input.estimatedMargin < 0.30) {
+  } else if (input.estimatedMargin < 0.25) {
     reason = `Margin too low (${(input.estimatedMargin * 100).toFixed(0)}%) — ad spend would eat profits`;
-  } else if (input.avgDailyUnits < 1) {
+  } else if (input.avgDailyUnits < 0.1) {
     reason = 'Low sales velocity — not enough organic demand to justify ad spend';
   } else {
     reason = `Score ${score.toFixed(0)}/100 — needs improvement before advertising`;

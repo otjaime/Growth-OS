@@ -15,7 +15,8 @@ interface LineItem {
   quantity?: number | string;
   price?: string;
   originalUnitPriceSet?: { shopMoney?: { amount?: string } };
-  product?: { productType?: string };
+  product?: { productType?: string; featuredImage?: { url?: string }; description?: string; onlineStoreUrl?: string };
+  image?: { url?: string };
 }
 
 interface ProductAgg {
@@ -25,6 +26,9 @@ interface ProductAgg {
   prices: number[];
   buyerIds: Set<string>;
   repeatBuyerCount: number;
+  imageUrl?: string;
+  description?: string;
+  productUrl?: string;
 }
 
 export interface BuildProductPerformanceResult {
@@ -96,6 +100,17 @@ export async function buildProductPerformance(
       agg.orderCount += 1;
       agg.prices.push(price);
       agg.buyerIds.add(buyerId);
+
+      // Extract image/description from line item product data (Shopify GraphQL)
+      if (!agg.imageUrl) {
+        agg.imageUrl = item.image?.url ?? item.product?.featuredImage?.url;
+      }
+      if (!agg.description && item.product?.description) {
+        agg.description = item.product.description;
+      }
+      if (!agg.productUrl && item.product?.onlineStoreUrl) {
+        agg.productUrl = item.product.onlineStoreUrl;
+      }
 
       productMap.set(key, agg);
 

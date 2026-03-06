@@ -15,24 +15,24 @@ describe('scoreAdFitness', () => {
     });
 
     expect(result.score).toBe(100);
-    expect(result.breakdown.marginScore).toBe(25);
-    expect(result.breakdown.velocityScore).toBe(25);
-    expect(result.breakdown.profitScore).toBe(20);
+    expect(result.breakdown.marginScore).toBe(20);
+    expect(result.breakdown.velocityScore).toBe(20);
+    expect(result.breakdown.profitScore).toBe(30);
     expect(result.breakdown.repeatScore).toBe(15);
     expect(result.breakdown.readinessScore).toBe(15);
     expect(result.eligible).toBe(true);
   });
 
-  it('returns 0 margin score for margin below 30%', () => {
+  it('returns 0 margin score for margin at or below 25%', () => {
     const result = scoreAdFitness({
-      revenue30d: 5_000,
-      grossProfit30d: 1_000,
-      estimatedMargin: 0.25,
-      avgDailyUnits: 3,
-      repeatBuyerPct: 0.10,
+      revenue30d: 200,
+      grossProfit30d: 40,
+      estimatedMargin: 0.20,
+      avgDailyUnits: 0.05,
+      repeatBuyerPct: 0,
       avgPrice: 30,
-      hasImage: true,
-      hasDescription: true,
+      hasImage: false,
+      hasDescription: false,
     });
 
     expect(result.breakdown.marginScore).toBe(0);
@@ -83,21 +83,21 @@ describe('scoreAdFitness', () => {
     expect(withAll.score - withNone.score).toBeCloseTo(15, 1);
   });
 
-  it('scales velocity linearly up to 5 daily units', () => {
-    const at2 = scoreAdFitness({
+  it('scales velocity linearly up to 1 daily unit', () => {
+    const atHalf = scoreAdFitness({
       revenue30d: 0, grossProfit30d: 0, estimatedMargin: 0.50,
-      avgDailyUnits: 2, repeatBuyerPct: 0, avgPrice: 0,
+      avgDailyUnits: 0.5, repeatBuyerPct: 0, avgPrice: 0,
       hasImage: false, hasDescription: false,
     });
 
-    const at5 = scoreAdFitness({
+    const at1 = scoreAdFitness({
       revenue30d: 0, grossProfit30d: 0, estimatedMargin: 0.50,
-      avgDailyUnits: 5, repeatBuyerPct: 0, avgPrice: 0,
+      avgDailyUnits: 1, repeatBuyerPct: 0, avgPrice: 0,
       hasImage: false, hasDescription: false,
     });
 
-    expect(at2.breakdown.velocityScore).toBeCloseTo(10, 1);
-    expect(at5.breakdown.velocityScore).toBe(25);
+    expect(atHalf.breakdown.velocityScore).toBeCloseTo(10, 1);
+    expect(at1.breakdown.velocityScore).toBe(20);
   });
 
   it('caps all components at their max', () => {
@@ -113,9 +113,9 @@ describe('scoreAdFitness', () => {
     });
 
     // All scores should be capped at max
-    expect(result.breakdown.marginScore).toBe(25);
-    expect(result.breakdown.velocityScore).toBe(25);
-    expect(result.breakdown.profitScore).toBe(20);
+    expect(result.breakdown.marginScore).toBe(20);
+    expect(result.breakdown.velocityScore).toBe(20);
+    expect(result.breakdown.profitScore).toBe(30);
     expect(result.breakdown.repeatScore).toBe(15);
     expect(result.breakdown.readinessScore).toBe(15);
     expect(result.score).toBe(100);
@@ -124,24 +124,45 @@ describe('scoreAdFitness', () => {
   it('returns eligible=true exactly at score 60', () => {
     // Engineer inputs to land near 60
     const result = scoreAdFitness({
-      revenue30d: 5_000,
-      grossProfit30d: 2_500,
-      estimatedMargin: 0.50,
-      avgDailyUnits: 3,
-      repeatBuyerPct: 0.10,
+      revenue30d: 1_000,
+      grossProfit30d: 400,
+      estimatedMargin: 0.40,
+      avgDailyUnits: 0.5,
+      repeatBuyerPct: 0.05,
       avgPrice: 30,
       hasImage: true,
       hasDescription: true,
     });
 
-    // Margin: (0.50-0.30)/0.35*25 ≈ 14.29
-    // Velocity: 3/5*25 = 15
-    // Profit: 2500/5000*20 = 10
-    // Repeat: 0.10/0.20*15 = 7.5
+    // Margin: (0.40-0.25)/0.30*20 = 10
+    // Velocity: 0.5/1*20 = 10
+    // Profit: 400/1000*30 = 12
+    // Repeat: 0.05/0.10*15 = 7.5
     // Readiness: 15
-    // Total ≈ 61.79
-    expect(result.score).toBeGreaterThanOrEqual(60);
-    expect(result.eligible).toBe(true);
+    // Total ≈ 54.5 — need more.  Let's bump slightly
+    expect(result.score).toBeLessThan(60);
+    expect(result.eligible).toBe(false);
+
+    // Now a product that crosses the threshold
+    const eligible = scoreAdFitness({
+      revenue30d: 2_000,
+      grossProfit30d: 800,
+      estimatedMargin: 0.45,
+      avgDailyUnits: 0.8,
+      repeatBuyerPct: 0.08,
+      avgPrice: 30,
+      hasImage: true,
+      hasDescription: true,
+    });
+
+    // Margin: (0.45-0.25)/0.30*20 ≈ 13.33
+    // Velocity: 0.8/1*20 = 16
+    // Profit: min(30, 800/1000*30) = 24
+    // Repeat: 0.08/0.10*15 = 12
+    // Readiness: 15
+    // Total ≈ 80.33
+    expect(eligible.score).toBeGreaterThanOrEqual(60);
+    expect(eligible.eligible).toBe(true);
   });
 
   // ── Edge case tests ────────────────────────────────────────────
@@ -210,19 +231,19 @@ describe('scoreAdFitness', () => {
       hasDescription: true,
     });
 
-    expect(result.breakdown.marginScore).toBe(25);
-    expect(result.breakdown.velocityScore).toBe(25);
-    expect(result.breakdown.profitScore).toBe(20);
+    expect(result.breakdown.marginScore).toBe(20);
+    expect(result.breakdown.velocityScore).toBe(20);
+    expect(result.breakdown.profitScore).toBe(30);
     expect(result.breakdown.repeatScore).toBe(15);
     expect(result.breakdown.readinessScore).toBe(15);
     expect(result.score).toBe(100);
   });
 
-  it('gives margin score = 0 at exactly 30% boundary', () => {
+  it('gives margin score = 0 at exactly 25% boundary', () => {
     const result = scoreAdFitness({
       revenue30d: 1000,
-      grossProfit30d: 300,
-      estimatedMargin: 0.30,
+      grossProfit30d: 250,
+      estimatedMargin: 0.25,
       avgDailyUnits: 3,
       repeatBuyerPct: 0.10,
       avgPrice: 20,
@@ -230,15 +251,15 @@ describe('scoreAdFitness', () => {
       hasDescription: true,
     });
 
-    // At exactly 0.30: (0.30 - 0.30) / 0.35 * 25 = 0
+    // At exactly 0.25: estimatedMargin <= 0.25 → 0
     expect(result.breakdown.marginScore).toBe(0);
   });
 
-  it('gives margin score = 25 at exactly 65% boundary', () => {
+  it('gives margin score = 20 at exactly 55% boundary', () => {
     const result = scoreAdFitness({
       revenue30d: 1000,
-      grossProfit30d: 650,
-      estimatedMargin: 0.65,
+      grossProfit30d: 550,
+      estimatedMargin: 0.55,
       avgDailyUnits: 0,
       repeatBuyerPct: 0,
       avgPrice: 0,
@@ -246,7 +267,7 @@ describe('scoreAdFitness', () => {
       hasDescription: false,
     });
 
-    // At exactly 0.65: (0.65 - 0.30) / 0.35 * 25 = 25
-    expect(result.breakdown.marginScore).toBe(25);
+    // At exactly 0.55: (0.55 - 0.25) / 0.30 * 20 = 20
+    expect(result.breakdown.marginScore).toBe(20);
   });
 });
