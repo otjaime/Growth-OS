@@ -2363,6 +2363,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
         avgPrice: Number(p.avgPrice),
         avgDailyUnits: Number(p.avgDailyUnits),
         imageUrl: p.imageUrl,
+        productTier: p.productTier ?? null,
+        revenueTrend: p.revenueTrend != null ? Number(p.revenueTrend) : null,
+        revenueShare: p.revenueShare != null ? Number(p.revenueShare) : null,
       })),
       existingProductAds,
     });
