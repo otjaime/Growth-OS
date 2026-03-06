@@ -28,7 +28,23 @@ function fmtNum(v: number): string {
   return v.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
-type SortKey = 'grossProfit' | 'revenue' | 'units' | 'adFitness';
+type SortKey = 'grossProfit' | 'revenue' | 'units' | 'adFitness' | 'tier' | 'trend';
+
+// ── Tier display config ──────────────────────────────────────
+
+const TIER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  hero: { bg: 'bg-[var(--tint-blue)]', text: 'text-apple-blue', label: 'Hero' },
+  growth: { bg: 'bg-[var(--tint-green)]', text: 'text-apple-green', label: 'Growth' },
+  niche: { bg: 'bg-[var(--tint-purple)]', text: 'text-apple-purple', label: 'Niche' },
+  'long-tail': { bg: 'bg-glass-hover', text: 'text-[var(--foreground-secondary)]', label: 'Long-tail' },
+};
+
+const TIER_RANK: Record<string, number> = {
+  hero: 4,
+  growth: 3,
+  niche: 2,
+  'long-tail': 1,
+};
 
 function scoreColor(score: number | null): string {
   if (score == null) return 'text-[var(--foreground-secondary)]';
@@ -203,6 +219,8 @@ export function ProductsTab(): JSX.Element {
         case 'revenue': va = a.revenue30d; vb = b.revenue30d; break;
         case 'units': va = a.unitsSold30d; vb = b.unitsSold30d; break;
         case 'adFitness': va = a.adFitnessScore ?? 0; vb = b.adFitnessScore ?? 0; break;
+        case 'tier': va = TIER_RANK[a.productTier ?? ''] ?? 0; vb = TIER_RANK[b.productTier ?? ''] ?? 0; break;
+        case 'trend': va = a.revenueTrend ?? 0; vb = b.revenueTrend ?? 0; break;
       }
       return sortAsc ? va - vb : vb - va;
     });
@@ -476,6 +494,11 @@ export function ProductsTab(): JSX.Element {
                   <th className="text-left px-3 py-3 text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">
                     Type
                   </th>
+                  <th className="px-3 py-3">
+                    <button onClick={() => handleSort('tier')} className="flex items-center gap-1 text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium hover:text-[var(--foreground)] transition-colors">
+                      Tier <SortIcon col="tier" />
+                    </button>
+                  </th>
                   <th className="text-right px-3 py-3">
                     <button onClick={() => handleSort('units')} className="flex items-center gap-1 ml-auto text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium hover:text-[var(--foreground)] transition-colors">
                       Units <SortIcon col="units" />
@@ -484,6 +507,11 @@ export function ProductsTab(): JSX.Element {
                   <th className="text-right px-3 py-3">
                     <button onClick={() => handleSort('revenue')} className="flex items-center gap-1 ml-auto text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium hover:text-[var(--foreground)] transition-colors">
                       Revenue <SortIcon col="revenue" />
+                    </button>
+                  </th>
+                  <th className="text-right px-3 py-3">
+                    <button onClick={() => handleSort('trend')} className="flex items-center gap-1 ml-auto text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium hover:text-[var(--foreground)] transition-colors">
+                      Trend <SortIcon col="trend" />
                     </button>
                   </th>
                   <th className="text-right px-3 py-3 text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">
@@ -537,11 +565,37 @@ export function ProductsTab(): JSX.Element {
                         {p.productType}
                       </span>
                     </td>
+                    <td className="px-3 py-3">
+                      {p.productTier ? (() => {
+                        const style = TIER_STYLES[p.productTier] ?? TIER_STYLES['long-tail'];
+                        return (
+                          <span className={`inline-block px-2 py-0.5 rounded-md text-caption font-semibold ${style.bg} ${style.text}`}>
+                            {style.label}
+                          </span>
+                        );
+                      })() : (
+                        <span className="text-[var(--foreground-secondary)] text-caption">--</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-right tabular-nums text-[var(--foreground)]">
                       {fmtNum(p.unitsSold30d)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums font-medium text-[var(--foreground)]">
                       {fmt$(p.revenue30d)}
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-xs">
+                      {p.revenueTrend != null ? (
+                        <span className={`flex items-center gap-0.5 justify-end font-medium ${p.revenueTrend >= 0 ? 'text-apple-green' : 'text-apple-red'}`}>
+                          {p.revenueTrend >= 0 ? (
+                            <ArrowUp className="h-3 w-3" />
+                          ) : (
+                            <ArrowDown className="h-3 w-3" />
+                          )}
+                          {Math.abs(p.revenueTrend * 100).toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-[var(--foreground-secondary)]">--</span>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-[var(--foreground-secondary)]">
                       {fmtPct(p.estimatedMargin)}

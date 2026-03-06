@@ -25,6 +25,11 @@ export type {
   ProactiveRecommendation,
   ProactiveAdJob,
   ProactiveAdStatus,
+  CampaignStrategy,
+  CampaignStrategyType,
+  CampaignStrategyStatus,
+  SeasonalEvent,
+  WeeklyAnalysis,
 } from './types';
 export { SeverityBadge, SeverityIcon, SeverityDot } from './severity-badge';
 export { ExpiryCountdown } from './expiry-countdown';
@@ -60,6 +65,7 @@ export { AdsSearchBar } from './ads-search-bar';
 export { AdDetailSheet } from './ad-detail-sheet';
 export { ProductsTab } from './products-tab';
 export { ProactiveJobCard } from './proactive-job-card';
+export { CampaignsTab } from './campaigns-tab';
 export {
   ACTION_LABELS,
   SEVERITY_LABELS,
