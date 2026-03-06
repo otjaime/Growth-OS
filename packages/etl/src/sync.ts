@@ -8,7 +8,7 @@ import { ingestRaw } from './pipeline/step1-ingest-raw.js';
 import { normalizeStaging } from './pipeline/step2-normalize-staging.js';
 import { buildMarts } from './pipeline/step3-build-marts.js';
 import { buildProductPerformance } from './pipeline/step4-build-product-performance.js';
-import { fetchShopifyOrders, fetchShopifyCustomers } from './connectors/shopify.js';
+import { fetchShopifyOrders, fetchShopifyCustomers, fetchShopifyProducts } from './connectors/shopify.js';
 import { fetchMetaInsights } from './connectors/meta.js';
 import { fetchGoogleAdsInsights } from './connectors/google-ads.js';
 import { fetchGA4Traffic } from './connectors/ga4.js';
@@ -154,7 +154,8 @@ async function runSync() {
     if (configs.shopify) {
       const shopifyOrders = await fetchShopifyOrders(configs.shopify);
       const shopifyCustomers = await fetchShopifyCustomers(configs.shopify);
-      allRecords.push(...shopifyOrders.records, ...shopifyCustomers.records);
+      const shopifyProducts = await fetchShopifyProducts(configs.shopify);
+      allRecords.push(...shopifyOrders.records, ...shopifyCustomers.records, ...shopifyProducts.records);
     }
 
     // Meta

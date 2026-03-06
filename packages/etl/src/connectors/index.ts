@@ -1,4 +1,4 @@
-export { fetchShopifyOrders, fetchShopifyCustomers } from './shopify.js';
+export { fetchShopifyOrders, fetchShopifyCustomers, fetchShopifyProducts } from './shopify.js';
 export { fetchMetaInsights } from './meta.js';
 export { fetchMetaAdCreatives, getCurrencyOffset } from './meta-ads-creative.js';
 export type { MetaAdCreativeConfig, MetaAdCreativeResult, MetaAccountInfo, MetaCampaignData, MetaAdSetData, MetaAdData, MetaAdInsight } from './meta-ads-creative.js';
