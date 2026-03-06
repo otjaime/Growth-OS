@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { LayoutDashboard, Target, CreditCard, Package } from 'lucide-react';
+import { LayoutDashboard, Target, CreditCard, Package, Megaphone } from 'lucide-react';
 import type { AutopilotTab } from './types';
 
 interface AutopilotTabBarProps {
@@ -15,6 +15,7 @@ const tabs: { key: AutopilotTab; label: string; icon: typeof Target }[] = [
   { key: 'actions', label: 'Actions', icon: Target },
   { key: 'ads', label: 'Your Ads', icon: CreditCard },
   { key: 'products', label: 'Products', icon: Package },
+  { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
 ];
 
 export function AutopilotTabBar({ activeTab, onTabChange, actionCount }: AutopilotTabBarProps): JSX.Element {

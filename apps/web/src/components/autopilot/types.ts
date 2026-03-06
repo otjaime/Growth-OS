@@ -15,7 +15,7 @@ export type DiagnosisAction =
   | 'DUPLICATE_AD_SET'
   | 'NONE';
 
-export type AutopilotTab = 'overview' | 'actions' | 'ads' | 'products';
+export type AutopilotTab = 'overview' | 'actions' | 'ads' | 'products' | 'campaigns';
 
 // ── Proactive product types ─────────────────────────────────
 
@@ -353,4 +353,75 @@ export interface HistoryItem {
     campaign: { id: string; name: string };
   };
   variants: HistoryVariant[];
+}
+
+// ── Campaign Strategy types ─────────────────────────────────
+
+export type CampaignStrategyType = 'HERO_PRODUCT' | 'CATEGORY' | 'SEASONAL' | 'NEW_ARRIVAL' | 'CROSS_SELL';
+export type CampaignStrategyStatus = 'SUGGESTED' | 'APPROVED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'REJECTED';
+
+export interface CampaignStrategy {
+  id: string;
+  name: string;
+  type: CampaignStrategyType;
+  status: CampaignStrategyStatus;
+  productTitles: string[];
+  productCount: number;
+  dailyBudget: number | null;
+  totalBudget: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  targetAudience: string | null;
+  creativeDirection: string | null;
+  estimatedRoas: number | null;
+  rationale: string | null;
+  actualSpend: number | null;
+  actualRevenue: number | null;
+  actualRoas: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeasonalEvent {
+  id: string;
+  name: string;
+  startMonth: number;
+  startDay: number;
+  endMonth: number;
+  endDay: number;
+  tags: string[];
+  audienceHint: string;
+  budgetMultiplier: number;
+}
+
+export interface WeeklyAnalysis {
+  period: string;
+  topPerformers: Array<{
+    productTitle: string;
+    revenue30d: number;
+    revenueTrend: number | null;
+    adFitnessScore: number;
+    tier: string | null;
+  }>;
+  underperformers: Array<{
+    productTitle: string;
+    revenue30d: number;
+    revenueTrend: number | null;
+    reason: string;
+  }>;
+  campaignSummary: Array<{
+    type: string;
+    count: number;
+    totalSpend: number;
+    totalRevenue: number;
+    avgRoas: number;
+  }>;
+  budgetEfficiency: {
+    totalSpend: number;
+    totalRevenue: number;
+    overallRoas: number;
+    bestType: string | null;
+    worstType: string | null;
+  };
+  recommendations: string[];
 }
