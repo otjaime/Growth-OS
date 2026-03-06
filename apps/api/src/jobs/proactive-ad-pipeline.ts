@@ -9,7 +9,7 @@ import { evaluateProactiveRules } from '@growth-os/etl';
 import type { ProactiveRulesInput } from '@growth-os/etl';
 import { generateProductCopy } from '../lib/product-copy-generator.js';
 import { prepareAdImage } from '../lib/ad-image-manager.js';
-import { createAdFromVariant } from '../lib/meta-executor.js';
+import { createAdFromVariant, createProactiveAdSet } from '../lib/meta-executor.js';
 import pino from 'pino';
 
 const log = pino({ name: 'proactive-pipeline' });
@@ -18,6 +18,71 @@ export interface ProactivePipelineResult {
   jobsCreated: number;
   jobsGenerated: number;
   errors: string[];
+}
+
+interface SafetyCheckResult {
+  safe: boolean;
+  reason?: string;
+}
+
+async function validateProactiveSafety(organizationId: string): Promise<SafetyCheckResult> {
+  const config = await prisma.autopilotConfig.findUnique({
+    where: { organizationId },
+    select: {
+      circuitBreakerTrippedAt: true,
+      executionWindowStart: true,
+      executionWindowEnd: true,
+      executionTimezone: true,
+      maxActionsPerDay: true,
+      dailyBudgetCap: true,
+    },
+  });
+
+  if (!config) return { safe: true }; // No config = no restrictions
+
+  // Circuit breaker
+  if (config.circuitBreakerTrippedAt) {
+    return { safe: false, reason: 'Circuit breaker is active — proactive pipeline paused' };
+  }
+
+  // Execution window
+  if (config.executionWindowStart != null && config.executionWindowEnd != null) {
+    const now = new Date();
+    const hour = now.getHours();
+    if (hour < config.executionWindowStart || hour >= config.executionWindowEnd) {
+      return { safe: false, reason: `Outside execution window (${config.executionWindowStart}:00–${config.executionWindowEnd}:00)` };
+    }
+  }
+
+  // Daily action limit
+  if (config.maxActionsPerDay) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.proactiveAdJob.count({
+      where: { organizationId, createdAt: { gte: todayStart } },
+    });
+    if (todayCount >= config.maxActionsPerDay) {
+      return { safe: false, reason: `Daily action limit reached (${todayCount}/${config.maxActionsPerDay})` };
+    }
+  }
+
+  // Budget cap check
+  if (config.dailyBudgetCap) {
+    const activeJobs = await prisma.proactiveAdJob.findMany({
+      where: {
+        organizationId,
+        status: { in: ['PUBLISHED', 'TESTING'] },
+        dailyBudget: { not: null },
+      },
+      select: { dailyBudget: true },
+    });
+    const totalDailySpend = activeJobs.reduce((sum, j) => sum + Number(j.dailyBudget), 0);
+    if (totalDailySpend >= Number(config.dailyBudgetCap)) {
+      return { safe: false, reason: `Daily budget cap reached ($${totalDailySpend.toFixed(0)}/$${Number(config.dailyBudgetCap).toFixed(0)})` };
+    }
+  }
+
+  return { safe: true };
 }
 
 /**
@@ -43,6 +108,13 @@ export async function runProactiveDiscovery(
 
   if (!config?.proactiveEnabled) {
     log.info({ organizationId }, 'Proactive pipeline skipped — not enabled');
+    return result;
+  }
+
+  // Safety guardrails
+  const safety = await validateProactiveSafety(organizationId);
+  if (!safety.safe) {
+    log.info({ organizationId, reason: safety.reason }, 'Proactive pipeline blocked by safety check');
     return result;
   }
 
@@ -295,6 +367,27 @@ export async function publishProactiveJob(
     return { success: false, error: 'No copy variants to publish' };
   }
 
+  // Safety check
+  const safety = await validateProactiveSafety(job.organizationId);
+  if (!safety.safe) {
+    return { success: false, error: `Safety check failed: ${safety.reason}` };
+  }
+
+  // Read budget from config
+  const config = await prisma.autopilotConfig.findUnique({
+    where: { organizationId: job.organizationId },
+    select: { proactiveDefaultBudget: true },
+  });
+
+  const budgetDollars = Number(config?.proactiveDefaultBudget ?? 0);
+  if (budgetDollars <= 0 || !isFinite(budgetDollars)) {
+    return { success: false, error: 'Proactive default budget not configured. Set it in Autopilot Settings.' };
+  }
+  const budgetCents = Math.round(budgetDollars * 100);
+  if (!Number.isInteger(budgetCents) || budgetCents <= 0) {
+    return { success: false, error: 'Invalid budget value after conversion' };
+  }
+
   // Get Meta credentials
   const cred = await prisma.connectorCredential.findFirst({
     where: { organizationId: job.organizationId, connectorType: 'meta' },
@@ -310,6 +403,7 @@ export async function publishProactiveJob(
         status: 'PUBLISHED',
         metaAdSetId: `demo_adset_${job.id}`,
         metaAdIds: demoAdIds,
+        dailyBudget: budgetDollars,
       },
     });
     return { success: true };
@@ -323,28 +417,74 @@ export async function publishProactiveJob(
     return { success: false, error: 'Missing Meta access token or account ID' };
   }
 
+  // Find an active campaign
+  const campaign = await prisma.metaCampaign.findFirst({
+    where: { organizationId: job.organizationId, status: 'ACTIVE' },
+    select: { id: true, campaignId: true },
+  });
+
+  if (!campaign) {
+    return { success: false, error: 'No active Meta campaign found. Create one in Meta Ads Manager first.' };
+  }
+
+  // Find the MetaAdAccount internal ID for FK
+  const adAccount = await prisma.metaAdAccount.findFirst({
+    where: { organizationId: job.organizationId },
+    select: { id: true },
+  });
+
+  // 4.1: Create a dedicated ad set with budget
+  const adSetResult = await createProactiveAdSet(
+    accessToken,
+    adAccountId,
+    campaign.campaignId,
+    job.productTitle,
+    budgetCents,
+  );
+
+  if (!adSetResult.success) {
+    await prisma.proactiveAdJob.update({
+      where: { id: jobId },
+      data: { status: 'FAILED', errorMessage: `Ad set creation failed: ${adSetResult.error}` },
+    });
+    return { success: false, error: adSetResult.error };
+  }
+
+  const metaAdSetId = String((adSetResult.metaResponse as Record<string, unknown>)?.id ?? '');
+  if (!metaAdSetId) {
+    return { success: false, error: 'Ad set created but no ID returned' };
+  }
+
+  // Create MetaAdSet row for tracking
+  let adSetDbId: string | undefined;
+  try {
+    const adSetRow = await prisma.metaAdSet.create({
+      data: {
+        adSetId: metaAdSetId,
+        name: `GrowthOS Proactive — ${job.productTitle}`,
+        status: 'PAUSED',
+        dailyBudget: budgetCents,
+        organizationId: job.organizationId,
+        campaignId: campaign.id,
+        accountId: adAccount?.id ?? '',
+      },
+    });
+    adSetDbId = adSetRow.id;
+  } catch {
+    // Non-fatal: FK tracking is best-effort
+  }
+
   // Get product URL for the link
   const product = await prisma.productPerformance.findFirst({
-    where: {
-      organizationId: job.organizationId,
-      productTitle: job.productTitle,
-    },
+    where: { organizationId: job.organizationId, productTitle: job.productTitle },
     select: { productUrl: true },
   });
 
   const metaAdIds: string[] = [];
 
-  // We need an ad set — for now we create ads in a default ad set
-  // The user's existing campaign structure is used via the first active campaign
-  const campaigns = await prisma.metaCampaign.findMany({
-    where: { organizationId: job.organizationId, status: 'ACTIVE' },
-    select: { campaignId: true },
-    take: 1,
-  });
-
   // Create each variant as an ad
   for (const variant of copyVariants) {
-    const result = await createAdFromVariant(accessToken, adAccountId, job.metaAdSetId ?? '', {
+    const result = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
       name: `${job.productTitle} — ${variant.angle}`,
       headline: variant.headline,
       primaryText: variant.primaryText,
@@ -355,19 +495,49 @@ export async function publishProactiveJob(
 
     if (result.success) {
       const adId = (result.metaResponse as Record<string, unknown>)?.adId;
-      if (typeof adId === 'string') metaAdIds.push(adId);
+      if (typeof adId === 'string') {
+        metaAdIds.push(adId);
+
+        // 4.2: Sync to MetaAd table for A/B loop
+        try {
+          await prisma.metaAd.create({
+            data: {
+              adId,
+              name: `${job.productTitle} — ${variant.angle}`,
+              status: 'PAUSED',
+              organizationId: job.organizationId,
+              adSetId: adSetDbId ?? '',
+              campaignId: campaign.id,
+              accountId: adAccount?.id ?? '',
+            },
+          });
+        } catch {
+          // Non-fatal: the ad was created on Meta, just tracking failed
+          log.warn({ adId, jobId }, 'Failed to create MetaAd tracking row');
+        }
+      }
     }
+  }
+
+  if (metaAdIds.length === 0) {
+    await prisma.proactiveAdJob.update({
+      where: { id: jobId },
+      data: { status: 'FAILED', errorMessage: 'All ad creations failed on Meta' },
+    });
+    return { success: false, error: 'All ad creations failed on Meta' };
   }
 
   await prisma.proactiveAdJob.update({
     where: { id: jobId },
     data: {
       status: 'PUBLISHED',
+      metaAdSetId,
       metaAdIds,
+      dailyBudget: budgetDollars,
     },
   });
 
-  log.info({ jobId, adCount: metaAdIds.length }, 'Proactive job published to Meta');
+  log.info({ jobId, adSetId: metaAdSetId, adCount: metaAdIds.length }, 'Proactive job published to Meta');
   return { success: true };
 }
 

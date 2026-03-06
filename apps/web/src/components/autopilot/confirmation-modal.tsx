@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ConfirmationModalProps {
@@ -39,7 +39,28 @@ export function ConfirmationModal({
   confirmColor,
   onConfirm,
   onCancel,
-}: ConfirmationModalProps) {
+}: ConfirmationModalProps): JSX.Element | null {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  // Focus trap: focus confirm button on open, Escape closes
+  useEffect(() => {
+    if (!open) return;
+
+    const timer = setTimeout(() => confirmRef.current?.focus(), 50);
+
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   return (
@@ -51,7 +72,12 @@ export function ConfirmationModal({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-[var(--glass-bg-elevated)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl shadow-glass-elevated overflow-hidden">
+      <div
+        className="relative w-full max-w-md mx-4 bg-[var(--glass-bg-elevated)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl shadow-glass-elevated overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="p-6">
           {/* Icon + Title */}
           <div className="flex items-start gap-4">
@@ -68,6 +94,7 @@ export function ConfirmationModal({
             <button
               onClick={onCancel}
               className="text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors"
+              aria-label="Close dialog"
             >
               <X className="h-4 w-4" />
             </button>
@@ -78,12 +105,15 @@ export function ConfirmationModal({
             <button
               onClick={onCancel}
               className="text-xs font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] bg-[var(--glass-bg-thin)] hover:bg-[var(--glass-bg)] px-4 py-2.5 rounded-lg transition-all ease-spring"
+              aria-label="Cancel action"
             >
               Cancel
             </button>
             <button
+              ref={confirmRef}
               onClick={onConfirm}
               className={`text-xs font-semibold px-5 py-2.5 rounded-lg transition-all ease-spring ${COLOR_MAP[confirmColor]}`}
+              aria-label={confirmLabel}
             >
               {confirmLabel}
             </button>

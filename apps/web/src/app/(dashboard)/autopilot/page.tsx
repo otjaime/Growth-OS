@@ -414,6 +414,7 @@ export default function AutopilotPage() {
             onClick={() => setSettingsOpen(true)}
             className="p-2 rounded-xl hover:bg-glass-hover transition-colors press-scale"
             title="Settings"
+            aria-label="Open autopilot settings"
           >
             <Settings className="h-4 w-4 text-[var(--foreground-secondary)]" />
           </button>
@@ -423,6 +424,7 @@ export default function AutopilotPage() {
             onClick={() => setHelpOpen(true)}
             className="p-2 rounded-xl hover:bg-glass-hover transition-colors press-scale"
             title="Help"
+            aria-label="Open help guide"
           >
             <HelpCircle className="h-4 w-4 text-[var(--foreground-secondary)]" />
           </button>

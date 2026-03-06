@@ -64,6 +64,19 @@ const mockPrisma = vi.hoisted(() => ({
     create: vi.fn().mockResolvedValue({}),
     findMany: vi.fn().mockResolvedValue([]),
   },
+  proactiveAdJob: {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({}),
+    update: vi.fn().mockResolvedValue({}),
+    count: vi.fn().mockResolvedValue(0),
+  },
+  autopilotConfig: {
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({}),
+    update: vi.fn().mockResolvedValue({}),
+  },
 }));
 
 const mockIsDemoMode = vi.hoisted(() => vi.fn().mockResolvedValue(true));
@@ -123,6 +136,55 @@ vi.mock('../jobs/execute-action.js', () => ({
 vi.mock('../lib/ai.js', () => ({
   isAIConfigured: vi.fn().mockReturnValue(true),
   getClient: vi.fn(),
+}));
+
+vi.mock('../jobs/rollback-action.js', () => ({
+  rollbackAction: vi.fn().mockResolvedValue({ success: true }),
+}));
+
+vi.mock('../lib/autopilot-analyzer.js', () => ({
+  generateDiagnosisInsight: vi.fn().mockResolvedValue({ summary: 'test' }),
+  generateRuleBasedInsight: vi.fn().mockReturnValue({ summary: 'test' }),
+}));
+
+vi.mock('../lib/rule-tuner.js', () => ({
+  computeRuleHealth: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../jobs/enrich-diagnosis.js', () => ({
+  enrichDiagnosis: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../lib/tenant.js', () => ({
+  getOrgId: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('@growth-os/etl', () => ({
+  optimizeBudgetAllocation: vi.fn().mockReturnValue([]),
+  scoreCampaignHealth: vi.fn().mockReturnValue({ score: 0 }),
+  detectAnomalies: vi.fn().mockReturnValue([]),
+  analyzeCreativeDecay: vi.fn().mockReturnValue([]),
+  evaluateProactiveRules: vi.fn().mockReturnValue([]),
+}));
+
+// Dynamic imports used by proactive routes
+const mockRunProactiveDiscovery = vi.fn().mockResolvedValue({ jobsCreated: 2, jobsGenerated: 0, errors: [] });
+const mockGenerateProactiveAssets = vi.fn().mockResolvedValue({ success: true });
+const mockPublishProactiveJob = vi.fn().mockResolvedValue({ success: true });
+
+vi.mock('../jobs/proactive-ad-pipeline.js', () => ({
+  runProactiveDiscovery: (...args: unknown[]) => mockRunProactiveDiscovery(...args),
+  generateProactiveAssets: (...args: unknown[]) => mockGenerateProactiveAssets(...args),
+  publishProactiveJob: (...args: unknown[]) => mockPublishProactiveJob(...args),
+}));
+
+const mockReactivateAd = vi.fn().mockResolvedValue({ success: true });
+const mockCreateAdFromVariant = vi.fn().mockResolvedValue({ success: true, metaResponse: { adId: 'new-ad-1' } });
+
+vi.mock('../lib/meta-executor.js', () => ({
+  reactivateAd: (...args: unknown[]) => mockReactivateAd(...args),
+  createAdFromVariant: (...args: unknown[]) => mockCreateAdFromVariant(...args),
+  createProactiveAdSet: vi.fn().mockResolvedValue({ success: true, metaResponse: { id: 'adset-new' } }),
 }));
 
 import { autopilotRoutes } from './autopilot.js';
@@ -748,5 +810,259 @@ describe('GET /api/autopilot/diagnoses/:id/status', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body.status).toBe('DISMISSED');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// Proactive Routes
+// ══════════════════════════════════════════════════════════════
+
+function mockProactiveJob(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'pj-1',
+    organizationId: 'org-1',
+    productTitle: 'Organic Mango Butter',
+    productType: 'Skincare',
+    productImageUrl: 'https://example.com/mango.jpg',
+    adFitnessScore: 82,
+    status: 'PENDING',
+    copyVariants: null,
+    imageHash: null,
+    imageUrl: null,
+    imageSource: null,
+    metaAdSetId: null,
+    metaAdIds: null,
+    testRoundNumber: 0,
+    testStartedAt: null,
+    winnerId: null,
+    dailyBudget: null,
+    errorMessage: null,
+    createdAt: new Date('2026-03-01T10:00:00Z'),
+    updatedAt: new Date('2026-03-01T10:00:00Z'),
+    ...overrides,
+  };
+}
+
+describe('Proactive Routes', () => {
+  // ── GET /proactive/jobs ──────────────────────────────────
+  describe('GET /api/autopilot/proactive/jobs', () => {
+    it('returns array of proactive jobs', async () => {
+      mockPrisma.proactiveAdJob.findMany.mockResolvedValueOnce([
+        mockProactiveJob(),
+        mockProactiveJob({ id: 'pj-2', productTitle: 'Shea Butter Lotion', adFitnessScore: 75 }),
+      ]);
+
+      const res = await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.jobs).toHaveLength(2);
+      expect(body.jobs[0].productTitle).toBe('Organic Mango Butter');
+      expect(body.jobs[0].adFitnessScore).toBe(82);
+      expect(body.jobs[1].productTitle).toBe('Shea Butter Lotion');
+    });
+
+    it('returns empty array when no jobs exist', async () => {
+      mockPrisma.proactiveAdJob.findMany.mockResolvedValueOnce([]);
+
+      const res = await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.jobs).toEqual([]);
+    });
+  });
+
+  // ── POST /proactive/generate ─────────────────────────────
+  describe('POST /api/autopilot/proactive/generate', () => {
+    it('triggers proactive discovery and returns result', async () => {
+      // No recent jobs → not rate limited
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+      mockRunProactiveDiscovery.mockResolvedValueOnce({
+        jobsCreated: 2,
+        jobsGenerated: 0,
+        errors: [],
+      });
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/generate' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.jobsCreated).toBe(2);
+      expect(mockRunProactiveDiscovery).toHaveBeenCalledWith('org-1');
+    });
+
+    it('returns 429 when rate limited (job created < 1h ago)', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce({
+        id: 'recent-job',
+        createdAt: new Date(), // just now
+      });
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/generate' });
+      expect(res.statusCode).toBe(429);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toContain('Rate limited');
+    });
+  });
+
+  // ── GET /proactive/jobs/:id ──────────────────────────────
+  describe('GET /api/autopilot/proactive/jobs/:id', () => {
+    it('returns job detail with copy variants', async () => {
+      const jobWithVariants = mockProactiveJob({
+        status: 'READY',
+        copyVariants: [
+          { angle: 'benefit', headline: 'Glow Naturally', primaryText: 'Pure mango butter...', description: 'Shop now' },
+          { angle: 'social_proof', headline: '5000+ Happy Customers', primaryText: 'Join the movement...', description: 'Try it' },
+        ],
+        imageUrl: 'https://example.com/generated.jpg',
+        imageSource: 'shopify',
+      });
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(jobWithVariants);
+
+      const res = await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs/pj-1' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.id).toBe('pj-1');
+      expect(body.status).toBe('READY');
+      expect(body.copyVariants).toHaveLength(2);
+      expect(body.imageSource).toBe('shopify');
+    });
+
+    it('returns 404 for non-existent job', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      const res = await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs/nonexistent' });
+      expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toBe('Job not found');
+    });
+  });
+
+  // ── POST /proactive/jobs/:id/approve ─────────────────────
+  describe('POST /api/autopilot/proactive/jobs/:id/approve', () => {
+    it('approves a PENDING job and publishes to Meta', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'PENDING' }),
+      );
+      mockGenerateProactiveAssets.mockResolvedValueOnce({ success: true });
+      mockPublishProactiveJob.mockResolvedValueOnce({ success: true });
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/pj-1/approve' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(true);
+    });
+
+    it('returns 404 for non-existent job', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/nonexistent/approve' });
+      expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toBe('Job not found');
+    });
+
+    it('returns 400 for invalid status transition (e.g. PUBLISHED)', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'PUBLISHED' }),
+      );
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/pj-1/approve' });
+      expect(res.statusCode).toBe(400);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toContain('Cannot approve');
+    });
+  });
+
+  // ── POST /proactive/jobs/:id/reject ──────────────────────
+  describe('POST /api/autopilot/proactive/jobs/:id/reject', () => {
+    it('rejects a job and sets status to PAUSED', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'PENDING' }),
+      );
+      mockPrisma.proactiveAdJob.update.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'PAUSED' }),
+      );
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/pj-1/reject' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(true);
+    });
+
+    it('returns 404 for non-existent job', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/nonexistent/reject' });
+      expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toBe('Job not found');
+    });
+  });
+
+  // ── POST /proactive/jobs/:id/activate ────────────────────
+  describe('POST /api/autopilot/proactive/jobs/:id/activate', () => {
+    it('activates a PUBLISHED job for A/B testing', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(
+        mockProactiveJob({
+          status: 'PUBLISHED',
+          metaAdIds: ['ad-101', 'ad-102'],
+          metaAdSetId: 'adset-50',
+        }),
+      );
+      // No cred → demo mode (all "activated")
+      mockPrisma.connectorCredential.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.proactiveAdJob.update.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'TESTING' }),
+      );
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/pj-1/activate' });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(true);
+      expect(body.activated).toBe(2);
+    });
+
+    it('returns 400 for non-PUBLISHED job', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(
+        mockProactiveJob({ status: 'PENDING' }),
+      );
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/pj-1/activate' });
+      expect(res.statusCode).toBe(400);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toContain('PUBLISHED');
+    });
+
+    it('returns 404 for non-existent job', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      const res = await app.inject({ method: 'POST', url: '/api/autopilot/proactive/jobs/nonexistent/activate' });
+      expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toBe('Job not found');
+    });
+  });
+
+  // ── Org isolation ────────────────────────────────────────
+  describe('Org isolation', () => {
+    it('scopes job queries to organizationId', async () => {
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs/pj-from-other-org' });
+
+      expect(mockPrisma.proactiveAdJob.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 'org-1' }),
+        }),
+      );
+    });
+
+    it('returns 404 for job belonging to different org', async () => {
+      // findFirst returns null because the where clause filters by org
+      mockPrisma.proactiveAdJob.findFirst.mockResolvedValueOnce(null);
+
+      const res = await app.inject({ method: 'GET', url: '/api/autopilot/proactive/jobs/pj-other-org' });
+      expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.payload);
+      expect(body.error).toBe('Job not found');
+    });
   });
 });
