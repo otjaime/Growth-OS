@@ -45,6 +45,7 @@ export interface BuildProductPerformanceResult {
  */
 export async function buildProductPerformance(
   organizationId?: string,
+  customMargins?: Record<string, number>,
 ): Promise<BuildProductPerformanceResult> {
   const cutoff = subDays(new Date(), 30);
 
@@ -153,7 +154,7 @@ export async function buildProductPerformance(
 
   for (const [key, agg] of productMap) {
     const [title, productType] = key.split('|||') as [string, string];
-    const margin = CATEGORY_MARGINS[productType] ?? CATEGORY_MARGINS['default']!;
+    const margin = customMargins?.[productType] ?? CATEGORY_MARGINS[productType] ?? CATEGORY_MARGINS['default']!;
     const avgPrice = agg.prices.length > 0
       ? agg.prices.reduce((s, p) => s + p, 0) / agg.prices.length
       : 0;
@@ -182,8 +183,8 @@ export async function buildProductPerformance(
       avgDailyUnits,
       repeatBuyerPct,
       avgPrice,
-      hasImage: !!catalog?.imageUrl,
-      hasDescription: !!catalog?.description,
+      hasImage: !!(agg.imageUrl ?? catalog?.imageUrl),
+      hasDescription: !!(agg.description ?? catalog?.description),
     });
 
     await prisma.productPerformance.upsert({
@@ -208,9 +209,9 @@ export async function buildProductPerformance(
         repeatBuyerPct,
         adFitnessScore: fitness.score,
         shopifyProductId: catalog?.productId ?? null,
-        imageUrl: catalog?.imageUrl ?? null,
-        productUrl: catalog?.productUrl ?? null,
-        description: catalog?.description ?? null,
+        imageUrl: catalog?.imageUrl ?? agg.imageUrl ?? null,
+        productUrl: catalog?.productUrl ?? agg.productUrl ?? null,
+        description: catalog?.description ?? agg.description ?? null,
         lastComputedAt: new Date(),
       },
       update: {
@@ -224,9 +225,9 @@ export async function buildProductPerformance(
         repeatBuyerPct,
         adFitnessScore: fitness.score,
         shopifyProductId: catalog?.productId ?? null,
-        imageUrl: catalog?.imageUrl ?? null,
-        productUrl: catalog?.productUrl ?? null,
-        description: catalog?.description ?? null,
+        imageUrl: catalog?.imageUrl ?? agg.imageUrl ?? null,
+        productUrl: catalog?.productUrl ?? agg.productUrl ?? null,
+        description: catalog?.description ?? agg.description ?? null,
         lastComputedAt: new Date(),
       },
     });

@@ -6,6 +6,7 @@ import {
   buildProductPerformance,
   fetchShopifyOrders,
   fetchShopifyCustomers,
+  fetchShopifyProducts,
   fetchMetaInsights,
   fetchGoogleAdsInsights,
   fetchGA4Traffic,
@@ -39,7 +40,8 @@ export async function runConnectorSync(connectorType: string): Promise<{ rowsLoa
   if (connectorType === 'shopify' && configs.shopify) {
     const orders = await fetchShopifyOrders(configs.shopify);
     const customers = await fetchShopifyCustomers(configs.shopify);
-    allRecords.push(...orders.records, ...customers.records);
+    const products = await fetchShopifyProducts(configs.shopify);
+    allRecords.push(...orders.records, ...customers.records, ...products.records);
   } else if (connectorType === 'meta_ads' && configs.meta) {
     const insights = await fetchMetaInsights(configs.meta);
     allRecords.push(...insights.records);
@@ -94,7 +96,8 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
     const cursor = shopifyCred?.lastSyncAt?.toISOString();
     const orders = await fetchShopifyOrders(configs.shopify, cursor);
     const customers = await fetchShopifyCustomers(configs.shopify);
-    allRecords.push(...orders.records, ...customers.records);
+    const products = await fetchShopifyProducts(configs.shopify);
+    allRecords.push(...orders.records, ...customers.records, ...products.records);
   }
 
   if (configs.meta) {

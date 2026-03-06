@@ -1048,6 +1048,10 @@ model AutopilotConfig {
   proactiveDefaultBudget Decimal?   @map("proactive_default_budget") @db.Decimal(12, 2)
   useAIImages            Boolean    @default(false) @map("use_ai_images")
 
+  // Custom category margins per org (overrides CATEGORY_MARGINS defaults)
+  // JSON: { "cerdo": 0.45, "cordero": 0.50, "charcutería": 0.55, ... }
+  customMargins          Json?      @map("custom_margins")
+
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
