@@ -153,12 +153,12 @@ export function ProactiveJobCard({ job, onRefresh }: ProactiveJobCardProps): JSX
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-[var(--foreground-secondary)]">Ad Score:</span>
-            <span className="font-semibold text-[var(--foreground)]">{job.adFitnessScore.toFixed(0)}</span>
+            <span className="font-semibold text-[var(--foreground)]">{Number(job.adFitnessScore).toFixed(0)}</span>
           </div>
           {job.dailyBudget != null && (
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--foreground-secondary)]">Budget:</span>
-              <span className="font-semibold text-[var(--foreground)]">{fmt$(job.dailyBudget)}/day</span>
+              <span className="font-semibold text-[var(--foreground)]">{fmt$(Number(job.dailyBudget))}/day</span>
             </div>
           )}
           {job.testRoundNumber > 1 && (
@@ -230,11 +230,11 @@ export function ProactiveJobCard({ job, onRefresh }: ProactiveJobCardProps): JSX
                               </span>
                             </div>
                           </td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">{fmt$(v.spend)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">{fmt$(Number(v.spend))}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">{v.clicks}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">{v.conversions}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-[var(--foreground)]">
-                            {v.roas != null ? `${v.roas.toFixed(2)}x` : '--'}
+                            {v.roas != null ? `${Number(v.roas).toFixed(2)}x` : '--'}
                           </td>
                         </tr>
                       );

@@ -91,11 +91,11 @@ function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }:
         {campaign.estimatedRoas != null && (
           <span className="flex items-center gap-1">
             <TrendingUp className="h-3 w-3" />
-            Est. ROAS {campaign.estimatedRoas.toFixed(2)}x
+            Est. ROAS {Number(campaign.estimatedRoas).toFixed(2)}x
           </span>
         )}
         {campaign.dailyBudget != null && (
-          <span>{fmt$(campaign.dailyBudget)}/day</span>
+          <span>{fmt$(Number(campaign.dailyBudget))}/day</span>
         )}
         {campaign.startDate && campaign.endDate && (
           <span className="flex items-center gap-1">
@@ -111,20 +111,20 @@ function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }:
           {campaign.actualSpend != null && (
             <div>
               <p className="text-[var(--foreground-secondary)]">Spend</p>
-              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(campaign.actualSpend)}</p>
+              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(Number(campaign.actualSpend))}</p>
             </div>
           )}
           {campaign.actualRevenue != null && (
             <div>
               <p className="text-[var(--foreground-secondary)]">Revenue</p>
-              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(campaign.actualRevenue)}</p>
+              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(Number(campaign.actualRevenue))}</p>
             </div>
           )}
           {campaign.actualRoas != null && (
             <div>
               <p className="text-[var(--foreground-secondary)]">ROAS</p>
-              <p className={`font-semibold tabular-nums ${campaign.actualRoas >= 2 ? 'text-apple-green' : campaign.actualRoas >= 1 ? 'text-apple-yellow' : 'text-apple-red'}`}>
-                {campaign.actualRoas.toFixed(2)}x
+              <p className={`font-semibold tabular-nums ${Number(campaign.actualRoas) >= 2 ? 'text-apple-green' : Number(campaign.actualRoas) >= 1 ? 'text-apple-yellow' : 'text-apple-red'}`}>
+                {Number(campaign.actualRoas).toFixed(2)}x
               </p>
             </div>
           )}

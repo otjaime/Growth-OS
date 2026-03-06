@@ -2715,7 +2715,31 @@ export async function autopilotRoutes(app: FastifyInstance) {
       where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
     });
-    return { strategies: campaigns };
+
+    // Convert Prisma Decimal fields to plain numbers for JSON serialization
+    const strategies = campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      status: c.status,
+      productTitles: c.productTitles as string[],
+      productCount: c.productCount,
+      dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null,
+      totalBudget: c.totalBudget != null ? Number(c.totalBudget) : null,
+      startDate: c.startDate?.toISOString() ?? null,
+      endDate: c.endDate?.toISOString() ?? null,
+      targetAudience: c.targetAudience,
+      creativeDirection: c.creativeDirection,
+      estimatedRoas: c.estimatedRoas != null ? Number(c.estimatedRoas) : null,
+      rationale: c.rationale,
+      actualSpend: c.actualSpend != null ? Number(c.actualSpend) : null,
+      actualRevenue: c.actualRevenue != null ? Number(c.actualRevenue) : null,
+      actualRoas: c.actualRoas != null ? Number(c.actualRoas) : null,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    }));
+
+    return { strategies };
   });
 
   // GET /autopilot/strategies/calendar — Upcoming seasonal events

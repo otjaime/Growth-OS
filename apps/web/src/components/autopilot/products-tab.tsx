@@ -411,9 +411,9 @@ export function ProductsTab(): JSX.Element {
                 className="flex items-center justify-between bg-glass-active rounded-lg px-3 py-2"
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg ${scoreBg(op.adFitnessScore)} flex items-center justify-center`}>
-                    <span className={`text-xs font-bold ${scoreColor(op.adFitnessScore)}`}>
-                      {op.adFitnessScore.toFixed(0)}
+                  <div className={`w-8 h-8 rounded-lg ${scoreBg(Number(op.adFitnessScore))} flex items-center justify-center`}>
+                    <span className={`text-xs font-bold ${scoreColor(Number(op.adFitnessScore))}`}>
+                      {Number(op.adFitnessScore).toFixed(0)}
                     </span>
                   </div>
                   <div>
@@ -423,7 +423,7 @@ export function ProductsTab(): JSX.Element {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p className="text-xs font-semibold text-[var(--foreground)]">{fmt$(op.metrics.grossProfit30d)}</p>
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{fmt$(op.metrics?.grossProfit30d ?? 0)}</p>
                     <p className="text-caption text-[var(--foreground-secondary)]">gross profit</p>
                   </div>
                   {/* Generate Ad button (5.6) */}
