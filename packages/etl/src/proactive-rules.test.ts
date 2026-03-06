@@ -33,9 +33,10 @@ describe('evaluateProactiveRules', () => {
       existingProductAds: new Set(),
     });
 
-    expect(recs).toHaveLength(2); // Low Score excluded (< 60)
+    expect(recs).toHaveLength(3); // All included (>= 55)
     expect(recs[0]!.productTitle).toBe('High Score');
     expect(recs[1]!.productTitle).toBe('Mid Score');
+    expect(recs[2]!.productTitle).toBe('Low Score');
   });
 
   it('excludes products already being advertised', () => {

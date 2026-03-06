@@ -25,10 +25,10 @@ function makeInput(overrides: Partial<DtcScoreInput> = {}): DtcScoreInput {
 /** Build a "perfect" input that maximizes every scoring component. */
 function makePerfectInput(): DtcScoreInput {
   return {
-    revenue30d: 20000,
-    grossProfit30d: 10000,
+    revenue30d: 200000,
+    grossProfit30d: 20000,
     estimatedMargin: 0.55,
-    avgDailyUnits: 2.0,
+    avgDailyUnits: 10.0,
     avgPrice: 100,
     repeatBuyerPct: 0.20,
     revenueShare: 0.15,
@@ -95,9 +95,9 @@ describe('scoreDtcProduct', () => {
   it('gives 0 trend pts for -50% or worse decline', () => {
     const result = scoreDtcProduct(makeInput({ revenueTrend: -0.60 }));
     // velocity should still contribute, but trend pts = 0
-    // With velocity of 0.8 → 0.8/1 * 15 = 12 pts velocity
+    // With velocity of 0.8 → 0.8/10 * 15 = 1.2 pts velocity
     // trend at -0.60 → clamped to 0 = 0 pts trend
-    expect(result.breakdown.demandScore).toBeCloseTo(12, 0);
+    expect(result.breakdown.demandScore).toBeCloseTo(1.2, 0);
   });
 
   // ── 4. New arrival (< 45 days) → new_arrival campaign recommendation ──

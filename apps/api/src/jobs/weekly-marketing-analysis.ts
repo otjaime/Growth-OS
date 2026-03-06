@@ -130,6 +130,7 @@ export async function runWeeklyMarketingAnalysis(
     },
     select: {
       type: true,
+      status: true,
       actualSpend: true,
       actualRevenue: true,
     },
@@ -223,7 +224,7 @@ export async function runWeeklyMarketingAnalysis(
   }
 
   // No active campaigns fallback
-  const activeCampaigns = campaigns.filter(() => true); // all already filtered
+  const activeCampaigns = campaigns.filter((c) => c.status === 'ACTIVE');
   if (activeCampaigns.length === 0) {
     recommendations.push('Generate campaign suggestions to start advertising');
   }

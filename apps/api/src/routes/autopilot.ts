@@ -2663,7 +2663,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
     });
-    return { campaigns };
+    return { strategies: campaigns };
   });
 
   // GET /autopilot/strategies/calendar — Upcoming seasonal events
@@ -2723,7 +2723,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const campaign = await prisma.campaignStrategy.findUnique({ where: { id } });
+    const orgId = await ensureOrganization();
+    const campaign = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+    });
     if (!campaign) {
       reply.status(404);
       return { error: 'Campaign strategy not found' };
@@ -2837,8 +2840,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
       summary: 'Approve a campaign strategy',
       description: 'Marks a suggested campaign strategy as approved.',
     },
-  }, async (request) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (existing.status !== 'SUGGESTED') {
+      reply.status(400);
+      return { error: `Cannot approve strategy with status ${existing.status}, must be SUGGESTED` };
+    }
     const campaign = await prisma.campaignStrategy.update({
       where: { id },
       data: { status: 'APPROVED' },
@@ -2853,8 +2869,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
       summary: 'Reject a campaign strategy',
       description: 'Marks a suggested campaign strategy as rejected.',
     },
-  }, async (request) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (existing.status !== 'SUGGESTED') {
+      reply.status(400);
+      return { error: `Cannot reject strategy with status ${existing.status}, must be SUGGESTED` };
+    }
     const campaign = await prisma.campaignStrategy.update({
       where: { id },
       data: { status: 'REJECTED' },
@@ -2869,8 +2898,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
       summary: 'Pause a campaign strategy',
       description: 'Pauses an active campaign strategy.',
     },
-  }, async (request) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (existing.status !== 'ACTIVE') {
+      reply.status(400);
+      return { error: `Cannot pause strategy with status ${existing.status}, must be ACTIVE` };
+    }
     const campaign = await prisma.campaignStrategy.update({
       where: { id },
       data: { status: 'PAUSED' },

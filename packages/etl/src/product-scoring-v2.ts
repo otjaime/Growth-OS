@@ -79,10 +79,10 @@ export function scoreDtcProduct(input: DtcScoreInput): DtcScoreResult {
   if (!Number.isFinite(input.estimatedMargin) || input.estimatedMargin <= 0.20) {
     profitabilityScore = 0;
   } else {
-    // Gross profit absolute: $0-$2000/mo → 0-15 pts
+    // Gross profit absolute: $0-$20000/mo → 0-15 pts
     const profitAbsolute = linearScale(
       Number.isFinite(input.grossProfit30d) ? input.grossProfit30d : 0,
-      0, 2000, 15,
+      0, 20000, 15,
     );
     // Margin %: 25%-55% → 0-10 pts
     const marginPts = linearScale(input.estimatedMargin, 0.25, 0.55, 10);
@@ -95,8 +95,8 @@ export function scoreDtcProduct(input: DtcScoreInput): DtcScoreResult {
   if (safeVelocity < 0.05) {
     demandScore = 0;
   } else {
-    // Velocity: 0-1 daily units → 0-15 pts
-    const velocityPts = linearScale(safeVelocity, 0, 1, 15);
+    // Velocity: 0-10 daily units → 0-15 pts
+    const velocityPts = linearScale(safeVelocity, 0, 10, 15);
     // Trend momentum: -50% = 0 pts, 0% = 5 pts, +20%+ = 10 pts
     const safeTrend = Number.isFinite(input.revenueTrend) ? input.revenueTrend : 0;
     const trendPts = linearScale(safeTrend, -0.50, 0.20, 10);

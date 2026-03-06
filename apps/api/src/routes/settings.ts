@@ -4,7 +4,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { prisma, isDemoMode, setMode, encrypt, decrypt, getAppSetting, setAppSetting } from '@growth-os/database';
-import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, validateData, computeGrowthModel, DEMO_SCENARIOS, seedDemoExperiments, seedDemoAutopilot, seedDemoOpportunities } from '@growth-os/etl';
+import { generateAllDemoData, ingestRaw, normalizeStaging, buildMarts, buildProductPerformance, validateData, computeGrowthModel, DEMO_SCENARIOS, seedDemoExperiments, seedDemoAutopilot, seedDemoOpportunities } from '@growth-os/etl';
 import { isSlackConfigured, sendTestSlackMessage } from '../lib/slack.js';
 import { orgWhere, orgData } from '../lib/tenant.js';
 
@@ -194,6 +194,7 @@ export async function settingsRoutes(app: FastifyInstance) {
         ...demoData.metaInsights,
         ...demoData.googleAdsInsights,
         ...demoData.ga4Traffic,
+        ...demoData.shopifyProducts,
         ...demoData.tiktokInsights,
         ...demoData.klaviyoCampaigns,
         ...demoData.klaviyoFlows,
@@ -210,6 +211,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       const rowsLoaded = await ingestRaw(allRecords);
       await normalizeStaging();
       await buildMarts();
+      await buildProductPerformance();
 
       // Validate
       const validationResults = await validateData();
