@@ -2644,4 +2644,199 @@ export async function autopilotRoutes(app: FastifyInstance) {
       failedIds: failedIds.length > 0 ? failedIds : undefined,
     };
   });
+
+  // ── Campaign Strategy endpoints ─────────────────────────────
+
+  // GET /autopilot/strategies — List campaign strategies
+  app.get('/autopilot/strategies', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'List campaign strategies',
+      description: 'Returns all campaign strategies (AI-suggested multi-product campaigns).',
+    },
+  }, async (request) => {
+    const orgId = await resolveOrgId(request);
+    const campaigns = await prisma.campaignStrategy.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { campaigns };
+  });
+
+  // GET /autopilot/strategies/calendar — Upcoming seasonal events
+  app.get('/autopilot/strategies/calendar', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Seasonal marketing calendar',
+      description: 'Returns upcoming seasonal events within the next 60 days.',
+    },
+  }, async () => {
+    const { getUpcomingEvents } = await import('@growth-os/etl');
+    const events = getUpcomingEvents(60);
+    return { events };
+  });
+
+  // GET /autopilot/strategies/:id — Campaign strategy detail
+  app.get('/autopilot/strategies/:id', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Get campaign strategy detail',
+      description: 'Returns a single campaign strategy by ID.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const campaign = await prisma.campaignStrategy.findUnique({ where: { id } });
+    if (!campaign) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    return { campaign };
+  });
+
+  // POST /autopilot/strategies/generate — Generate campaign suggestions
+  app.post('/autopilot/strategies/generate', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Generate campaign suggestions',
+      description: 'Analyzes product performance data and generates multi-product campaign suggestions.',
+    },
+  }, async (request) => {
+    const orgId = await resolveOrgId(request);
+
+    // Load product performance data
+    const products = await prisma.productPerformance.findMany({
+      where: { organizationId: orgId },
+      select: {
+        productTitle: true, productType: true, adFitnessScore: true,
+        revenue30d: true, grossProfit30d: true, estimatedMargin: true,
+        avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
+        imageUrl: true, productTier: true, revenueTrend: true,
+        revenueShare: true, daysSinceFirstSale: true,
+        collections: true, tags: true, topCrossSellProducts: true,
+      },
+    });
+
+    // Get existing active campaign products
+    const activeCampaigns = await prisma.campaignStrategy.findMany({
+      where: { organizationId: orgId, status: { in: ['ACTIVE', 'APPROVED', 'SUGGESTED'] } },
+      select: { productTitles: true },
+    });
+    const existingProductTitles = new Set<string>();
+    for (const c of activeCampaigns) {
+      const titles = c.productTitles as string[];
+      for (const t of titles) existingProductTitles.add(t);
+    }
+
+    // Get budget from autopilot config
+    const config = await prisma.autopilotConfig.findUnique({
+      where: { organizationId: orgId },
+      select: { dailyBudgetCap: true },
+    });
+    const totalDailyBudget = Number(config?.dailyBudgetCap ?? 100);
+
+    const { generateCampaignSuggestions } = await import('@growth-os/etl');
+
+    // Map products to the input format
+    const productsForEngine = products.map((p) => ({
+      productTitle: p.productTitle,
+      productType: p.productType,
+      adFitnessScore: Number(p.adFitnessScore ?? 0),
+      revenue30d: Number(p.revenue30d),
+      grossProfit30d: Number(p.grossProfit30d),
+      estimatedMargin: Number(p.estimatedMargin),
+      avgPrice: Number(p.avgPrice),
+      avgDailyUnits: Number(p.avgDailyUnits),
+      repeatBuyerPct: Number(p.repeatBuyerPct),
+      imageUrl: p.imageUrl,
+      productTier: p.productTier,
+      revenueTrend: p.revenueTrend != null ? Number(p.revenueTrend) : null,
+      revenueShare: p.revenueShare != null ? Number(p.revenueShare) : null,
+      daysSinceFirstSale: p.daysSinceFirstSale,
+      collections: p.collections as string[] | null,
+      tags: p.tags as string[] | null,
+      topCrossSellProducts: p.topCrossSellProducts as { title: string; coOccurrence: number }[] | null,
+    }));
+
+    const suggestions = generateCampaignSuggestions({
+      products: productsForEngine,
+      totalDailyBudget,
+      existingCampaignProductTitles: existingProductTitles,
+    });
+
+    // Upsert suggestions into campaign_strategies
+    const created: unknown[] = [];
+    for (const s of suggestions) {
+      const existing = await prisma.campaignStrategy.findFirst({
+        where: { organizationId: orgId, name: s.name, status: 'SUGGESTED' },
+      });
+      if (existing) continue; // Don't duplicate
+
+      const campaign = await prisma.campaignStrategy.create({
+        data: {
+          organizationId: orgId,
+          name: s.name,
+          type: s.type,
+          status: 'SUGGESTED',
+          productTitles: s.productTitles as unknown as Prisma.InputJsonValue,
+          productCount: s.productTitles.length,
+          dailyBudget: s.dailyBudget,
+          estimatedRoas: s.estimatedRoas,
+          rationale: s.rationale,
+          targetAudience: s.targetAudience,
+          creativeDirection: s.creativeDirection,
+        },
+      });
+      created.push(campaign);
+    }
+
+    return { generated: created.length, campaigns: created };
+  });
+
+  // POST /autopilot/strategies/:id/approve — Approve a suggestion
+  app.post('/autopilot/strategies/:id/approve', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Approve a campaign strategy',
+      description: 'Marks a suggested campaign strategy as approved.',
+    },
+  }, async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await prisma.campaignStrategy.update({
+      where: { id },
+      data: { status: 'APPROVED' },
+    });
+    return { campaign };
+  });
+
+  // POST /autopilot/strategies/:id/reject — Reject a suggestion
+  app.post('/autopilot/strategies/:id/reject', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Reject a campaign strategy',
+      description: 'Marks a suggested campaign strategy as rejected.',
+    },
+  }, async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await prisma.campaignStrategy.update({
+      where: { id },
+      data: { status: 'REJECTED' },
+    });
+    return { campaign };
+  });
+
+  // POST /autopilot/strategies/:id/pause — Pause an active campaign
+  app.post('/autopilot/strategies/:id/pause', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Pause a campaign strategy',
+      description: 'Pauses an active campaign strategy.',
+    },
+  }, async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await prisma.campaignStrategy.update({
+      where: { id },
+      data: { status: 'PAUSED' },
+    });
+    return { campaign };
+  });
 }

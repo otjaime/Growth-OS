@@ -72,6 +72,7 @@ model Organization {
   copyVariants         CopyVariant[]
   productPerformance   ProductPerformance[]
   proactiveAdJobs      ProactiveAdJob[]
+  campaignStrategies   CampaignStrategy[]
   @@map("organizations")
 }
 
@@ -1246,4 +1247,71 @@ model ProactiveAdJob {
   @@index([organizationId])
   @@index([status])
   @@map("proactive_ad_jobs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN STRATEGY — AI-suggested multi-product campaigns
+// ══════════════════════════════════════════════════════════════
+
+enum CampaignStrategyType {
+  HERO_PRODUCT
+  CATEGORY
+  SEASONAL
+  NEW_ARRIVAL
+  CROSS_SELL
+}
+
+enum CampaignStrategyStatus {
+  SUGGESTED    // AI suggested, awaiting review
+  APPROVED     // User approved, pending creation
+  ACTIVE       // Running on Meta
+  PAUSED       // Manually or auto-paused
+  COMPLETED    // Schedule ended or goals met
+  REJECTED     // User rejected suggestion
+}
+
+model CampaignStrategy {
+  id                String                 @id @default(cuid())
+  organizationId    String                 @map("organization_id")
+
+  // Campaign definition
+  name              String                 // "BBQ Season — Premium Cuts"
+  type              CampaignStrategyType
+  status            CampaignStrategyStatus @default(SUGGESTED)
+
+  // Products
+  productTitles     Json                   @map("product_titles")  // string[]
+  productCount      Int                    @map("product_count")
+
+  // Budget & Schedule
+  dailyBudget       Decimal?               @map("daily_budget") @db.Decimal(12, 2)
+  totalBudget       Decimal?               @map("total_budget") @db.Decimal(12, 2)
+  startDate         DateTime?              @map("start_date")
+  endDate           DateTime?              @map("end_date")
+
+  // Strategy details
+  targetAudience    String?                @map("target_audience") @db.Text
+  creativeDirection String?                @map("creative_direction") @db.Text
+  estimatedRoas     Decimal?               @map("estimated_roas") @db.Decimal(8, 4)
+
+  // AI rationale
+  rationale         String?                @db.Text
+
+  // Meta integration
+  metaCampaignId    String?                @map("meta_campaign_id")
+  metaAdSetIds      Json?                  @map("meta_ad_set_ids")
+
+  // Performance (updated by monitoring)
+  actualSpend       Decimal?               @map("actual_spend") @db.Decimal(12, 2) @default(0)
+  actualRevenue     Decimal?               @map("actual_revenue") @db.Decimal(12, 2) @default(0)
+  actualRoas        Decimal?               @map("actual_roas") @db.Decimal(8, 4)
+
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  organization      Organization           @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("campaign_strategies")
 }
