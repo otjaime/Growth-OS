@@ -13,6 +13,7 @@ export interface ProductPerformanceRow {
   readonly estimatedMargin: number;
   readonly avgPrice: number;
   readonly avgDailyUnits: number;
+  readonly repeatBuyerPct: number;
   readonly imageUrl: string | null;
   readonly productTier: string | null;
   readonly revenueTrend: number | null;

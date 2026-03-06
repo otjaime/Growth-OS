@@ -12,6 +12,7 @@ function makeProduct(overrides: Partial<ProductPerformanceRow> = {}): ProductPer
     estimatedMargin: 0.65,
     avgPrice: 45,
     avgDailyUnits: 4,
+    repeatBuyerPct: 0.12,
     imageUrl: 'https://example.com/img.jpg',
     productTier: 'growth',
     revenueTrend: 0.10,

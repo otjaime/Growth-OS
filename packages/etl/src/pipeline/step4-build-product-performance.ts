@@ -172,6 +172,21 @@ function computeCrossSell(
 }
 
 /**
+ * Auto-resolve organizationId: if not provided, find the first existing
+ * organization from the DB. This ensures products always get a real
+ * organizationId so autopilot queries can find them.
+ */
+async function resolveOrgForProducts(orgId?: string): Promise<string | null> {
+  if (orgId) return orgId;
+
+  const firstOrg = await prisma.organization.findFirst({
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return firstOrg?.id ?? null;
+}
+
+/**
  * Build product performance mart by aggregating StgOrder line items.
  *
  * 1. Query stg_orders for last 30 days + previous 30 days, parse lineItemsJson
@@ -188,7 +203,10 @@ export async function buildProductPerformance(
   const cutoff30d = subDays(now, 30);
   const cutoff60d = subDays(now, 60);
 
-  const orgFilter = organizationId ? { organizationId } : {};
+  // Auto-resolve org so products always have a real organizationId
+  const resolvedOrgId = await resolveOrgForProducts(organizationId);
+
+  const orgFilter = resolvedOrgId ? { organizationId: resolvedOrgId } : {};
 
   // ── Query current period (0-30 days ago) ─────────────────
   const currentOrders = await prisma.stgOrder.findMany({
@@ -346,7 +364,6 @@ export async function buildProductPerformance(
 
   // ── Upsert products ───────────────────────────────────────
   let productCount = 0;
-  const orgId = organizationId ?? null;
 
   for (const [key, agg] of productMap) {
     const [title, productType] = key.split('|||') as [string, string];
@@ -441,13 +458,13 @@ export async function buildProductPerformance(
     await prisma.productPerformance.upsert({
       where: {
         organizationId_productTitle_productType: {
-          organizationId: orgId ?? '',
+          organizationId: resolvedOrgId ?? '',
           productTitle: title,
           productType,
         },
       },
       create: {
-        organizationId: orgId,
+        organizationId: resolvedOrgId,
         productTitle: title,
         productType,
         unitsSold30d: agg.unitsSold,
