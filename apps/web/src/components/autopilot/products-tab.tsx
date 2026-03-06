@@ -308,10 +308,10 @@ export function ProductsTab(): JSX.Element {
         <ReflectiveCard className="card p-4" intensity="subtle">
           <div className="flex items-center gap-2 mb-1.5">
             <Sparkles className="h-3.5 w-3.5 text-apple-green" />
-            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Ad-Ready</p>
+            <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Ready</p>
           </div>
           <p className="text-2xl font-bold text-apple-green">{summary.eligible}</p>
-          <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">score 60+</p>
+          <p className="text-caption text-[var(--foreground-secondary)] mt-0.5">readiness 60+</p>
         </ReflectiveCard>
 
         <ReflectiveCard className="card p-4" intensity="subtle">
@@ -371,7 +371,7 @@ export function ProductsTab(): JSX.Element {
               onChange={(e) => setOnlyAdReady(e.target.checked)}
               className="rounded border-[var(--border)] text-apple-blue focus:ring-apple-blue/50"
             />
-            <span className="text-[var(--foreground-secondary)] whitespace-nowrap">Only Ad-Ready (60+)</span>
+            <span className="text-[var(--foreground-secondary)] whitespace-nowrap">Only ready (60+)</span>
           </label>
 
           {/* Clear filters */}
@@ -527,7 +527,7 @@ export function ProductsTab(): JSX.Element {
                   </th>
                   <th className="px-3 py-3">
                     <button onClick={() => handleSort('adFitness')} className="flex items-center gap-1 text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium hover:text-[var(--foreground)] transition-colors">
-                      Ad Score <SortIcon col="adFitness" />
+                      Readiness <SortIcon col="adFitness" />
                     </button>
                   </th>
                   <th className="px-3 py-3 text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium text-center">

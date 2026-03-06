@@ -317,12 +317,13 @@ export async function autopilotRoutes(app: FastifyInstance) {
   }, async (request) => {
     const where = await resolveOrgWhere(request);
 
-    const [accountCount, campaignCount, adSetCount, adCount, activeAdCount] = await Promise.all([
+    const [accountCount, campaignCount, adSetCount, adCount, activeAdCount, firstAccount] = await Promise.all([
       prisma.metaAdAccount.count({ where }),
       prisma.metaCampaign.count({ where }),
       prisma.metaAdSet.count({ where }),
       prisma.metaAd.count({ where }),
       prisma.metaAd.count({ where: { ...where, status: 'ACTIVE' } }),
+      prisma.metaAdAccount.findFirst({ where, select: { currency: true } }),
     ]);
 
     // Top-level 7d aggregates
@@ -351,12 +352,27 @@ export async function autopilotRoutes(app: FastifyInstance) {
       select: { lastSyncAt: true },
     });
 
+    // Detect currency: Meta ad account currency → fallback to StgOrder → USD
+    let currency = firstAccount?.currency ?? 'USD';
+    if (currency === 'USD') {
+      const orgId = (where as { organizationId?: string }).organizationId;
+      if (orgId) {
+        const orderCurrency = await prisma.stgOrder.findFirst({
+          where: { organizationId: orgId },
+          select: { currency: true },
+          orderBy: { orderDate: 'desc' },
+        });
+        if (orderCurrency?.currency) currency = orderCurrency.currency;
+      }
+    }
+
     return {
       accounts: accountCount,
       campaigns: campaignCount,
       adSets: adSetCount,
       totalAds: adCount,
       activeAds: activeAdCount,
+      currency,
       metrics7d: {
         totalSpend: Math.round(totalSpend * 100) / 100,
         totalRevenue: Math.round(totalRevenue * 100) / 100,

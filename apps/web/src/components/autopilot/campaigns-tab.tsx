@@ -8,15 +8,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '@/lib/api';
+import { formatMoney } from '@/lib/format';
 import type { CampaignStrategy, CampaignStrategyStatus, CampaignStrategyType, SeasonalEvent } from './types';
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function fmt$(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return `$${v.toFixed(0)}`;
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -52,13 +45,14 @@ const STATUS_STYLES: Record<CampaignStrategyStatus, { bg: string; text: string; 
 
 interface CampaignCardProps {
   campaign: CampaignStrategy;
+  currency: string;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onPause: (id: string) => void;
   actionLoading: string | null;
 }
 
-function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }: CampaignCardProps): JSX.Element {
+function CampaignCard({ campaign, currency, onApprove, onReject, onPause, actionLoading }: CampaignCardProps): JSX.Element {
   const typeStyle = TYPE_STYLES[campaign.type] ?? TYPE_STYLES.HERO_PRODUCT;
   const statusStyle = STATUS_STYLES[campaign.status] ?? STATUS_STYLES.SUGGESTED;
   const TypeIcon = typeStyle.icon;
@@ -95,7 +89,7 @@ function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }:
           </span>
         )}
         {campaign.dailyBudget != null && (
-          <span>{fmt$(Number(campaign.dailyBudget))}/day</span>
+          <span>{formatMoney(Number(campaign.dailyBudget), currency)}/day</span>
         )}
         {campaign.startDate && campaign.endDate && (
           <span className="flex items-center gap-1">
@@ -111,13 +105,13 @@ function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }:
           {campaign.actualSpend != null && (
             <div>
               <p className="text-[var(--foreground-secondary)]">Spend</p>
-              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(Number(campaign.actualSpend))}</p>
+              <p className="font-semibold text-[var(--foreground)] tabular-nums">{formatMoney(Number(campaign.actualSpend), currency)}</p>
             </div>
           )}
           {campaign.actualRevenue != null && (
             <div>
               <p className="text-[var(--foreground-secondary)]">Revenue</p>
-              <p className="font-semibold text-[var(--foreground)] tabular-nums">{fmt$(Number(campaign.actualRevenue))}</p>
+              <p className="font-semibold text-[var(--foreground)] tabular-nums">{formatMoney(Number(campaign.actualRevenue), currency)}</p>
             </div>
           )}
           {campaign.actualRoas != null && (
@@ -181,9 +175,9 @@ function CampaignCard({ campaign, onApprove, onReject, onPause, actionLoading }:
           </>
         )}
         {campaign.status === 'APPROVED' && (
-          <span className="flex items-center gap-1 text-xs text-apple-blue">
-            <Sparkles className="h-3 w-3" />
-            Pending activation
+          <span className="flex items-center gap-1 text-xs text-apple-green">
+            <Check className="h-3 w-3" />
+            Strategy approved
           </span>
         )}
         {campaign.status === 'ACTIVE' && (
@@ -245,7 +239,11 @@ function SeasonalEventCard({ event }: { event: SeasonalEvent }): JSX.Element {
 
 // ── Main Component ───────────────────────────────────────────
 
-export function CampaignsTab(): JSX.Element {
+interface CampaignsTabProps {
+  currency?: string;
+}
+
+export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Element {
   const [campaigns, setCampaigns] = useState<CampaignStrategy[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<SeasonalEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -409,6 +407,7 @@ export function CampaignsTab(): JSX.Element {
                 >
                   <CampaignCard
                     campaign={c}
+                    currency={currency}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
@@ -441,6 +440,7 @@ export function CampaignsTab(): JSX.Element {
                 >
                   <CampaignCard
                     campaign={c}
+                    currency={currency}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
@@ -470,6 +470,7 @@ export function CampaignsTab(): JSX.Element {
                 >
                   <CampaignCard
                     campaign={c}
+                    currency={currency}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { BarChart3, Activity, Target, DollarSign } from 'lucide-react';
 import { CounterTicker } from '@/components/ui/counter-ticker';
+import { formatMoney } from '@/lib/format';
 import type { AutopilotStats, DiagnosisStats, Diagnosis } from './types';
 
 interface AutopilotSummaryCardsProps {
@@ -28,6 +29,7 @@ export function AutopilotSummaryCards({ stats, diagnosisStats, diagnoses }: Auto
   if (!stats) return null;
 
   const roas = stats.metrics7d.blendedRoas;
+  const cur = stats.currency ?? 'USD';
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -48,7 +50,7 @@ export function AutopilotSummaryCards({ stats, diagnosisStats, diagnoses }: Auto
           <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Spend (7d)</p>
         </div>
         <p className="text-2xl font-bold text-[var(--foreground)]">
-          ${stats.metrics7d.totalSpend.toLocaleString()}
+          {formatMoney(stats.metrics7d.totalSpend, cur)}
         </p>
         <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
           {roas ? `${roas.toFixed(2)}x ROAS` : 'No ROAS data'}
@@ -83,11 +85,11 @@ export function AutopilotSummaryCards({ stats, diagnosisStats, diagnoses }: Auto
           <p className="text-caption uppercase text-[var(--foreground-secondary)]/60 font-medium">Revenue (7d)</p>
         </div>
         <p className="text-2xl font-bold text-[var(--foreground)]">
-          ${stats.metrics7d.totalRevenue.toLocaleString()}
+          {formatMoney(stats.metrics7d.totalRevenue, cur)}
         </p>
         {atRiskSpend > 0 ? (
           <p className="text-xs text-apple-red mt-0.5 font-medium">
-            ${atRiskSpend.toLocaleString()} at risk
+            {formatMoney(atRiskSpend, cur)} at risk
           </p>
         ) : (
           <p className="text-xs text-[var(--foreground-secondary)] mt-0.5">
