@@ -34,5 +34,6 @@ export type {
   MetaAd,
   Diagnosis,
   AdVariant,
+  CampaignStrategy,
 } from '@prisma/client';
-export { Prisma, Plan, UserRole, ExperimentStatus, ExperimentType, OpportunityType, OpportunityStatus, SuggestionType, SuggestionStatus, FeedbackAction, MetaAdStatus, DiagnosisAction, DiagnosisStatus, DiagnosisSeverity, VariantStatus } from '@prisma/client';
+export { Prisma, Plan, UserRole, ExperimentStatus, ExperimentType, OpportunityType, OpportunityStatus, SuggestionType, SuggestionStatus, FeedbackAction, MetaAdStatus, DiagnosisAction, DiagnosisStatus, DiagnosisSeverity, VariantStatus, CampaignStrategyType, CampaignStrategyStatus } from '@prisma/client';
