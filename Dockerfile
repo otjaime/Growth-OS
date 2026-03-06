@@ -17,7 +17,7 @@ COPY packages/etl/package.json ./packages/etl/
 COPY apps/api/package.json ./apps/api/
 # Tell Prisma to download the linux-musl binary (Alpine)
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # ── Build ────────────────────────────────────────────────────
 FROM deps AS build
@@ -32,4 +32,4 @@ COPY --from=build /app ./
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "pnpm --filter @growth-os/database exec prisma db push --accept-data-loss --skip-generate || echo 'db:push failed, starting anyway'; exec pnpm --filter @growth-os/api start"]
+CMD ["sh", "-c", "pnpm --filter @growth-os/database db:push || echo 'db:push failed, starting anyway'; exec pnpm --filter @growth-os/api start"]
