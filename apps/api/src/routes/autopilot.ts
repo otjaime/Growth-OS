@@ -2676,6 +2676,41 @@ export async function autopilotRoutes(app: FastifyInstance) {
     return { events };
   });
 
+  // ── Campaign Intelligence Loop (Phase 4) ──────────────────
+
+  // GET /autopilot/strategies/report/:period — Campaign performance report
+  app.get('/autopilot/strategies/report/:period', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Campaign performance report',
+      description: 'Returns a structured performance report for the given period (daily, weekly, monthly).',
+    },
+  }, async (request, reply) => {
+    const orgId = await resolveOrgId(request);
+    const { period } = request.params as { period: string };
+    if (!['daily', 'weekly', 'monthly'].includes(period)) {
+      reply.status(400);
+      return { error: 'Invalid period. Use daily, weekly, or monthly.' };
+    }
+    const { generateCampaignReport } = await import('../lib/campaign-reporter.js');
+    const report = await generateCampaignReport(orgId, period as 'daily' | 'weekly' | 'monthly');
+    return { report };
+  });
+
+  // GET /autopilot/strategies/analysis — Weekly marketing analysis
+  app.get('/autopilot/strategies/analysis', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Weekly marketing analysis',
+      description: 'Generates a comprehensive weekly marketing performance analysis with recommendations.',
+    },
+  }, async (request) => {
+    const orgId = await resolveOrgId(request);
+    const { runWeeklyMarketingAnalysis } = await import('../jobs/weekly-marketing-analysis.js');
+    const analysis = await runWeeklyMarketingAnalysis(orgId);
+    return { analysis };
+  });
+
   // GET /autopilot/strategies/:id — Campaign strategy detail
   app.get('/autopilot/strategies/:id', {
     schema: {

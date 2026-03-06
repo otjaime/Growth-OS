@@ -60,6 +60,16 @@ async function startScheduler() {
     },
   );
 
+  await syncQueue.add(
+    'weekly-analysis',
+    { type: 'weekly-analysis' },
+    {
+      repeat: { pattern: process.env.WEEKLY_ANALYSIS_CRON ?? '0 8 * * 1' }, // Monday 8am
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5000 },
+    },
+  );
+
   // Worker
   const worker = new Worker(
     'growth-os-sync',
@@ -113,6 +123,9 @@ async function startScheduler() {
               // Proactive: discover new product opportunities + evaluate A/B tests
               await runProactiveDiscovery(org.id);
               await runProactiveABLoop(org.id);
+              // Campaign strategy monitoring
+              const { monitorCampaigns } = await import('./jobs/campaign-monitor.js');
+              await monitorCampaigns(org.id);
             } catch (err) {
               log.error({ orgId: org.id, error: String(err) }, 'Autopilot sync failed for org');
             }
@@ -170,6 +183,16 @@ async function startScheduler() {
               });
             } catch (err) {
               log.error({ orgId: org.id, error: String(err) }, 'Autopilot digest failed for org');
+            }
+          }
+        } else if (job.data.type === 'weekly-analysis') {
+          const { runWeeklyMarketingAnalysis } = await import('./jobs/weekly-marketing-analysis.js');
+          const orgs = await prisma.organization.findMany({ select: { id: true } });
+          for (const org of orgs) {
+            try {
+              await runWeeklyMarketingAnalysis(org.id);
+            } catch (err) {
+              log.error({ orgId: org.id, error: String(err) }, 'Weekly analysis failed for org');
             }
           }
         }
