@@ -47,7 +47,7 @@ export interface ProactiveRecommendation {
 export function evaluateProactiveRules(
   input: ProactiveRulesInput,
 ): ProactiveRecommendation[] {
-  const minScore = input.minFitnessScore ?? 60;
+  const minScore = input.minFitnessScore ?? 55;
   const maxRecs = input.maxRecommendations ?? 3;
 
   const candidates = input.products

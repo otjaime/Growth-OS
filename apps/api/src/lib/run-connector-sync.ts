@@ -26,6 +26,12 @@ export async function runConnectorSync(connectorType: string): Promise<{ rowsLoa
       ...data.metaInsights,
       ...data.googleAdsInsights,
       ...data.ga4Traffic,
+      ...data.shopifyProducts,
+      ...data.tiktokInsights,
+      ...data.klaviyoCampaigns,
+      ...data.klaviyoFlows,
+      ...data.stripeCharges,
+      ...data.stripeRefunds,
     ];
     const rowsLoaded = await ingestRaw(all);
     await normalizeStaging();
@@ -76,6 +82,12 @@ export async function runFullSync(): Promise<{ rowsLoaded: number }> {
       ...data.metaInsights,
       ...data.googleAdsInsights,
       ...data.ga4Traffic,
+      ...data.shopifyProducts,
+      ...data.tiktokInsights,
+      ...data.klaviyoCampaigns,
+      ...data.klaviyoFlows,
+      ...data.stripeCharges,
+      ...data.stripeRefunds,
     ];
     const rowsLoaded = await ingestRaw(all);
     await normalizeStaging();

@@ -1173,8 +1173,8 @@ model ProductPerformance {
 
   // Trend metrics
   revenuePrev30d        Decimal?  @map("revenue_prev_30d")  @db.Decimal(12, 2)
-  revenueTrend          Decimal?  @map("revenue_trend")      @db.Decimal(5, 4)
-  unitsTrend            Decimal?  @map("units_trend")        @db.Decimal(5, 4)
+  revenueTrend          Decimal?  @map("revenue_trend")      @db.Decimal(8, 4)
+  unitsTrend            Decimal?  @map("units_trend")        @db.Decimal(8, 4)
 
   // Product lifecycle
   firstSeenAt           DateTime? @map("first_seen_at")

@@ -16,6 +16,7 @@ interface LineItem {
   price?: string;
   originalUnitPriceSet?: { shopMoney?: { amount?: string } };
   product?: { productType?: string; featuredImage?: { url?: string }; description?: string; onlineStoreUrl?: string };
+  variant?: { product?: { productType?: string; featuredImage?: { url?: string }; description?: string; onlineStoreUrl?: string } };
   image?: { url?: string };
 }
 
@@ -76,7 +77,7 @@ function aggregateLineItems(
     for (const item of lineItems) {
       const title = item.title ?? 'Unknown Product';
       const productType = (
-        item.product_type ?? item.product?.productType ?? 'default'
+        item.product_type ?? item.product?.productType ?? item.variant?.product?.productType ?? 'default'
       ).toLowerCase();
       const qty = typeof item.quantity === 'string'
         ? parseInt(item.quantity, 10)
@@ -104,14 +105,15 @@ function aggregateLineItems(
       agg.orderIds.add(orderId);
 
       // Extract image/description from line item product data (Shopify GraphQL)
+      const variantProduct = item.variant?.product;
       if (!agg.imageUrl) {
-        agg.imageUrl = item.image?.url ?? item.product?.featuredImage?.url;
+        agg.imageUrl = item.image?.url ?? item.product?.featuredImage?.url ?? variantProduct?.featuredImage?.url;
       }
-      if (!agg.description && item.product?.description) {
-        agg.description = item.product.description;
+      if (!agg.description) {
+        agg.description = item.product?.description ?? variantProduct?.description ?? undefined;
       }
-      if (!agg.productUrl && item.product?.onlineStoreUrl) {
-        agg.productUrl = item.product.onlineStoreUrl;
+      if (!agg.productUrl) {
+        agg.productUrl = item.product?.onlineStoreUrl ?? variantProduct?.onlineStoreUrl ?? undefined;
       }
 
       productMap.set(key, agg);
@@ -240,7 +242,7 @@ export async function buildProductPerformance(
     for (const item of lineItems) {
       const title = item.title ?? 'Unknown Product';
       const productType = (
-        item.product_type ?? item.product?.productType ?? 'default'
+        item.product_type ?? item.product?.productType ?? item.variant?.product?.productType ?? 'default'
       ).toLowerCase();
       const key = `${title}|||${productType}`;
       if (!firstSeenMap.has(key)) {
@@ -261,7 +263,7 @@ export async function buildProductPerformance(
     for (const item of lineItems) {
       const title = item.title ?? 'Unknown Product';
       const productType = (
-        item.product_type ?? item.product?.productType ?? 'default'
+        item.product_type ?? item.product?.productType ?? item.variant?.product?.productType ?? 'default'
       ).toLowerCase();
       const qty = typeof item.quantity === 'string'
         ? parseInt(item.quantity, 10)
