@@ -2319,12 +2319,27 @@ export async function autopilotRoutes(app: FastifyInstance) {
   }, async (request) => {
     const organizationId = await resolveOrgId(request);
 
-    // Get top products by fitness score
-    const products = await prisma.productPerformance.findMany({
+    // Get top products by fitness score — try org-scoped first, then claim orphans
+    let products = await prisma.productPerformance.findMany({
       where: { organizationId },
       orderBy: { adFitnessScore: 'desc' },
       take: 20,
     });
+
+    // If no products found with org scope, claim orphaned products (org = null)
+    if (products.length === 0) {
+      const orphanCount = await prisma.productPerformance.updateMany({
+        where: { organizationId: null },
+        data: { organizationId },
+      });
+      if (orphanCount.count > 0) {
+        products = await prisma.productPerformance.findMany({
+          where: { organizationId },
+          orderBy: { adFitnessScore: 'desc' },
+          take: 20,
+        });
+      }
+    }
 
     // Get existing ad headlines to match against product titles
     const existingAds = await prisma.metaAd.findMany({
@@ -2352,7 +2367,24 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const { evaluateProactiveRules } = await import('@growth-os/etl');
 
-    const recommendations = evaluateProactiveRules({
+    // Build a lookup map so we can enrich recommendations with per-product metrics
+    const productLookup = new Map(
+      products.map((p) => [
+        p.productTitle,
+        {
+          revenue30d: Number(p.revenue30d),
+          grossProfit30d: Number(p.grossProfit30d),
+          avgDailyUnits: Number(p.avgDailyUnits),
+          repeatBuyerPct: Number(p.repeatBuyerPct),
+          estimatedMargin: Number(p.estimatedMargin),
+          avgPrice: Number(p.avgPrice),
+          hasImage: !!p.imageUrl,
+          hasDescription: !!p.description,
+        },
+      ]),
+    );
+
+    const rawRecommendations = evaluateProactiveRules({
       products: products.map((p) => ({
         productTitle: p.productTitle,
         productType: p.productType,
@@ -2362,6 +2394,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
         estimatedMargin: Number(p.estimatedMargin),
         avgPrice: Number(p.avgPrice),
         avgDailyUnits: Number(p.avgDailyUnits),
+        repeatBuyerPct: Number(p.repeatBuyerPct),
         imageUrl: p.imageUrl,
         productTier: p.productTier ?? null,
         revenueTrend: p.revenueTrend != null ? Number(p.revenueTrend) : null,
@@ -2370,10 +2403,29 @@ export async function autopilotRoutes(app: FastifyInstance) {
       existingProductAds,
     });
 
+    // Enrich with metrics object and normalize casing for frontend
+    const recommendations = rawRecommendations.map((rec) => ({
+      productTitle: rec.productTitle,
+      productType: rec.productType,
+      adFitnessScore: rec.adFitnessScore,
+      reason: rec.reason,
+      estimatedRoas: rec.estimatedROAS,  // normalize casing for frontend
+      metrics: productLookup.get(rec.productTitle) ?? {
+        revenue30d: 0,
+        grossProfit30d: 0,
+        avgDailyUnits: 0,
+        repeatBuyerPct: 0,
+        estimatedMargin: 0,
+        avgPrice: 0,
+        hasImage: false,
+        hasDescription: false,
+      },
+    }));
+
     return {
       recommendations,
       totalProducts: products.length,
-      eligibleCount: products.filter((p) => Number(p.adFitnessScore ?? 0) >= 60).length,
+      eligibleCount: products.filter((p) => Number(p.adFitnessScore ?? 0) >= 55).length,
       alreadyAdvertised: existingProductAds.size,
     };
   });
@@ -2744,18 +2796,39 @@ export async function autopilotRoutes(app: FastifyInstance) {
   }, async (request) => {
     const orgId = await resolveOrgId(request);
 
-    // Load product performance data
-    const products = await prisma.productPerformance.findMany({
+    // Load product performance data — try org-scoped first, then claim orphans
+    let products = await prisma.productPerformance.findMany({
       where: { organizationId: orgId },
       select: {
         productTitle: true, productType: true, adFitnessScore: true,
         revenue30d: true, grossProfit30d: true, estimatedMargin: true,
         avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
-        imageUrl: true, productTier: true, revenueTrend: true,
+        imageUrl: true, description: true, productTier: true, revenueTrend: true,
         revenueShare: true, daysSinceFirstSale: true,
         collections: true, tags: true, topCrossSellProducts: true,
       },
     });
+
+    // If no products found with org scope, claim orphaned products (org = null)
+    if (products.length === 0) {
+      const orphanCount = await prisma.productPerformance.updateMany({
+        where: { organizationId: null },
+        data: { organizationId: orgId },
+      });
+      if (orphanCount.count > 0) {
+        products = await prisma.productPerformance.findMany({
+          where: { organizationId: orgId },
+          select: {
+            productTitle: true, productType: true, adFitnessScore: true,
+            revenue30d: true, grossProfit30d: true, estimatedMargin: true,
+            avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
+            imageUrl: true, description: true, productTier: true, revenueTrend: true,
+            revenueShare: true, daysSinceFirstSale: true,
+            collections: true, tags: true, topCrossSellProducts: true,
+          },
+        });
+      }
+    }
 
     // Get existing active campaign products
     const activeCampaigns = await prisma.campaignStrategy.findMany({
@@ -2830,7 +2903,23 @@ export async function autopilotRoutes(app: FastifyInstance) {
       created.push(campaign);
     }
 
-    return { generated: created.length, campaigns: created };
+    return {
+      generated: created.length,
+      campaigns: created,
+      debug: {
+        organizationId: orgId,
+        productsFound: products.length,
+        suggestionsGenerated: suggestions.length,
+        existingCampaignProducts: existingProductTitles.size,
+        dailyBudget: totalDailyBudget,
+        productScores: productsForEngine.slice(0, 5).map((p) => ({
+          title: p.productTitle,
+          score: p.adFitnessScore,
+          tier: p.productTier,
+          hasImage: !!p.imageUrl,
+        })),
+      },
+    };
   });
 
   // POST /autopilot/strategies/:id/approve — Approve a suggestion

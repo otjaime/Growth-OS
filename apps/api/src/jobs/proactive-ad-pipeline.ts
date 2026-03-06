@@ -205,6 +205,7 @@ export async function runProactiveDiscovery(
       avgDailyUnits: Number(p.avgDailyUnits),
       estimatedMargin: Number(p.estimatedMargin),
       avgPrice: Number(p.avgPrice),
+      repeatBuyerPct: Number(p.repeatBuyerPct),
       adFitnessScore: Number(p.adFitnessScore),
       imageUrl: p.imageUrl,
       productTier: p.productTier ?? null,
