@@ -83,7 +83,7 @@ describe('campaign-suggestions', () => {
       expect(heroCampaigns.length).toBe(3);
     });
 
-    it('requires image for hero campaigns', () => {
+    it('generates hero campaigns even without image (notes missing image in creative direction)', () => {
       const products = [
         makeProduct({ productTitle: 'No Image', adFitnessScore: 90, imageUrl: null }),
       ];
@@ -95,7 +95,8 @@ describe('campaign-suggestions', () => {
       });
 
       const heroCampaigns = result.filter((s) => s.type === 'HERO_PRODUCT');
-      expect(heroCampaigns.length).toBe(0);
+      expect(heroCampaigns.length).toBe(1);
+      expect(heroCampaigns[0]!.creativeDirection).toContain('not synced');
     });
 
     it('generates category campaigns when >= 3 products share a type with score >= 50', () => {
@@ -114,7 +115,7 @@ describe('campaign-suggestions', () => {
 
       const categoryCampaigns = result.filter((s) => s.type === 'CATEGORY');
       expect(categoryCampaigns.length).toBe(1);
-      expect(categoryCampaigns[0]!.name).toContain('meat');
+      expect(categoryCampaigns[0]!.name).toContain('Meat');
       expect(categoryCampaigns[0]!.productTitles).toHaveLength(3);
     });
 

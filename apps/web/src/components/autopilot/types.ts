@@ -357,7 +357,7 @@ export interface HistoryItem {
 
 // ── Campaign Strategy types ─────────────────────────────────
 
-export type CampaignStrategyType = 'HERO_PRODUCT' | 'CATEGORY' | 'SEASONAL' | 'NEW_ARRIVAL' | 'CROSS_SELL';
+export type CampaignStrategyType = 'HERO_PRODUCT' | 'CATEGORY' | 'SEASONAL' | 'NEW_ARRIVAL' | 'CROSS_SELL' | 'BEST_SELLERS';
 export type CampaignStrategyStatus = 'SUGGESTED' | 'APPROVED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'REJECTED';
 
 export interface CampaignStrategy {

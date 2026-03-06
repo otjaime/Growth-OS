@@ -1259,6 +1259,7 @@ enum CampaignStrategyType {
   SEASONAL
   NEW_ARRIVAL
   CROSS_SELL
+  BEST_SELLERS
 }
 
 enum CampaignStrategyStatus {
