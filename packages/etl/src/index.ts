@@ -34,5 +34,7 @@ export { detectAnomalies } from './anomaly-detection.js';
 export type { MetricSeries, AnomalyResult, AnomalyDetectionConfig } from './anomaly-detection.js';
 export { scoreAdFitness } from './product-scoring.js';
 export type { AdFitnessInput, AdFitnessResult, AdFitnessBreakdown } from './product-scoring.js';
+export { scoreDtcProduct } from './product-scoring-v2.js';
+export type { DtcScoreInput, DtcScoreResult, DtcScoreBreakdown, CampaignRecommendation } from './product-scoring-v2.js';
 export { evaluateProactiveRules } from './proactive-rules.js';
 export type { ProductPerformanceRow, ProactiveRulesInput, ProactiveRecommendation } from './proactive-rules.js';
