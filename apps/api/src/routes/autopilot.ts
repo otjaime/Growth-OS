@@ -2830,6 +2830,24 @@ export async function autopilotRoutes(app: FastifyInstance) {
       }
     }
 
+    // If STILL no products, rebuild product performance from stg_orders
+    if (products.length === 0) {
+      const { buildProductPerformance } = await import('@growth-os/etl');
+      await buildProductPerformance(orgId);
+
+      products = await prisma.productPerformance.findMany({
+        where: { organizationId: orgId },
+        select: {
+          productTitle: true, productType: true, adFitnessScore: true,
+          revenue30d: true, grossProfit30d: true, estimatedMargin: true,
+          avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
+          imageUrl: true, description: true, productTier: true, revenueTrend: true,
+          revenueShare: true, daysSinceFirstSale: true,
+          collections: true, tags: true, topCrossSellProducts: true,
+        },
+      });
+    }
+
     // Get existing active campaign products
     const activeCampaigns = await prisma.campaignStrategy.findMany({
       where: { organizationId: orgId, status: { in: ['ACTIVE', 'APPROVED', 'SUGGESTED'] } },

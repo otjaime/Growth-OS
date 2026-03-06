@@ -36,6 +36,7 @@ const TYPE_STYLES: Record<CampaignStrategyType, { bg: string; text: string; labe
   SEASONAL: { bg: 'bg-[var(--tint-orange)]', text: 'text-apple-orange', label: 'Seasonal', icon: Calendar },
   NEW_ARRIVAL: { bg: 'bg-[var(--tint-green)]', text: 'text-apple-green', label: 'New Arrival', icon: Gift },
   CROSS_SELL: { bg: 'bg-[var(--tint-pink)]', text: 'text-apple-pink', label: 'Cross-Sell', icon: ShoppingBag },
+  BEST_SELLERS: { bg: 'bg-[var(--tint-blue)]', text: 'text-apple-blue', label: 'Best Sellers', icon: TrendingUp },
 };
 
 const STATUS_STYLES: Record<CampaignStrategyStatus, { bg: string; text: string; label: string }> = {

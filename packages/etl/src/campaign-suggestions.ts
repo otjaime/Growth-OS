@@ -29,7 +29,7 @@ export interface ProductForCampaign {
 
 export interface CampaignSuggestion {
   readonly name: string;
-  readonly type: 'HERO_PRODUCT' | 'CATEGORY' | 'SEASONAL' | 'NEW_ARRIVAL' | 'CROSS_SELL';
+  readonly type: 'HERO_PRODUCT' | 'CATEGORY' | 'SEASONAL' | 'NEW_ARRIVAL' | 'CROSS_SELL' | 'BEST_SELLERS';
   readonly productTitles: readonly string[];
   readonly estimatedRoas: number;
   readonly rationale: string;
@@ -50,14 +50,18 @@ export interface CampaignSuggestionInput {
 // Priority constants by campaign type
 const PRIORITY_HERO_PRODUCT = 90;
 const PRIORITY_SEASONAL = 80;
+const PRIORITY_BEST_SELLERS = 75;
 const PRIORITY_CATEGORY = 70;
 const PRIORITY_NEW_ARRIVAL = 60;
 const PRIORITY_CROSS_SELL = 50;
 
 /**
  * Generates campaign suggestions based on product performance data.
- * Returns suggestions sorted by priority (hero > seasonal > category > new_arrival > cross_sell)
+ * Returns suggestions sorted by priority (hero > seasonal > best_sellers > category > new_arrival > cross_sell)
  * then by estimated ROAS descending.
+ *
+ * If no specific campaign types qualify, generates a "Best Sellers" fallback
+ * campaign from the top products by revenue, ensuring at least one suggestion.
  */
 export function generateCampaignSuggestions(input: CampaignSuggestionInput): CampaignSuggestion[] {
   const { products, totalDailyBudget, existingCampaignProductTitles, daysAhead = 21, referenceDate } = input;
@@ -70,6 +74,10 @@ export function generateCampaignSuggestions(input: CampaignSuggestionInput): Cam
   const availableProducts = products.filter(
     (p) => !existingCampaignProductTitles.has(p.productTitle),
   );
+
+  if (availableProducts.length === 0) {
+    return [];
+  }
 
   const suggestions: CampaignSuggestion[] = [];
 
@@ -93,6 +101,15 @@ export function generateCampaignSuggestions(input: CampaignSuggestionInput): Cam
   const crossSellSuggestions = generateCrossSellCampaigns(availableProducts, totalDailyBudget);
   suggestions.push(...crossSellSuggestions);
 
+  // 6. FALLBACK: If no campaigns generated, create a "Best Sellers" campaign
+  //    This ensures the user ALWAYS gets at least one suggestion
+  if (suggestions.length === 0) {
+    const bestSellersSuggestion = generateBestSellersCampaign(availableProducts, totalDailyBudget);
+    if (bestSellersSuggestion) {
+      suggestions.push(bestSellersSuggestion);
+    }
+  }
+
   // Sort by priority descending, then by estimatedRoas descending
   suggestions.sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
@@ -106,11 +123,11 @@ function generateHeroCampaigns(
   products: readonly ProductForCampaign[],
   totalDailyBudget: number,
 ): CampaignSuggestion[] {
-  // Find top 3 hero-eligible products
+  // Hero products: top performers by score, image preferred but not required
   const heroEligible = products
     .filter((p) =>
-      (p.productTier === 'hero' || p.adFitnessScore >= 70) &&
-      p.imageUrl !== null,
+      (p.productTier === 'hero' || p.adFitnessScore >= 55) &&
+      p.grossProfit30d > 0,
     )
     .sort((a, b) => b.adFitnessScore - a.adFitnessScore)
     .slice(0, 3);
@@ -123,6 +140,10 @@ function generateHeroCampaigns(
     const estimatedRoas = product.estimatedMargin > 0.40
       ? product.estimatedMargin * 4
       : product.estimatedMargin * 3;
+
+    const imageNote = product.imageUrl
+      ? 'Product imagery available for creative.'
+      : 'Note: Product image not synced — use Shopify product photos or lifestyle shots.';
 
     return {
       name: `Hero — ${product.productTitle}`,
@@ -138,7 +159,7 @@ function generateHeroCampaigns(
         : 'Broad interest targeting + DPA for product category',
       creativeDirection: `Single-product spotlight with lifestyle imagery. ` +
         `Lead with $${product.avgPrice.toFixed(0)} price point. ` +
-        `Highlight key benefits and social proof.`,
+        `Highlight key benefits and social proof. ${imageNote}`,
       priority: PRIORITY_HERO_PRODUCT,
     };
   });
@@ -148,11 +169,11 @@ function generateCategoryCampaigns(
   products: readonly ProductForCampaign[],
   totalDailyBudget: number,
 ): CampaignSuggestion[] {
-  // Group by productType, find types with >= 3 qualifying products (score >= 50)
+  // Group by productType, find types with >= 3 qualifying products (score >= 35)
   const typeGroups = new Map<string, ProductForCampaign[]>();
 
   for (const product of products) {
-    if (product.adFitnessScore >= 50) {
+    if (product.adFitnessScore >= 35 && product.grossProfit30d > 0) {
       const existing = typeGroups.get(product.productType) ?? [];
       existing.push(product);
       typeGroups.set(product.productType, existing);
@@ -171,17 +192,22 @@ function generateCategoryCampaigns(
     const estimatedRoas = avgMargin * 3;
     const totalRevenue = prods.reduce((sum, p) => sum + p.revenue30d, 0);
 
+    // Use a more descriptive name if type is "default" or generic
+    const displayType = productType === 'default' || productType === 'Default'
+      ? 'Full Catalog'
+      : productType.charAt(0).toUpperCase() + productType.slice(1);
+
     return {
-      name: `Category — ${productType}`,
+      name: `Category — ${displayType}`,
       type: 'CATEGORY',
       productTitles: prods.map((p) => p.productTitle),
       estimatedRoas: Math.round(estimatedRoas * 100) / 100,
-      rationale: `${prods.length} products in "${productType}" category with avg fitness score ` +
+      rationale: `${prods.length} products in "${displayType}" category with avg fitness score ` +
         `of ${(prods.reduce((s, p) => s + p.adFitnessScore, 0) / prods.length).toFixed(0)}. ` +
         `Combined revenue of $${totalRevenue.toFixed(0)}/month. Category campaigns allow ` +
         `Meta to optimize delivery across the product set.`,
       dailyBudget: Math.round(budgetPerCampaign * 100) / 100,
-      targetAudience: `Interest targeting for ${productType} shoppers + lookalike audiences`,
+      targetAudience: `Interest targeting for ${displayType} shoppers + lookalike audiences`,
       creativeDirection: `Carousel ad showcasing ${prods.length} products. ` +
         `Category-level messaging highlighting variety and value. ` +
         `DPA catalog ads for retargeting.`,
@@ -205,9 +231,22 @@ function generateSeasonalCampaigns(
   for (const event of upcomingEvents) {
     const matchingProducts = matchProductsToEvent(event, products);
 
-    if (matchingProducts.length < 2) continue;
+    // Also include top products by revenue if tag matching returns too few
+    let finalProducts = matchingProducts;
+    if (matchingProducts.length < 2) {
+      // Fallback: use top 5 products by revenue for seasonal push
+      const topByRevenue = [...products]
+        .filter((p) => p.grossProfit30d > 0)
+        .sort((a, b) => b.revenue30d - a.revenue30d)
+        .slice(0, 5);
+      if (topByRevenue.length >= 2) {
+        finalProducts = topByRevenue;
+      } else {
+        continue;
+      }
+    }
 
-    const firstProduct = matchingProducts[0];
+    const firstProduct = finalProducts[0];
     if (!firstProduct) continue;
 
     const budgetForEvent = Math.max(
@@ -216,17 +255,17 @@ function generateSeasonalCampaigns(
     );
 
     suggestions.push({
-      name: `${event.name} — ${firstProduct.productType}`,
+      name: `${event.name} — ${firstProduct.productType === 'default' ? 'Specialty Selection' : firstProduct.productType}`,
       type: 'SEASONAL',
-      productTitles: matchingProducts.map((p) => p.productTitle),
+      productTitles: finalProducts.map((p) => p.productTitle),
       estimatedRoas: 2.5,
-      rationale: `${event.name} is approaching. ${matchingProducts.length} products match ` +
-        `this seasonal event. Built-in consumer demand drives higher conversion rates ` +
+      rationale: `${event.name} is approaching. ${finalProducts.length} products selected ` +
+        `for this seasonal campaign. Built-in consumer demand drives higher conversion rates ` +
         `during seasonal peaks.`,
       dailyBudget: Math.round(budgetForEvent * 100) / 100,
       targetAudience: event.audienceHint,
       creativeDirection: `Seasonal-themed creative for ${event.name}. ` +
-        `Feature ${matchingProducts.length} relevant products with event-specific messaging. ` +
+        `Feature ${finalProducts.length} relevant products with event-specific messaging. ` +
         `Time-sensitive CTAs emphasizing urgency.`,
       priority: PRIORITY_SEASONAL,
     });
@@ -243,8 +282,7 @@ function generateNewArrivalCampaigns(
     (p) =>
       p.daysSinceFirstSale !== null &&
       p.daysSinceFirstSale < 45 &&
-      p.imageUrl !== null &&
-      p.estimatedMargin >= 0.30,
+      p.estimatedMargin >= 0.25,
   );
 
   if (newArrivals.length < 2) return [];
@@ -258,7 +296,7 @@ function generateNewArrivalCampaigns(
       productTitles: newArrivals.map((p) => p.productTitle),
       estimatedRoas: 2.0,
       rationale: `${newArrivals.length} new products launched in the last 45 days with ` +
-        `healthy margins (>=30%). New arrival campaigns drive curiosity-based ` +
+        `healthy margins (>=25%). New arrival campaigns drive curiosity-based ` +
         `clicks and help establish product-market fit early.`,
       dailyBudget: Math.round(budget * 100) / 100,
       targetAudience: 'Existing customers + engaged site visitors + interest-based targeting',
@@ -324,4 +362,41 @@ function generateCrossSellCampaigns(
       priority: PRIORITY_CROSS_SELL,
     };
   });
+}
+
+/**
+ * FALLBACK: Generate a "Best Sellers" campaign from the top products by revenue.
+ * This ensures at least one campaign suggestion is always generated when data exists.
+ */
+function generateBestSellersCampaign(
+  products: readonly ProductForCampaign[],
+  totalDailyBudget: number,
+): CampaignSuggestion | null {
+  // Take top 5 products by gross profit
+  const topProducts = [...products]
+    .filter((p) => p.grossProfit30d > 0)
+    .sort((a, b) => b.grossProfit30d - a.grossProfit30d)
+    .slice(0, 5);
+
+  if (topProducts.length === 0) return null;
+
+  const totalRevenue = topProducts.reduce((s, p) => s + p.revenue30d, 0);
+  const avgMargin = topProducts.reduce((s, p) => s + p.estimatedMargin, 0) / topProducts.length;
+  const budget = Math.max(10, totalDailyBudget * 0.50);
+
+  return {
+    name: 'Best Sellers — Top Products',
+    type: 'BEST_SELLERS',
+    productTitles: topProducts.map((p) => p.productTitle),
+    estimatedRoas: Math.round(avgMargin * 3 * 100) / 100,
+    rationale: `Your ${topProducts.length} best-selling products generating ` +
+      `$${totalRevenue.toFixed(0)}/month combined. These proven performers are the safest ` +
+      `bet for paid advertising with ${(avgMargin * 100).toFixed(0)}% average margin.`,
+    dailyBudget: Math.round(budget * 100) / 100,
+    targetAudience: 'Broad interest targeting + lookalike audiences based on existing customers',
+    creativeDirection: `Dynamic Product Ads (DPA) featuring your top sellers. ` +
+      `Carousel format showing ${topProducts.length} products. ` +
+      `Lead with social proof and best-seller messaging.`,
+    priority: PRIORITY_BEST_SELLERS,
+  };
 }
