@@ -13,6 +13,9 @@ function makeProduct(overrides: Partial<ProductPerformanceRow> = {}): ProductPer
     avgPrice: 45,
     avgDailyUnits: 4,
     imageUrl: 'https://example.com/img.jpg',
+    productTier: 'growth',
+    revenueTrend: 0.10,
+    revenueShare: 0.05,
     ...overrides,
   };
 }

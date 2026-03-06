@@ -47,6 +47,19 @@ export interface ProductPerformanceRow {
   imageUrl: string | null;
   productUrl: string | null;
   description: string | null;
+  // Scoring v2 fields
+  revenuePrev30d: number | null;
+  revenueTrend: number | null;
+  unitsTrend: number | null;
+  firstSeenAt: string | null;
+  daysSinceFirstSale: number | null;
+  revenueShare: number | null;
+  topCrossSellProducts: Array<{ title: string; coOccurrence: number }> | null;
+  collections: string[] | null;
+  tags: string[] | null;
+  historicalRoas: number | null;
+  timesAdvertised: number;
+  productTier: string | null;
   lastComputedAt: string;
 }
 

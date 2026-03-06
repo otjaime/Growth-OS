@@ -14,6 +14,9 @@ export interface ProductPerformanceRow {
   readonly avgPrice: number;
   readonly avgDailyUnits: number;
   readonly imageUrl: string | null;
+  readonly productTier: string | null;
+  readonly revenueTrend: number | null;
+  readonly revenueShare: number | null;
 }
 
 export interface ProactiveRulesInput {

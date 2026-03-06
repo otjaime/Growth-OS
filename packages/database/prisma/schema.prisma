@@ -1169,6 +1169,31 @@ model ProductPerformance {
   imageUrl          String?       @map("image_url")
   productUrl        String?       @map("product_url")
   description       String?       @db.Text
+
+  // Trend metrics
+  revenuePrev30d        Decimal?  @map("revenue_prev_30d")  @db.Decimal(12, 2)
+  revenueTrend          Decimal?  @map("revenue_trend")      @db.Decimal(5, 4)
+  unitsTrend            Decimal?  @map("units_trend")        @db.Decimal(5, 4)
+
+  // Product lifecycle
+  firstSeenAt           DateTime? @map("first_seen_at")
+  daysSinceFirstSale    Int?      @map("days_since_first_sale")
+  revenueShare          Decimal?  @map("revenue_share")      @db.Decimal(5, 4)
+
+  // Cross-sell
+  topCrossSellProducts  Json?     @map("top_cross_sell_products")
+
+  // Collections/tags from Shopify
+  collections           Json?
+  tags                  Json?
+
+  // Ad history
+  historicalRoas        Decimal?  @map("historical_roas")    @db.Decimal(8, 4)
+  timesAdvertised       Int       @map("times_advertised")   @default(0)
+
+  // Product tier (computed)
+  productTier           String?   @map("product_tier")
+
   lastComputedAt    DateTime      @default(now()) @map("last_computed_at")
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
