@@ -57,10 +57,10 @@ interface FitnessBreakdown {
 }
 
 function computeBreakdown(p: ProductPerformanceRow): FitnessBreakdown {
-  const margin = p.estimatedMargin <= 0.30 ? 0 : Math.min(25, ((p.estimatedMargin - 0.30) / 0.35) * 25);
-  const velocity = Math.min(25, (p.avgDailyUnits / 5) * 25);
-  const profit = Math.min(20, (p.grossProfit30d / 5000) * 20);
-  const repeat = Math.min(15, (p.repeatBuyerPct / 0.20) * 15);
+  const margin = p.estimatedMargin <= 0.25 ? 0 : Math.min(20, ((p.estimatedMargin - 0.25) / 0.30) * 20);
+  const velocity = Math.min(20, (p.avgDailyUnits / 1) * 20);
+  const profit = Math.min(30, (p.grossProfit30d / 1000) * 30);
+  const repeat = Math.min(15, (p.repeatBuyerPct / 0.10) * 15);
   const readiness = (p.imageUrl ? 5 : 0) + (p.description ? 5 : 0) + (p.avgPrice > 0 ? 5 : 0);
   return { margin, velocity, profit, repeat, readiness };
 }
@@ -72,9 +72,9 @@ function breakdownColor(value: number, max: number): string {
 function FitnessTooltip({ product }: { product: ProductPerformanceRow }): JSX.Element {
   const b = computeBreakdown(product);
   const rows: readonly { label: string; value: number; max: number }[] = [
-    { label: 'Margin', value: b.margin, max: 25 },
-    { label: 'Velocity', value: b.velocity, max: 25 },
-    { label: 'Profit', value: b.profit, max: 20 },
+    { label: 'Margin', value: b.margin, max: 20 },
+    { label: 'Velocity', value: b.velocity, max: 20 },
+    { label: 'Profit', value: b.profit, max: 30 },
     { label: 'Repeat', value: b.repeat, max: 15 },
     { label: 'Readiness', value: b.readiness, max: 15 },
   ];
