@@ -275,6 +275,7 @@ export function ActionCard({
           <button
             onClick={() => setExpanded(!expanded)}
             className="p-1.5 rounded-lg hover:bg-glass-hover transition-colors press-scale shrink-0"
+            aria-label={expanded ? 'Collapse details' : 'Expand details'}
           >
             {expanded
               ? <ChevronUp className="h-3.5 w-3.5 text-[var(--foreground-secondary)]" />

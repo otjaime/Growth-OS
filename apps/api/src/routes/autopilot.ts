@@ -2418,8 +2418,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
       tags: ['autopilot'],
       summary: 'Trigger proactive ad pipeline for top products',
     },
-  }, async (request) => {
+  }, async (request, reply) => {
     const organizationId = await resolveOrgId(request);
+
+    // Rate limit: reject if a proactive job was created < 1 hour ago for this org
+    const ONE_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000);
+    const recentJob = await prisma.proactiveAdJob.findFirst({
+      where: { organizationId, createdAt: { gte: ONE_HOUR_AGO } },
+      select: { id: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (recentJob) {
+      reply.status(429);
+      return { error: 'Rate limited — proactive discovery can only run once per hour per organization' };
+    }
+
     const { runProactiveDiscovery } = await import('../jobs/proactive-ad-pipeline.js');
     const result = await runProactiveDiscovery(organizationId);
     return result;
@@ -2430,13 +2443,16 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Get single proactive ad job detail',
+      params: { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'] },
     },
-  }, async (request) => {
-    const job = await prisma.proactiveAdJob.findUnique({
-      where: { id: request.params.id },
+  }, async (request, reply) => {
+    const organizationId = await resolveOrgId(request);
+    const job = await prisma.proactiveAdJob.findFirst({
+      where: { id: request.params.id, organizationId },
     });
 
     if (!job) {
+      reply.status(404);
       return { error: 'Job not found' };
     }
 
@@ -2467,35 +2483,65 @@ export async function autopilotRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/autopilot/proactive/jobs/:id/approve', {
     schema: {
       tags: ['autopilot'],
-      summary: 'Approve a READY proactive job → generate assets + publish to Meta',
+      summary: 'Approve a proactive job → generate assets + publish to Meta',
+      params: { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'] },
     },
-  }, async (request) => {
-    const job = await prisma.proactiveAdJob.findUnique({
-      where: { id: request.params.id },
+  }, async (request, reply) => {
+    const organizationId = await resolveOrgId(request);
+    const job = await prisma.proactiveAdJob.findFirst({
+      where: { id: request.params.id, organizationId },
     });
 
-    if (!job) return { error: 'Job not found' };
-
-    // If PENDING, generate assets first, then approve
-    if (job.status === 'PENDING') {
-      const { generateProactiveAssets } = await import('../jobs/proactive-ad-pipeline.js');
-      const genResult = await generateProactiveAssets(job.id);
-      if (!genResult.success) {
-        return { error: `Generation failed: ${genResult.error}` };
-      }
+    if (!job) {
+      reply.status(404);
+      return { error: 'Job not found' };
     }
 
-    // Mark approved
-    await prisma.proactiveAdJob.update({
-      where: { id: request.params.id },
-      data: { status: 'APPROVED' },
-    });
+    // Only PENDING or READY jobs can be approved
+    if (!['PENDING', 'READY'].includes(job.status)) {
+      reply.status(400);
+      return { error: `Cannot approve job with status ${job.status}` };
+    }
 
-    // Publish to Meta
-    const { publishProactiveJob } = await import('../jobs/proactive-ad-pipeline.js');
-    const pubResult = await publishProactiveJob(request.params.id);
+    try {
+      // If PENDING, generate assets first
+      if (job.status === 'PENDING') {
+        const { generateProactiveAssets } = await import('../jobs/proactive-ad-pipeline.js');
+        const genResult = await generateProactiveAssets(job.id);
+        if (!genResult.success) {
+          // Revert to PENDING so user can retry
+          await prisma.proactiveAdJob.update({
+            where: { id: job.id },
+            data: { status: 'PENDING', errorMessage: genResult.error ?? 'Generation failed' },
+          });
+          return { success: false, error: `Generation failed: ${genResult.error}` };
+        }
+      }
 
-    return { success: pubResult.success, error: pubResult.error };
+      // Mark approved
+      await prisma.proactiveAdJob.update({
+        where: { id: request.params.id },
+        data: { status: 'APPROVED' },
+      });
+
+      // Publish to Meta
+      const { publishProactiveJob } = await import('../jobs/proactive-ad-pipeline.js');
+      const pubResult = await publishProactiveJob(request.params.id);
+
+      if (!pubResult.success) {
+        // publishProactiveJob already sets FAILED status with errorMessage
+        return { success: false, error: pubResult.error };
+      }
+
+      return { success: true };
+    } catch (err) {
+      // Unexpected error — mark FAILED
+      await prisma.proactiveAdJob.update({
+        where: { id: job.id },
+        data: { status: 'FAILED', errorMessage: (err as Error).message },
+      });
+      return { success: false, error: (err as Error).message };
+    }
   });
 
   // ── POST /autopilot/proactive/jobs/:id/reject ─────────────
@@ -2503,8 +2549,18 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Reject a proactive job',
+      params: { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'] },
     },
-  }, async (request) => {
+  }, async (request, reply) => {
+    const organizationId = await resolveOrgId(request);
+    const job = await prisma.proactiveAdJob.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!job) {
+      reply.status(404);
+      return { error: 'Job not found' };
+    }
+
     await prisma.proactiveAdJob.update({
       where: { id: request.params.id },
       data: { status: 'PAUSED' },
@@ -2518,18 +2574,61 @@ export async function autopilotRoutes(app: FastifyInstance) {
     schema: {
       tags: ['autopilot'],
       summary: 'Activate a PUBLISHED job for A/B testing',
+      params: { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'] },
     },
-  }, async (request) => {
-    const job = await prisma.proactiveAdJob.findUnique({
-      where: { id: request.params.id },
+  }, async (request, reply) => {
+    const organizationId = await resolveOrgId(request);
+    const job = await prisma.proactiveAdJob.findFirst({
+      where: { id: request.params.id, organizationId },
     });
 
-    if (!job) return { error: 'Job not found' };
+    if (!job) {
+      reply.status(404);
+      return { error: 'Job not found' };
+    }
     if (job.status !== 'PUBLISHED') {
+      reply.status(400);
       return { error: `Job must be PUBLISHED, got ${job.status}` };
     }
 
-    // In demo mode, just set status
+    const metaAdIds = (job.metaAdIds as string[] | null) ?? [];
+
+    // Try to activate ads on Meta
+    const cred = await prisma.connectorCredential.findFirst({
+      where: { organizationId, connectorType: 'meta' },
+      select: { encryptedData: true, iv: true, authTag: true },
+    });
+
+    const activatedIds: string[] = [];
+    const failedIds: string[] = [];
+
+    if (cred && metaAdIds.length > 0) {
+      const { reactivateAd } = await import('../lib/meta-executor.js');
+      const decrypted = JSON.parse(decrypt(cred.encryptedData, cred.iv, cred.authTag)) as Record<string, string>;
+      const accessToken = decrypted.accessToken;
+
+      if (accessToken) {
+        for (const adId of metaAdIds) {
+          const result = await reactivateAd(accessToken, adId);
+          if (result.success) {
+            activatedIds.push(adId);
+          } else {
+            failedIds.push(adId);
+          }
+        }
+
+        // Also activate the ad set
+        if (job.metaAdSetId) {
+          const { reactivateAd: activateAdSet } = await import('../lib/meta-executor.js');
+          await activateAdSet(accessToken, job.metaAdSetId);
+        }
+      }
+    } else {
+      // Demo mode — all ads "activated"
+      activatedIds.push(...metaAdIds);
+    }
+
+    // Set to TESTING
     await prisma.proactiveAdJob.update({
       where: { id: request.params.id },
       data: {
@@ -2538,8 +2637,11 @@ export async function autopilotRoutes(app: FastifyInstance) {
       },
     });
 
-    // TODO: In live mode, activate the Meta ads via reactivateAd()
-
-    return { success: true };
+    return {
+      success: true,
+      activated: activatedIds.length,
+      failed: failedIds.length,
+      failedIds: failedIds.length > 0 ? failedIds : undefined,
+    };
   });
 }

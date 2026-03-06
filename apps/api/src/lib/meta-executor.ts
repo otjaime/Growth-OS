@@ -272,6 +272,32 @@ export async function duplicateAdSet(
   };
 }
 
+/**
+ * Create a new ad set for proactive ads with budget and broad targeting.
+ * POST act_{id}/adsets — form-urlencoded with budget in cents.
+ */
+export async function createProactiveAdSet(
+  accessToken: string,
+  adAccountId: string,
+  campaignId: string,
+  productTitle: string,
+  dailyBudgetCents: number,
+): Promise<ExecutionResult> {
+  if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents < 100) {
+    return { success: false, error: 'Daily budget must be at least 100 cents ($1)', retryable: false };
+  }
+
+  return metaPost(accessToken, `act_${adAccountId}/adsets`, {
+    name: `GrowthOS Proactive — ${productTitle}`,
+    campaign_id: campaignId,
+    daily_budget: String(dailyBudgetCents),
+    billing_event: 'IMPRESSIONS',
+    optimization_goal: 'OFFSITE_CONVERSIONS',
+    status: 'PAUSED',
+    targeting: JSON.stringify({ geo_locations: { countries: ['US'] }, age_min: 18, age_max: 65 }),
+  });
+}
+
 // ── Internals ───────────────────────────────────────────────────
 
 interface MetaErrorResponse {

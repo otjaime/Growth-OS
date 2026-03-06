@@ -68,6 +68,17 @@ export interface ProactiveRecommendation {
   };
 }
 
+export interface VariantPerformance {
+  variantId: string;
+  angle: string;
+  headline: string;
+  spend: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  roas: number | null;
+}
+
 export interface ProactiveAdJob {
   id: string;
   productTitle: string;
@@ -87,6 +98,7 @@ export interface ProactiveAdJob {
   winnerId: string | null;
   dailyBudget: number | null;
   errorMessage: string | null;
+  variantPerformance: readonly VariantPerformance[] | null;
   createdAt: string;
   updatedAt: string;
 }
