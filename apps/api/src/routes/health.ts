@@ -28,7 +28,10 @@ export async function healthRoutes(app: FastifyInstance) {
       dbOk = true;
     } catch { /* db down */ }
 
-    const demoMode = await isDemoMode();
+    let demoMode = false;
+    try {
+      demoMode = await isDemoMode();
+    } catch { /* isDemoMode may fail if schema is out of sync */ }
 
     // Get latest sync timestamp from any connector
     let lastSyncAt: string | null = null;
