@@ -2751,6 +2751,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
       actualSpend: c.actualSpend != null ? Number(c.actualSpend) : null,
       actualRevenue: c.actualRevenue != null ? Number(c.actualRevenue) : null,
       actualRoas: c.actualRoas != null ? Number(c.actualRoas) : null,
+      metaCampaignId: c.metaCampaignId ?? null,
+      metaAdSetIds: (c.metaAdSetIds as string[] | null) ?? null,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     }));
@@ -3007,6 +3009,302 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'APPROVED' },
     });
     return { campaign };
+  });
+
+  // POST /autopilot/strategies/:id/activate — Create real Meta campaign from approved strategy
+  app.post('/autopilot/strategies/:id/activate', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Activate a campaign strategy on Meta',
+      description: 'Creates a real Meta campaign with ad sets and ads for each product in the strategy.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+
+    // 1. Validate strategy
+    const strategy = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!strategy) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (strategy.status !== 'APPROVED') {
+      reply.status(400);
+      return { error: `Cannot activate strategy with status ${strategy.status}, must be APPROVED` };
+    }
+
+    const productTitles = (strategy.productTitles ?? []) as string[];
+    if (productTitles.length === 0) {
+      reply.status(400);
+      return { error: 'Strategy has no products to advertise' };
+    }
+
+    const dailyBudget = Number(strategy.dailyBudget ?? 0);
+    if (dailyBudget <= 0 || !isFinite(dailyBudget)) {
+      reply.status(400);
+      return { error: 'Strategy must have a positive daily budget' };
+    }
+
+    // 2. Get Meta credentials
+    const cred = await prisma.connectorCredential.findFirst({
+      where: { organizationId: orgId, connectorType: 'meta_ads' },
+      select: { encryptedData: true, iv: true, authTag: true },
+    });
+
+    // Also try 'meta' connector type as fallback
+    const credFallback = cred ?? await prisma.connectorCredential.findFirst({
+      where: { organizationId: orgId, connectorType: 'meta' },
+      select: { encryptedData: true, iv: true, authTag: true },
+    });
+
+    // 3. Demo mode — no credentials
+    if (!credFallback) {
+      const demoAdSetIds = productTitles.map((_, i) => `demo_adset_${strategy.id}_${i}`);
+      await prisma.campaignStrategy.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          metaCampaignId: `demo_campaign_${strategy.id}`,
+          metaAdSetIds: demoAdSetIds,
+        },
+      });
+      return {
+        success: true,
+        demo: true,
+        metaCampaignId: `demo_campaign_${strategy.id}`,
+        adSetsCreated: productTitles.length,
+        adsCreated: productTitles.length * 3,
+      };
+    }
+
+    // 4. Decrypt credentials
+    let accessToken: string;
+    let adAccountId: string;
+    try {
+      const decrypted = JSON.parse(
+        decrypt(credFallback.encryptedData, credFallback.iv, credFallback.authTag),
+      ) as Record<string, string>;
+      accessToken = decrypted.accessToken ?? '';
+      adAccountId = decrypted.adAccountId ?? '';
+    } catch {
+      reply.status(500);
+      return { error: 'Failed to decrypt Meta credentials' };
+    }
+
+    if (!accessToken || !adAccountId) {
+      reply.status(400);
+      return { error: 'Meta credentials missing accessToken or adAccountId' };
+    }
+
+    // 5. Detect targeting from MetaAdAccount currency
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP } =
+      await import('../lib/meta-executor.js');
+
+    const adAccount = await prisma.metaAdAccount.findFirst({
+      where: { organizationId: orgId },
+      select: { id: true, currency: true },
+    });
+
+    const currency = adAccount?.currency ?? 'USD';
+    const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
+    const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
+
+    // 6. Create Meta Campaign
+    const totalBudgetCents = Math.round(dailyBudget * 100);
+    const campaignResult = await createMetaCampaign(
+      accessToken,
+      adAccountId,
+      strategy.name,
+      totalBudgetCents,
+    );
+
+    if (!campaignResult.success) {
+      reply.status(502);
+      return { error: `Failed to create Meta campaign: ${campaignResult.error}` };
+    }
+
+    const metaCampaignId = String(
+      (campaignResult.metaResponse as Record<string, unknown>)?.id ?? '',
+    );
+    if (!metaCampaignId) {
+      reply.status(502);
+      return { error: 'Meta campaign created but no ID returned' };
+    }
+
+    // 7. Create tracking row for the campaign
+    let campaignDbId: string | undefined;
+    try {
+      const row = await prisma.metaCampaign.create({
+        data: {
+          campaignId: metaCampaignId,
+          name: strategy.name,
+          status: 'PAUSED',
+          objective: 'OUTCOME_SALES',
+          dailyBudget,
+          organizationId: orgId,
+          accountId: adAccount?.id ?? '',
+        },
+      });
+      campaignDbId = row.id;
+    } catch {
+      // Non-fatal: campaign was created on Meta, tracking is best-effort
+    }
+
+    // 8. Generate copy + create ad sets + ads for each product
+    const { generateProductCopy } = await import('../lib/product-copy-generator.js');
+
+    const perProductBudgetCents = Math.max(
+      100, // minimum 100 cents per ad set
+      Math.round(totalBudgetCents / productTitles.length),
+    );
+
+    const createdAdSetIds: string[] = [];
+    const createdAdIds: string[] = [];
+    const errors: string[] = [];
+
+    for (const productTitle of productTitles) {
+      // Look up product data for copy generation
+      const product = await prisma.productPerformance.findFirst({
+        where: { organizationId: orgId, productTitle },
+        select: {
+          productTitle: true,
+          productType: true,
+          description: true,
+          avgPrice: true,
+          estimatedMargin: true,
+          repeatBuyerPct: true,
+          adFitnessScore: true,
+          productUrl: true,
+          imageUrl: true,
+        },
+      });
+
+      // Generate copy variants (3 per product: benefit, pain_point, urgency)
+      const copyVariants = await generateProductCopy({
+        productTitle,
+        productType: product?.productType ?? 'product',
+        productDescription: product?.description ?? null,
+        avgPrice: Number(product?.avgPrice ?? 0),
+        margin: Number(product?.estimatedMargin ?? 0),
+        repeatBuyerPct: Number(product?.repeatBuyerPct ?? 0),
+        adFitnessScore: Number(product?.adFitnessScore ?? 50),
+      });
+
+      // Create ad set for this product
+      const adSetResult = await createProactiveAdSet(
+        accessToken,
+        adAccountId,
+        metaCampaignId,
+        productTitle,
+        perProductBudgetCents,
+        targeting,
+      );
+
+      if (!adSetResult.success) {
+        errors.push(`Ad set for "${productTitle}": ${adSetResult.error}`);
+        continue;
+      }
+
+      const metaAdSetId = String(
+        (adSetResult.metaResponse as Record<string, unknown>)?.id ?? '',
+      );
+      if (!metaAdSetId) {
+        errors.push(`Ad set for "${productTitle}": no ID returned`);
+        continue;
+      }
+
+      createdAdSetIds.push(metaAdSetId);
+
+      // Create tracking row for ad set
+      let adSetDbId: string | undefined;
+      try {
+        const row = await prisma.metaAdSet.create({
+          data: {
+            adSetId: metaAdSetId,
+            name: `GrowthOS — ${productTitle}`,
+            status: 'PAUSED',
+            dailyBudget: perProductBudgetCents,
+            organizationId: orgId,
+            campaignId: campaignDbId ?? '',
+            accountId: adAccount?.id ?? '',
+          },
+        });
+        adSetDbId = row.id;
+      } catch {
+        // Non-fatal
+      }
+
+      // Create ads from copy variants
+      for (const variant of copyVariants) {
+        const adResult = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
+          name: `${productTitle} — ${variant.angle}`,
+          headline: variant.headline,
+          primaryText: variant.primaryText,
+          description: variant.description ?? undefined,
+          linkUrl: product?.productUrl ?? undefined,
+        });
+
+        if (adResult.success) {
+          const adId = String(
+            (adResult.metaResponse as Record<string, unknown>)?.adId ?? '',
+          );
+          if (adId) {
+            createdAdIds.push(adId);
+
+            // Create tracking row for ad
+            try {
+              await prisma.metaAd.create({
+                data: {
+                  adId,
+                  name: `${productTitle} — ${variant.angle}`,
+                  status: 'PAUSED',
+                  organizationId: orgId,
+                  adSetId: adSetDbId ?? '',
+                  campaignId: campaignDbId ?? '',
+                  accountId: adAccount?.id ?? '',
+                },
+              });
+            } catch {
+              // Non-fatal
+            }
+          }
+        } else {
+          errors.push(`Ad "${productTitle}/${variant.angle}": ${adResult.error}`);
+        }
+      }
+    }
+
+    // 9. Check results
+    if (createdAdSetIds.length === 0) {
+      // Total failure — revert status
+      reply.status(502);
+      return {
+        error: 'Failed to create any ad sets on Meta',
+        details: errors,
+        metaCampaignId,
+      };
+    }
+
+    // 10. Update strategy with Meta IDs and set ACTIVE
+    await prisma.campaignStrategy.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        metaCampaignId,
+        metaAdSetIds: createdAdSetIds,
+      },
+    });
+
+    return {
+      success: true,
+      metaCampaignId,
+      adSetsCreated: createdAdSetIds.length,
+      adsCreated: createdAdIds.length,
+      productsTotal: productTitles.length,
+      ...(errors.length > 0 ? { warnings: errors } : {}),
+    };
   });
 
   // POST /autopilot/strategies/:id/reject — Reject a suggestion

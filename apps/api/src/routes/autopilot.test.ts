@@ -77,6 +77,20 @@ const mockPrisma = vi.hoisted(() => ({
     create: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({}),
   },
+  stgOrder: {
+    findFirst: vi.fn().mockResolvedValue(null),
+  },
+  campaignStrategy: {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({}),
+    update: vi.fn().mockResolvedValue({}),
+  },
+  productPerformance: {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+  },
 }));
 
 const mockIsDemoMode = vi.hoisted(() => vi.fn().mockResolvedValue(true));
@@ -389,6 +403,9 @@ describe('GET /api/autopilot/stats', () => {
       .mockResolvedValueOnce(0); // active
     mockPrisma.metaAd.findMany.mockResolvedValueOnce([]);
     mockPrisma.metaAd.findFirst.mockResolvedValueOnce(null);
+    // Currency detection mocks
+    mockPrisma.metaAdAccount.findFirst.mockResolvedValueOnce(null);
+    mockPrisma.stgOrder.findFirst.mockResolvedValueOnce(null);
 
     const res = await app.inject({ method: 'GET', url: '/api/autopilot/stats' });
     expect(res.statusCode).toBe(200);
@@ -397,6 +414,7 @@ describe('GET /api/autopilot/stats', () => {
     expect(body.totalAds).toBe(0);
     expect(body.metrics7d.totalSpend).toBe(0);
     expect(body.lastSyncAt).toBeNull();
+    expect(body.currency).toBe('USD');
   });
 
   it('returns correct aggregate metrics', async () => {
@@ -411,6 +429,8 @@ describe('GET /api/autopilot/stats', () => {
       { spend7d: 200, revenue7d: 800, conversions7d: 10, impressions7d: 10000, clicks7d: 300 },
     ]);
     mockPrisma.metaAd.findFirst.mockResolvedValueOnce({ lastSyncAt: new Date('2026-02-25T12:00:00Z') });
+    // Currency detection mocks
+    mockPrisma.metaAdAccount.findFirst.mockResolvedValueOnce({ currency: 'CLP' });
 
     const res = await app.inject({ method: 'GET', url: '/api/autopilot/stats' });
     expect(res.statusCode).toBe(200);
@@ -423,6 +443,7 @@ describe('GET /api/autopilot/stats', () => {
     expect(body.metrics7d.totalRevenue).toBe(1250);
     expect(body.metrics7d.blendedRoas).toBeCloseTo(4.17, 1);
     expect(body.lastSyncAt).toBeDefined();
+    expect(body.currency).toBe('CLP');
   });
 });
 

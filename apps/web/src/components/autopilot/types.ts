@@ -379,6 +379,8 @@ export interface CampaignStrategy {
   actualSpend: number | null;
   actualRevenue: number | null;
   actualRoas: number | null;
+  metaCampaignId: string | null;
+  metaAdSetIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
