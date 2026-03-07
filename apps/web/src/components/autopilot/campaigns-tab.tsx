@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Megaphone, Sparkles, Loader2, Calendar, TrendingUp,
   Check, X, Pause, ShoppingBag, Tag, Star,
-  Package, Gift, ArrowRight,
+  Package, Gift, ArrowRight, Rocket, ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '@/lib/api';
@@ -49,10 +49,11 @@ interface CampaignCardProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onPause: (id: string) => void;
+  onActivate: (id: string) => void;
   actionLoading: string | null;
 }
 
-function CampaignCard({ campaign, currency, onApprove, onReject, onPause, actionLoading }: CampaignCardProps): JSX.Element {
+function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActivate, actionLoading }: CampaignCardProps): JSX.Element {
   const typeStyle = TYPE_STYLES[campaign.type] ?? TYPE_STYLES.HERO_PRODUCT;
   const statusStyle = STATUS_STYLES[campaign.status] ?? STATUS_STYLES.SUGGESTED;
   const TypeIcon = typeStyle.icon;
@@ -175,20 +176,37 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, action
           </>
         )}
         {campaign.status === 'APPROVED' && (
-          <span className="flex items-center gap-1 text-xs text-apple-green">
-            <Check className="h-3 w-3" />
-            Strategy approved
-          </span>
+          <button
+            onClick={() => onActivate(campaign.id)}
+            disabled={isActioning}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-apple-blue hover:bg-apple-blue/80 disabled:opacity-50 rounded-lg transition-all ease-spring press-scale"
+          >
+            {isActioning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
+            {isActioning ? 'Creating on Meta...' : 'Activate on Meta'}
+          </button>
         )}
         {campaign.status === 'ACTIVE' && (
-          <button
-            onClick={() => onPause(campaign.id)}
-            disabled={isActioning}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-orange bg-[var(--tint-orange)] hover:bg-apple-orange/20 disabled:opacity-50 rounded-lg transition-all ease-spring press-scale"
-          >
-            {isActioning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pause className="h-3 w-3" />}
-            Pause
-          </button>
+          <>
+            {campaign.metaCampaignId && !campaign.metaCampaignId.startsWith('demo_') && (
+              <a
+                href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${campaign.metaCampaignId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20 rounded-lg transition-all ease-spring press-scale"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View on Meta
+              </a>
+            )}
+            <button
+              onClick={() => onPause(campaign.id)}
+              disabled={isActioning}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-orange bg-[var(--tint-orange)] hover:bg-apple-orange/20 disabled:opacity-50 rounded-lg transition-all ease-spring press-scale"
+            >
+              {isActioning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pause className="h-3 w-3" />}
+              Pause
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -322,6 +340,36 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
     }
   };
 
+  const handleActivate = async (id: string): Promise<void> => {
+    setActionLoading(id);
+    try {
+      const res = await apiFetch(`/api/autopilot/strategies/${id}/activate`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setCampaigns((prev) =>
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  status: 'ACTIVE' as CampaignStrategyStatus,
+                  metaCampaignId: data.metaCampaignId ?? null,
+                }
+              : c,
+          ),
+        );
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[Campaigns] Activate failed:', err);
+        alert(`Failed to activate: ${err.error ?? 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('[Campaigns] Activate failed:', err);
+      alert('Network error activating campaign');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handlePause = async (id: string): Promise<void> => {
     setActionLoading(id);
     try {
@@ -411,6 +459,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onActivate={handleActivate}
                     actionLoading={actionLoading}
                   />
                 </motion.div>
@@ -444,6 +493,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onActivate={handleActivate}
                     actionLoading={actionLoading}
                   />
                 </motion.div>
@@ -474,6 +524,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onActivate={handleActivate}
                     actionLoading={actionLoading}
                   />
                 </motion.div>

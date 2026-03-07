@@ -273,8 +273,52 @@ export async function duplicateAdSet(
 }
 
 /**
- * Create a new ad set for proactive ads with budget and broad targeting.
+ * Map common currencies to their primary country code for ad targeting.
+ * Used when no explicit targeting is provided — we default to the country
+ * matching the ad account's currency.
+ */
+export const CURRENCY_COUNTRY_MAP: Record<string, string> = {
+  USD: 'US', CLP: 'CL', BRL: 'BR', MXN: 'MX', ARS: 'AR', COP: 'CO',
+  PEN: 'PE', EUR: 'DE', GBP: 'GB', CAD: 'CA', AUD: 'AU', JPY: 'JP',
+  KRW: 'KR', INR: 'IN', NZD: 'NZ', ZAR: 'ZA', SGD: 'SG', HKD: 'HK',
+};
+
+/** Targeting specification for ad sets. */
+export interface AdSetTargeting {
+  readonly countries: readonly string[];
+  readonly ageMin?: number;
+  readonly ageMax?: number;
+}
+
+/**
+ * Create a new Meta campaign.
+ * POST act_{id}/campaigns — form-urlencoded.
+ * Campaign is created PAUSED — caller should activate after ads are ready.
+ */
+export async function createMetaCampaign(
+  accessToken: string,
+  adAccountId: string,
+  name: string,
+  dailyBudgetCents: number,
+  objective?: string,
+): Promise<ExecutionResult> {
+  if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents < 100) {
+    return { success: false, error: 'Daily budget must be at least 100 cents', retryable: false };
+  }
+
+  return metaPost(accessToken, `act_${adAccountId}/campaigns`, {
+    name,
+    objective: objective ?? 'OUTCOME_SALES',
+    status: 'PAUSED',
+    daily_budget: String(dailyBudgetCents),
+    special_ad_categories: '[]',
+  });
+}
+
+/**
+ * Create a new ad set for proactive ads with budget and configurable targeting.
  * POST act_{id}/adsets — form-urlencoded with budget in cents.
+ * @param targeting - Optional geo/age targeting; defaults to US, 18-65
  */
 export async function createProactiveAdSet(
   accessToken: string,
@@ -282,19 +326,26 @@ export async function createProactiveAdSet(
   campaignId: string,
   productTitle: string,
   dailyBudgetCents: number,
+  targeting?: AdSetTargeting,
 ): Promise<ExecutionResult> {
   if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents < 100) {
     return { success: false, error: 'Daily budget must be at least 100 cents ($1)', retryable: false };
   }
 
+  const countries = targeting?.countries?.length
+    ? [...targeting.countries]
+    : ['US'];
+  const ageMin = targeting?.ageMin ?? 18;
+  const ageMax = targeting?.ageMax ?? 65;
+
   return metaPost(accessToken, `act_${adAccountId}/adsets`, {
-    name: `GrowthOS Proactive — ${productTitle}`,
+    name: `GrowthOS — ${productTitle}`,
     campaign_id: campaignId,
     daily_budget: String(dailyBudgetCents),
     billing_event: 'IMPRESSIONS',
     optimization_goal: 'OFFSITE_CONVERSIONS',
     status: 'PAUSED',
-    targeting: JSON.stringify({ geo_locations: { countries: ['US'] }, age_min: 18, age_max: 65 }),
+    targeting: JSON.stringify({ geo_locations: { countries }, age_min: ageMin, age_max: ageMax }),
   });
 }
 
