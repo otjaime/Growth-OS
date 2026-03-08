@@ -113,10 +113,31 @@ export async function updateCampaignBudget(
 }
 
 /**
+ * Fetch the first Facebook Page ID associated with the access token.
+ * Uses GET /me/accounts which lists pages the user/system-user manages.
+ * Returns undefined if no pages are found or the call fails.
+ */
+export async function fetchFacebookPageId(accessToken: string): Promise<string | undefined> {
+  try {
+    const resp = await fetch(
+      `${META_BASE}/me/accounts?fields=id,name&limit=1&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    if (!resp.ok) return undefined;
+    const body = await resp.json() as { data?: Array<{ id?: string; name?: string }> };
+    return body.data?.[0]?.id ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Create a new ad from an approved copy variant.
  * Steps:
- *   1. Create an AdCreative with the variant copy
+ *   1. Create an AdCreative with the variant copy (requires pageId)
  *   2. Create a new Ad in the same ad set with a name suffix
+ *
+ * NOTE on pageId: Meta requires a Facebook Page ID in object_story_spec.
+ * Without it, creative creation fails. Use fetchFacebookPageId() to get one.
  */
 export async function createAdFromVariant(
   accessToken: string,
@@ -131,65 +152,70 @@ export async function createAdFromVariant(
     imageUrl?: string;
     callToAction?: string;
     linkUrl?: string;
+    pageId?: string;
   },
 ): Promise<ExecutionResult> {
   try {
-    // Step 1: Create AdCreative — this one uses JSON because it has nested objects
-    const creativePayload: Record<string, unknown> = {
-      name: `${creative.name} — GrowthOS Variant`,
-      object_story_spec: {
-        link_data: {
-          message: creative.primaryText,
-          name: creative.headline,
-          description: creative.description ?? '',
-          call_to_action: { type: creative.callToAction ?? 'LEARN_MORE' },
-          link: creative.linkUrl ?? '',
-          ...(creative.imageHash ? { image_hash: creative.imageHash } : {}),
-        },
+    // Validate required fields
+    if (!creative.pageId) {
+      return { success: false, error: 'Facebook Page ID is required to create ad creatives. Connect a Facebook Page in Meta Business Settings.', retryable: false };
+    }
+
+    // linkUrl is required for link ads — use a fallback if not provided
+    const linkUrl = creative.linkUrl?.trim();
+    if (!linkUrl) {
+      return { success: false, error: `No product URL available for "${creative.name}". Add product URLs in your store.`, retryable: false };
+    }
+
+    // Step 1: Create AdCreative — uses form-urlencoded with object_story_spec as JSON string
+    // Meta requires page_id inside object_story_spec for all ad creatives.
+    const objectStorySpec: Record<string, unknown> = {
+      page_id: creative.pageId,
+      link_data: {
+        message: creative.primaryText,
+        name: creative.headline,
+        description: creative.description ?? '',
+        call_to_action: { type: creative.callToAction ?? 'LEARN_MORE', value: { link: linkUrl } },
+        link: linkUrl,
+        ...(creative.imageHash ? { image_hash: creative.imageHash } : {}),
       },
     };
 
-    const creativeResp = await fetch(`${META_BASE}/${adAccountId}/adcreatives`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(creativePayload),
+    const creativeResult = await metaPost(accessToken, `${normalizeAccountId(adAccountId)}/adcreatives`, {
+      name: `${creative.name} — GrowthOS Variant`,
+      object_story_spec: JSON.stringify(objectStorySpec),
     });
 
-    const creativeBody = await creativeResp.json() as { id?: string; error?: MetaErrorResponse };
-    if (!creativeResp.ok || creativeBody.error) {
-      return handleMetaError(creativeBody.error, creativeResp.status);
+    if (!creativeResult.success) {
+      return { ...creativeResult, error: `Creative creation failed: ${creativeResult.error}` };
     }
 
-    const creativeId = creativeBody.id;
+    const creativeId = String(
+      (creativeResult.metaResponse as Record<string, unknown>)?.id ?? '',
+    );
     if (!creativeId) {
       return { success: false, error: 'Meta returned no creative ID', retryable: false };
     }
 
     // Step 2: Create Ad using the new creative
-    const adFormData = new URLSearchParams();
-    adFormData.append('access_token', accessToken);
-    adFormData.append('name', `${creative.name} — GrowthOS`);
-    adFormData.append('adset_id', adSetId);
-    adFormData.append('creative', JSON.stringify({ creative_id: creativeId }));
-    adFormData.append('status', 'PAUSED'); // Always create paused — user must activate manually
-
-    const adResp = await fetch(`${META_BASE}/${adAccountId}/ads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: adFormData.toString(),
+    const adResult = await metaPost(accessToken, `${normalizeAccountId(adAccountId)}/ads`, {
+      name: `${creative.name} — GrowthOS`,
+      adset_id: adSetId,
+      creative: JSON.stringify({ creative_id: creativeId }),
+      status: 'PAUSED', // Always create paused — user must activate manually
     });
 
-    const adBody = await adResp.json() as { id?: string; error?: MetaErrorResponse };
-    if (!adResp.ok || adBody.error) {
-      return handleMetaError(adBody.error, adResp.status);
+    if (!adResult.success) {
+      return { ...adResult, error: `Ad creation failed: ${adResult.error}` };
     }
+
+    const adId = String(
+      (adResult.metaResponse as Record<string, unknown>)?.id ?? '',
+    );
 
     return {
       success: true,
-      metaResponse: { creativeId, adId: adBody.id },
+      metaResponse: { creativeId, adId },
     };
   } catch (err) {
     return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
@@ -344,7 +370,7 @@ export async function createMetaCampaign(
 
 /**
  * Create a new ad set for proactive ads with budget and configurable targeting.
- * POST act_{id}/adsets — form-urlencoded with budget in cents.
+ * POST act_{id}/adsets — form-urlencoded with budget in smallest currency unit.
  * @param targeting - Optional geo/age targeting; defaults to US, 18-65
  */
 export async function createProactiveAdSet(
@@ -375,6 +401,9 @@ export async function createProactiveAdSet(
     daily_budget: String(budgetSmallestUnit),
     billing_event: 'IMPRESSIONS',
     optimization_goal: pixelId ? 'OFFSITE_CONVERSIONS' : 'LINK_CLICKS',
+    // LOWEST_COST_WITHOUT_CAP = automatic bidding, no bid cap needed.
+    // Without this, Meta requires bid_amount or bid_constraints.
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     status: 'PAUSED',
     targeting: JSON.stringify({ geo_locations: { countries }, age_min: ageMin, age_max: ageMax }),
   };
