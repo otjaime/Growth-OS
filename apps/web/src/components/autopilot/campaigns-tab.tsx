@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Megaphone, Sparkles, Loader2, Calendar, TrendingUp,
   Check, X, Pause, ShoppingBag, Tag, Star,
-  Package, Gift, ArrowRight, Rocket, ExternalLink,
+  Package, Gift, ArrowRight, Rocket, ExternalLink, Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '@/lib/api';
@@ -50,14 +50,31 @@ interface CampaignCardProps {
   onReject: (id: string) => void;
   onPause: (id: string) => void;
   onActivate: (id: string) => void;
+  onUpdateBudget: (id: string, newBudget: number) => Promise<void>;
   actionLoading: string | null;
 }
 
-function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActivate, actionLoading }: CampaignCardProps): JSX.Element {
+function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActivate, onUpdateBudget, actionLoading }: CampaignCardProps): JSX.Element {
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState(String(Number(campaign.dailyBudget ?? 0)));
+  const [savingBudget, setSavingBudget] = useState(false);
+
   const typeStyle = TYPE_STYLES[campaign.type] ?? TYPE_STYLES.HERO_PRODUCT;
   const statusStyle = STATUS_STYLES[campaign.status] ?? STATUS_STYLES.SUGGESTED;
   const TypeIcon = typeStyle.icon;
   const isActioning = actionLoading === campaign.id;
+
+  const handleSaveBudget = async (): Promise<void> => {
+    const newBudget = Number(budgetInput);
+    if (!isFinite(newBudget) || newBudget <= 0) return;
+    setSavingBudget(true);
+    try {
+      await onUpdateBudget(campaign.id, newBudget);
+      setEditingBudget(false);
+    } finally {
+      setSavingBudget(false);
+    }
+  };
 
   return (
     <div className="card px-4 py-4 space-y-3">
@@ -90,7 +107,50 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActi
           </span>
         )}
         {campaign.dailyBudget != null && (
-          <span>{formatMoney(Number(campaign.dailyBudget), currency)}/day</span>
+          (campaign.status === 'APPROVED' || campaign.status === 'SUGGESTED') && editingBudget ? (
+            <span className="flex items-center gap-1">
+              <span className="text-[var(--foreground-secondary)]">{currency}</span>
+              <input
+                type="number"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveBudget(); if (e.key === 'Escape') setEditingBudget(false); }}
+                className="w-20 px-1.5 py-0.5 text-xs rounded bg-glass-muted border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-apple-blue"
+                min="1"
+                autoFocus
+                disabled={savingBudget}
+              />
+              <span className="text-[var(--foreground-secondary)]">/day</span>
+              <button
+                onClick={() => void handleSaveBudget()}
+                disabled={savingBudget}
+                className="text-apple-green hover:text-apple-green/80"
+              >
+                {savingBudget ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              </button>
+              <button
+                onClick={() => { setEditingBudget(false); setBudgetInput(String(Number(campaign.dailyBudget ?? 0))); }}
+                className="text-[var(--foreground-secondary)] hover:text-apple-red"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ) : (
+            <span
+              className={(campaign.status === 'APPROVED' || campaign.status === 'SUGGESTED') ? 'cursor-pointer hover:text-apple-blue flex items-center gap-0.5' : ''}
+              onClick={() => {
+                if (campaign.status === 'APPROVED' || campaign.status === 'SUGGESTED') {
+                  setBudgetInput(String(Number(campaign.dailyBudget ?? 0)));
+                  setEditingBudget(true);
+                }
+              }}
+            >
+              {formatMoney(Number(campaign.dailyBudget), currency)}/day
+              {(campaign.status === 'APPROVED' || campaign.status === 'SUGGESTED') && (
+                <Pencil className="h-2.5 w-2.5 opacity-50" />
+              )}
+            </span>
+          )
         )}
         {campaign.startDate && campaign.endDate && (
           <span className="flex items-center gap-1">
@@ -370,6 +430,27 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
     }
   };
 
+  const handleUpdateBudget = async (id: string, newBudget: number): Promise<void> => {
+    try {
+      const res = await apiFetch(`/api/autopilot/strategies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dailyBudget: newBudget }),
+      });
+      if (res.ok) {
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, dailyBudget: newBudget } : c)),
+        );
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to update budget: ${err.error ?? 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('[Campaigns] Update budget failed:', err);
+      alert('Network error updating budget');
+    }
+  };
+
   const handlePause = async (id: string): Promise<void> => {
     setActionLoading(id);
     try {
@@ -460,6 +541,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onReject={handleReject}
                     onPause={handlePause}
                     onActivate={handleActivate}
+                    onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />
                 </motion.div>
@@ -494,6 +576,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onReject={handleReject}
                     onPause={handlePause}
                     onActivate={handleActivate}
+                    onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />
                 </motion.div>
@@ -525,6 +608,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onReject={handleReject}
                     onPause={handlePause}
                     onActivate={handleActivate}
+                    onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />
                 </motion.div>

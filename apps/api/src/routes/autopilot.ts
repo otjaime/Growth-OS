@@ -3011,6 +3011,58 @@ export async function autopilotRoutes(app: FastifyInstance) {
     return { campaign };
   });
 
+  // PATCH /autopilot/strategies/:id — Update strategy fields (budget, name, etc.)
+  app.patch('/autopilot/strategies/:id', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Update a campaign strategy',
+      description: 'Update editable fields of a campaign strategy (e.g., daily budget). Only allowed for SUGGESTED or APPROVED strategies.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as Record<string, unknown>;
+    const orgId = await ensureOrganization();
+
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (existing.status !== 'SUGGESTED' && existing.status !== 'APPROVED') {
+      reply.status(400);
+      return { error: `Cannot edit strategy with status ${existing.status}. Only SUGGESTED or APPROVED strategies can be edited.` };
+    }
+
+    // Only allow updating specific fields
+    const data: Record<string, unknown> = {};
+    if (body.dailyBudget !== undefined) {
+      const budget = Number(body.dailyBudget);
+      if (!isFinite(budget) || budget < 0) {
+        reply.status(400);
+        return { error: 'Daily budget must be a non-negative number' };
+      }
+      data.dailyBudget = budget;
+    }
+    if (body.name !== undefined && typeof body.name === 'string' && body.name.trim()) {
+      data.name = body.name.trim();
+    }
+
+    if (Object.keys(data).length === 0) {
+      reply.status(400);
+      return { error: 'No valid fields to update' };
+    }
+
+    const updated = await prisma.campaignStrategy.update({
+      where: { id },
+      data,
+    });
+
+    return { campaign: updated };
+  });
+
   // POST /autopilot/strategies/:id/activate — Create real Meta campaign from approved strategy
   app.post('/autopilot/strategies/:id/activate', {
     schema: {
