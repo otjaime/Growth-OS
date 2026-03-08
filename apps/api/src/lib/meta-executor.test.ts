@@ -15,6 +15,8 @@ import {
   createProactiveAdSet,
   fetchFacebookPageId,
   toSmallestUnit,
+  activateMetaCampaign,
+  pauseMetaCampaign,
 } from './meta-executor.js';
 
 const TOKEN = 'EAAtest123';
@@ -388,6 +390,113 @@ describe('meta-executor', () => {
     it('is case-insensitive for currency', () => {
       expect(toSmallestUnit(100, 'clp')).toBe(100);
       expect(toSmallestUnit(100, 'usd')).toBe(10000);
+    });
+  });
+
+  describe('activateMetaCampaign', () => {
+    it('activates ads, then ad sets, then campaign (bottom-up)', async () => {
+      // 2 ads + 1 ad set + 1 campaign = 4 calls, all succeed
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const result = await activateMetaCampaign(
+        TOKEN,
+        'campaign_1',
+        ['adset_1', 'adset_2'],
+        ['ad_1', 'ad_2', 'ad_3'],
+      );
+
+      expect(result.success).toBe(true);
+      // 3 ads + 2 ad sets + 1 campaign = 6 calls
+      expect(mockFetch).toHaveBeenCalledTimes(6);
+
+      // Verify order: ads first, then ad sets, then campaign
+      const calls = mockFetch.mock.calls;
+      // Calls 0-2: ads → ACTIVE
+      for (let i = 0; i < 3; i++) {
+        const body = parseForm(calls[i]![1].body as string);
+        expect(body.status).toBe('ACTIVE');
+      }
+      // Call 3-4: ad sets → ACTIVE
+      expect(calls[3]![0]).toContain('adset_1');
+      expect(calls[4]![0]).toContain('adset_2');
+      // Call 5: campaign → ACTIVE
+      expect(calls[5]![0]).toContain('campaign_1');
+    });
+
+    it('returns error if campaign activation fails', async () => {
+      // Ads and ad sets succeed, campaign fails
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) }) // ad
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) }) // ad set
+        .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'Campaign error', code: 100 } }) }); // campaign
+
+      const result = await activateMetaCampaign(TOKEN, 'campaign_1', ['adset_1'], ['ad_1']);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to activate campaign');
+    });
+
+    it('continues with warnings if some ads fail to activate', async () => {
+      mockFetch
+        // ad_1 fails
+        .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'Ad error', code: 100 } }) })
+        // ad_2 succeeds
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) })
+        // ad set succeeds
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) })
+        // campaign succeeds
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+
+      const result = await activateMetaCampaign(TOKEN, 'campaign_1', ['adset_1'], ['ad_1', 'ad_2']);
+      expect(result.success).toBe(true);
+      const response = result.metaResponse as Record<string, unknown>;
+      expect(response.warnings).toBeDefined();
+      expect((response.warnings as string[])[0]).toContain('ad_1');
+    });
+
+    it('works with empty ad lists', async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+      const result = await activateMetaCampaign(TOKEN, 'campaign_1', [], []);
+      expect(result.success).toBe(true);
+      // Only 1 call (campaign)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('pauseMetaCampaign', () => {
+    it('pauses campaign then ad sets (top-down)', async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+      const result = await pauseMetaCampaign(TOKEN, 'campaign_1', ['adset_1', 'adset_2']);
+      expect(result.success).toBe(true);
+      // 1 campaign + 2 ad sets = 3 calls
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+
+      // Verify order: campaign first, then ad sets
+      const calls = mockFetch.mock.calls;
+      expect(calls[0]![0]).toContain('campaign_1');
+      const body0 = parseForm(calls[0]![1].body as string);
+      expect(body0.status).toBe('PAUSED');
+
+      expect(calls[1]![0]).toContain('adset_1');
+      expect(calls[2]![0]).toContain('adset_2');
+    });
+
+    it('returns error if campaign pause fails', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: 'Cannot pause', code: 100 } }),
+      });
+      // Ad sets still attempted
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+      const result = await pauseMetaCampaign(TOKEN, 'campaign_1', ['adset_1']);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to pause campaign on Meta');
     });
   });
 
