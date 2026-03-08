@@ -3114,13 +3114,12 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
     const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
 
-    // 6. Create Meta Campaign — convert budget to smallest currency unit
+    // 6. Create Meta Campaign (budget set per ad set, not at campaign level)
     const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
     const campaignResult = await createMetaCampaign(
       accessToken,
       adAccountId,
       strategy.name,
-      totalBudgetUnits,
     );
 
     if (!campaignResult.success) {
