@@ -13,7 +13,7 @@ vi.mock('./ai.js', () => ({
   AI_MODEL: mocks.AI_MODEL,
 }));
 
-import { generateProductCopy, type ProductCopyInput } from './product-copy-generator.js';
+import { generateProductCopy, CURRENCY_LANGUAGE_MAP, type ProductCopyInput } from './product-copy-generator.js';
 
 const BASE_INPUT: ProductCopyInput = {
   productTitle: 'Glow Serum',
@@ -225,5 +225,117 @@ describe('generateProductCopy', () => {
       (m: { role: string }) => m.role === 'user',
     )?.content;
     expect(userMsg).not.toContain('buyers come back');
+  });
+
+  // ── Language support ─────────────────────────────────────────
+  it('returns Spanish demo variants when language is "es" and AI is not configured', async () => {
+    mocks.isAIConfigured.mockReturnValue(false);
+
+    const variants = await generateProductCopy({ ...BASE_INPUT, language: 'es' });
+
+    expect(variants).toHaveLength(3);
+    // Spanish demo copy should contain Spanish words
+    expect(variants[0]!.description).toBe('Comprar ahora');
+    expect(variants[1]!.description).toBe('Pruébalo hoy');
+    expect(variants[2]!.description).toBe('Stock limitado');
+  });
+
+  it('returns Portuguese demo variants when language is "pt" and AI is not configured', async () => {
+    mocks.isAIConfigured.mockReturnValue(false);
+
+    const variants = await generateProductCopy({ ...BASE_INPUT, language: 'pt' });
+
+    expect(variants).toHaveLength(3);
+    expect(variants[0]!.description).toBe('Compre agora');
+  });
+
+  it('falls back to English demo when language is unknown and AI is not configured', async () => {
+    mocks.isAIConfigured.mockReturnValue(false);
+
+    const variants = await generateProductCopy({ ...BASE_INPUT, language: 'zh' });
+
+    expect(variants).toHaveLength(3);
+    expect(variants[0]!.description).toBe('Shop now');
+  });
+
+  it('includes Spanish language instruction in AI prompt when language is "es"', async () => {
+    mocks.isAIConfigured.mockReturnValue(true);
+
+    const mockCreate = vi.fn().mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify([
+              { angle: 'benefit', headline: 'H1', primaryText: 'P1', description: 'D1' },
+              { angle: 'pain_point', headline: 'H2', primaryText: 'P2', description: 'D2' },
+              { angle: 'urgency', headline: 'H3', primaryText: 'P3', description: 'D3' },
+            ]),
+          },
+        },
+      ],
+    });
+    mocks.getClient.mockReturnValue({
+      chat: { completions: { create: mockCreate } },
+    });
+
+    await generateProductCopy({ ...BASE_INPUT, language: 'es', currencySymbol: '$' });
+
+    const call = mockCreate.mock.calls[0]![0];
+    // System prompt should mention Spanish
+    const sysMsg = call.messages.find((m: { role: string }) => m.role === 'system')?.content;
+    expect(sysMsg).toContain('Spanish');
+    // User prompt should also include language instruction
+    const userMsg = call.messages.find((m: { role: string }) => m.role === 'user')?.content;
+    expect(userMsg).toContain('Spanish');
+  });
+
+  it('does not include language instruction in prompts when language is "en"', async () => {
+    mocks.isAIConfigured.mockReturnValue(true);
+
+    const mockCreate = vi.fn().mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify([
+              { angle: 'benefit', headline: 'H1', primaryText: 'P1', description: 'D1' },
+              { angle: 'pain_point', headline: 'H2', primaryText: 'P2', description: 'D2' },
+              { angle: 'urgency', headline: 'H3', primaryText: 'P3', description: 'D3' },
+            ]),
+          },
+        },
+      ],
+    });
+    mocks.getClient.mockReturnValue({
+      chat: { completions: { create: mockCreate } },
+    });
+
+    await generateProductCopy({ ...BASE_INPUT, language: 'en' });
+
+    const call = mockCreate.mock.calls[0]![0];
+    const sysMsg = call.messages.find((m: { role: string }) => m.role === 'system')?.content;
+    // Should NOT contain language-specific instruction for English
+    expect(sysMsg).not.toContain('CRITICAL: Write ALL copy');
+  });
+});
+
+describe('CURRENCY_LANGUAGE_MAP', () => {
+  it('maps CLP to Spanish', () => {
+    const info = CURRENCY_LANGUAGE_MAP.CLP;
+    expect(info).toBeDefined();
+    expect(info!.language).toBe('es');
+    expect(info!.symbol).toBe('$');
+  });
+
+  it('maps BRL to Portuguese', () => {
+    const info = CURRENCY_LANGUAGE_MAP.BRL;
+    expect(info).toBeDefined();
+    expect(info!.language).toBe('pt');
+    expect(info!.symbol).toBe('R$');
+  });
+
+  it('maps USD to English', () => {
+    const info = CURRENCY_LANGUAGE_MAP.USD;
+    expect(info).toBeDefined();
+    expect(info!.language).toBe('en');
   });
 });
