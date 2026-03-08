@@ -17,6 +17,7 @@ import {
   toSmallestUnit,
   activateMetaCampaign,
   pauseMetaCampaign,
+  uploadImageToMeta,
 } from './meta-executor.js';
 
 const TOKEN = 'EAAtest123';
@@ -555,6 +556,78 @@ describe('meta-executor', () => {
 
       const result = await pauseAd(TOKEN, '123');
       expect(result.error).toContain('4841013');
+    });
+  });
+
+  describe('uploadImageToMeta', () => {
+    it('uploads an image by URL and returns image hash', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          images: { 'image.jpg': { hash: 'abc123hash' } },
+        }),
+      });
+
+      const result = await uploadImageToMeta(TOKEN, '12345', 'https://cdn.example.com/product.jpg');
+
+      expect(result.success).toBe(true);
+      expect(result.imageHash).toBe('abc123hash');
+
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('act_12345/adimages');
+      const body = parseForm(call[1].body);
+      expect(body.url).toBe('https://cdn.example.com/product.jpg');
+      expect(body.access_token).toBe(TOKEN);
+    });
+
+    it('returns error when Meta API returns error', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: 'Invalid image URL', code: 100 } }),
+      });
+
+      const result = await uploadImageToMeta(TOKEN, '12345', 'https://bad-url.com/img.jpg');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Image upload failed');
+    });
+
+    it('returns error when no image hash in response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ images: {} }),
+      });
+
+      const result = await uploadImageToMeta(TOKEN, '12345', 'https://cdn.example.com/product.jpg');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no hash returned');
+    });
+
+    it('handles network errors gracefully', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network timeout'));
+
+      const result = await uploadImageToMeta(TOKEN, '12345', 'https://cdn.example.com/product.jpg');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Network timeout');
+    });
+
+    it('normalizes ad account ID to include act_ prefix', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          images: { 'img.jpg': { hash: 'xyz789' } },
+        }),
+      });
+
+      await uploadImageToMeta(TOKEN, 'act_67890', 'https://cdn.example.com/product.jpg');
+
+      const call = mockFetch.mock.calls[0]!;
+      // Should NOT double-prefix: act_act_67890
+      expect(call[0]).toContain('act_67890/adimages');
+      expect(call[0]).not.toContain('act_act_');
     });
   });
 });

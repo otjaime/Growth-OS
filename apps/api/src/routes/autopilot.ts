@@ -3154,7 +3154,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId, getMinAdSetBudget } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId, getMinAdSetBudget, uploadImageToMeta } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3251,7 +3251,12 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 9. Generate copy + create ad sets + ads for each product
-    const { generateProductCopy } = await import('../lib/product-copy-generator.js');
+    const { generateProductCopy, CURRENCY_LANGUAGE_MAP } = await import('../lib/product-copy-generator.js');
+
+    // Detect language and currency symbol from the ad account currency
+    const langInfo = CURRENCY_LANGUAGE_MAP[currency] ?? { language: 'en', symbol: '$', languageName: 'English' };
+    const copyLanguage = langInfo.language;
+    const currencySymbol = langInfo.symbol;
 
     const createdAdSetIds: string[] = [];
     const createdAdIds: string[] = [];
@@ -3276,6 +3281,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       });
 
       // Generate copy variants (3 per product: benefit, pain_point, urgency)
+      // Language is auto-detected from the ad account currency (e.g., CLP → Spanish)
       const copyVariants = await generateProductCopy({
         productTitle,
         productType: product?.productType ?? 'product',
@@ -3284,7 +3290,22 @@ export async function autopilotRoutes(app: FastifyInstance) {
         margin: Number(product?.estimatedMargin ?? 0),
         repeatBuyerPct: Number(product?.repeatBuyerPct ?? 0),
         adFitnessScore: Number(product?.adFitnessScore ?? 50),
+        language: copyLanguage,
+        currencySymbol,
       });
+
+      // Upload product image to Meta if available — returns imageHash for ad creative
+      let imageHash: string | undefined;
+      const productImageUrl = product?.imageUrl ?? null;
+      if (productImageUrl) {
+        const imgResult = await uploadImageToMeta(accessToken, adAccountId, productImageUrl);
+        if (imgResult.success && imgResult.imageHash) {
+          imageHash = imgResult.imageHash;
+        } else {
+          // Non-fatal — ad will be created without image (uses page profile pic)
+          errors.push(`Image upload for "${productTitle}": ${imgResult.error ?? 'unknown error'}`);
+        }
+      }
 
       // Create ad set for this product
       const adSetResult = await createProactiveAdSet(
@@ -3356,6 +3377,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           description: variant.description ?? undefined,
           linkUrl: productLinkUrl,
           pageId: facebookPageId,
+          imageHash,
         });
 
         if (adResult.success) {

@@ -164,6 +164,60 @@ export async function fetchFacebookPageId(accessToken: string): Promise<string |
 }
 
 /**
+ * Upload an image from a URL to a Meta Ad Account.
+ * Downloads the image and uploads it via the Meta Marketing API.
+ * Returns the image_hash on success, which can be used in ad creatives.
+ *
+ * POST act_{id}/adimages — multipart/form-data with image bytes.
+ * Meta also supports uploading by URL using the `url` field.
+ */
+export async function uploadImageToMeta(
+  accessToken: string,
+  adAccountId: string,
+  imageUrl: string,
+): Promise<{ success: boolean; imageHash?: string; error?: string }> {
+  try {
+    const accountId = normalizeAccountId(adAccountId);
+
+    // Meta supports uploading by URL directly — simpler than downloading + re-uploading bytes
+    const formData = new URLSearchParams();
+    formData.append('access_token', accessToken);
+    formData.append('url', imageUrl);
+
+    const resp = await fetch(`${META_BASE}/${accountId}/adimages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
+    });
+
+    const body = await resp.json() as {
+      images?: Record<string, { hash?: string }>;
+      error?: { message?: string; code?: number };
+    };
+
+    if (!resp.ok || body.error) {
+      return {
+        success: false,
+        error: `Image upload failed: ${body.error?.message ?? `HTTP ${resp.status}`}`,
+      };
+    }
+
+    // Response format: { images: { "<filename>": { hash: "abc123..." } } }
+    const images = body.images ?? {};
+    const firstImage = Object.values(images)[0];
+    const imageHash = firstImage?.hash;
+
+    if (!imageHash) {
+      return { success: false, error: 'Image uploaded but no hash returned' };
+    }
+
+    return { success: true, imageHash };
+  } catch (err) {
+    return { success: false, error: `Image upload error: ${(err as Error).message}` };
+  }
+}
+
+/**
  * Create a new ad from an approved copy variant.
  * Steps:
  *   1. Create an AdCreative with the variant copy (requires pageId)
