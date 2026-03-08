@@ -3101,8 +3101,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
       return { error: 'Meta credentials missing accessToken or adAccountId' };
     }
 
-    // 5. Detect targeting from MetaAdAccount currency
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit } =
+    // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3113,6 +3113,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const currency = adAccount?.currency ?? 'USD';
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
     const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
+
+    // Fetch the Facebook Page ID — required for ad creative creation.
+    // The page must be connected to the Business Manager / ad account.
+    const facebookPageId = await fetchFacebookPageId(accessToken);
+    if (!facebookPageId) {
+      reply.status(400);
+      return { error: 'No Facebook Page found for this access token. Ensure a Facebook Page is connected to your Meta Business account.' };
+    }
 
     // 6. Create Meta Campaign (budget set per ad set, not at campaign level)
     const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
@@ -3247,6 +3255,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           primaryText: variant.primaryText,
           description: variant.description ?? undefined,
           linkUrl: product?.productUrl ?? undefined,
+          pageId: facebookPageId,
         });
 
         if (adResult.success) {
