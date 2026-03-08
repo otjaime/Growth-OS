@@ -3232,7 +3232,25 @@ export async function autopilotRoutes(app: FastifyInstance) {
       // Non-fatal: campaign was created on Meta, tracking is best-effort
     }
 
-    // 8. Generate copy + create ad sets + ads for each product
+    // 8. Get store URL for fallback link — products may not have productUrl set
+    let storeBaseUrl: string | null = null;
+    try {
+      const shopifyCred = await prisma.connectorCredential.findFirst({
+        where: { organizationId: orgId, connectorType: 'shopify' },
+        select: { metadata: true },
+      });
+      const shopDomain = (shopifyCred?.metadata as Record<string, string> | null)?.shopDomain;
+      if (shopDomain) {
+        // Ensure it's a valid URL base
+        storeBaseUrl = shopDomain.startsWith('http')
+          ? shopDomain.replace(/\/$/, '')
+          : `https://${shopDomain.replace(/\/$/, '')}`;
+      }
+    } catch {
+      // Non-fatal — we'll handle missing URLs below
+    }
+
+    // 9. Generate copy + create ad sets + ads for each product
     const { generateProductCopy } = await import('../lib/product-copy-generator.js');
 
     const createdAdSetIds: string[] = [];
@@ -3253,6 +3271,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           adFitnessScore: true,
           productUrl: true,
           imageUrl: true,
+          shopifyProductId: true,
         },
       });
 
@@ -3312,6 +3331,22 @@ export async function autopilotRoutes(app: FastifyInstance) {
         // Non-fatal
       }
 
+      // Build product link URL with fallback chain:
+      // 1. Product's own URL (from Shopify data)
+      // 2. Store URL + Shopify product ID path
+      // 3. Store base URL (homepage)
+      let productLinkUrl: string | undefined = product?.productUrl ?? undefined;
+      if (!productLinkUrl && storeBaseUrl) {
+        if (product?.shopifyProductId) {
+          // Shopify product URLs follow: /products/{handle} but we only have the ID
+          // Use the collections/all/products path which works with product IDs too
+          productLinkUrl = `${storeBaseUrl}/products`;
+        } else {
+          // Last resort: store homepage
+          productLinkUrl = storeBaseUrl;
+        }
+      }
+
       // Create ads from copy variants
       for (const variant of copyVariants) {
         const adResult = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
@@ -3319,7 +3354,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           headline: variant.headline,
           primaryText: variant.primaryText,
           description: variant.description ?? undefined,
-          linkUrl: product?.productUrl ?? undefined,
+          linkUrl: productLinkUrl,
           pageId: facebookPageId,
         });
 
@@ -3353,7 +3388,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       }
     }
 
-    // 9. Check results
+    // 10. Check results — need at least 1 ad set AND 1 ad to proceed
     if (createdAdSetIds.length === 0) {
       // Total failure — revert status
       reply.status(502);
@@ -3366,7 +3401,75 @@ export async function autopilotRoutes(app: FastifyInstance) {
       };
     }
 
-    // 10. Update strategy with Meta IDs and set ACTIVE
+    if (createdAdIds.length === 0) {
+      // Ad sets created but ALL ads failed — likely a product URL or creative issue
+      reply.status(502);
+      return {
+        error: errors.length > 0
+          ? `Ad sets created but all ads failed. First error: ${errors[0]}`
+          : 'Failed to create any ads on Meta — check product URLs and Page connection',
+        details: errors,
+        metaCampaignId,
+        adSetsCreated: createdAdSetIds.length,
+        adsCreated: 0,
+      };
+    }
+
+    // 10. Activate everything on Meta (PAUSED → ACTIVE)
+    // Bottom-up: ads → ad sets → campaign
+    const { activateMetaCampaign } = await import('../lib/meta-executor.js');
+    const activateResult = await activateMetaCampaign(
+      accessToken,
+      metaCampaignId,
+      createdAdSetIds,
+      createdAdIds,
+    );
+
+    if (!activateResult.success) {
+      // Campaign was created but couldn't be activated — still save IDs
+      // User can try resuming later
+      await prisma.campaignStrategy.update({
+        where: { id },
+        data: {
+          status: 'PAUSED',
+          metaCampaignId,
+          metaAdSetIds: createdAdSetIds,
+        },
+      });
+      reply.status(502);
+      return {
+        error: `Campaign created but failed to activate: ${activateResult.error}`,
+        metaCampaignId,
+        adSetsCreated: createdAdSetIds.length,
+        adsCreated: createdAdIds.length,
+      };
+    }
+
+    // 11. Update DB tracking rows to ACTIVE
+    try {
+      if (campaignDbId) {
+        await prisma.metaCampaign.update({
+          where: { id: campaignDbId },
+          data: { status: 'ACTIVE' },
+        });
+      }
+      if (createdAdSetIds.length > 0) {
+        await prisma.metaAdSet.updateMany({
+          where: { adSetId: { in: createdAdSetIds } },
+          data: { status: 'ACTIVE' },
+        });
+      }
+      if (createdAdIds.length > 0) {
+        await prisma.metaAd.updateMany({
+          where: { adId: { in: createdAdIds } },
+          data: { status: 'ACTIVE' },
+        });
+      }
+    } catch {
+      // Non-fatal — Meta objects are active, DB tracking is best-effort
+    }
+
+    // 12. Update strategy with Meta IDs and set ACTIVE
     await prisma.campaignStrategy.update({
       where: { id },
       data: {
@@ -3420,19 +3523,19 @@ export async function autopilotRoutes(app: FastifyInstance) {
     return { campaign };
   });
 
-  // POST /autopilot/strategies/:id/pause — Pause an active campaign
+  // POST /autopilot/strategies/:id/pause — Pause an active campaign on Meta
   app.post('/autopilot/strategies/:id/pause', {
     schema: {
       tags: ['autopilot'],
       summary: 'Pause a campaign strategy',
-      description: 'Pauses an active campaign strategy.',
+      description: 'Pauses an active campaign strategy on Meta and in the database.',
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const orgId = await ensureOrganization();
     const existing = await prisma.campaignStrategy.findFirst({
       where: { id, organizationId: orgId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, metaCampaignId: true, metaAdSetIds: true },
     });
     if (!existing) {
       reply.status(404);
@@ -3442,10 +3545,168 @@ export async function autopilotRoutes(app: FastifyInstance) {
       reply.status(400);
       return { error: `Cannot pause strategy with status ${existing.status}, must be ACTIVE` };
     }
+
+    // Pause on Meta if we have a real campaign ID
+    const metaCampaignId = existing.metaCampaignId;
+    const metaAdSetIds = (existing.metaAdSetIds ?? []) as string[];
+
+    if (metaCampaignId && !metaCampaignId.startsWith('demo_')) {
+      try {
+        const cred = await prisma.connectorCredential.findFirst({
+          where: { organizationId: orgId, connectorType: 'meta_ads' },
+          select: { encryptedData: true, iv: true, authTag: true },
+        }) ?? await prisma.connectorCredential.findFirst({
+          where: { organizationId: orgId, connectorType: 'meta' },
+          select: { encryptedData: true, iv: true, authTag: true },
+        });
+
+        if (cred) {
+          const decrypted = JSON.parse(
+            decrypt(cred.encryptedData, cred.iv, cred.authTag),
+          ) as Record<string, string>;
+          const accessToken = decrypted.accessToken ?? '';
+
+          if (accessToken) {
+            const { pauseMetaCampaign } = await import('../lib/meta-executor.js');
+            const pauseResult = await pauseMetaCampaign(accessToken, metaCampaignId, metaAdSetIds);
+            if (!pauseResult.success) {
+              // Log but don't block — still update DB status
+              request.log.warn({ error: pauseResult.error }, 'Failed to pause campaign on Meta');
+            }
+          }
+        }
+      } catch (err) {
+        request.log.warn({ err }, 'Error pausing campaign on Meta');
+      }
+    }
+
     const campaign = await prisma.campaignStrategy.update({
       where: { id },
       data: { status: 'PAUSED' },
     });
+
+    // Update tracking rows
+    try {
+      if (metaCampaignId) {
+        await prisma.metaCampaign.updateMany({
+          where: { campaignId: metaCampaignId },
+          data: { status: 'PAUSED' },
+        });
+      }
+      if (metaAdSetIds.length > 0) {
+        await prisma.metaAdSet.updateMany({
+          where: { adSetId: { in: metaAdSetIds } },
+          data: { status: 'PAUSED' },
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    return { campaign };
+  });
+
+  // POST /autopilot/strategies/:id/resume — Resume a paused campaign on Meta
+  app.post('/autopilot/strategies/:id/resume', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Resume a paused campaign strategy',
+      description: 'Resumes a paused campaign strategy on Meta and in the database.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true, metaCampaignId: true, metaAdSetIds: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+    if (existing.status !== 'PAUSED') {
+      reply.status(400);
+      return { error: `Cannot resume strategy with status ${existing.status}, must be PAUSED` };
+    }
+
+    const metaCampaignId = existing.metaCampaignId;
+    const metaAdSetIds = (existing.metaAdSetIds ?? []) as string[];
+
+    if (!metaCampaignId) {
+      reply.status(400);
+      return { error: 'No Meta campaign ID found — strategy was never activated on Meta' };
+    }
+
+    // Resume on Meta if not demo
+    if (!metaCampaignId.startsWith('demo_')) {
+      const cred = await prisma.connectorCredential.findFirst({
+        where: { organizationId: orgId, connectorType: 'meta_ads' },
+        select: { encryptedData: true, iv: true, authTag: true },
+      }) ?? await prisma.connectorCredential.findFirst({
+        where: { organizationId: orgId, connectorType: 'meta' },
+        select: { encryptedData: true, iv: true, authTag: true },
+      });
+
+      if (!cred) {
+        reply.status(400);
+        return { error: 'Meta credentials not found — re-connect Meta Ads in Data Connections' };
+      }
+
+      let accessToken: string;
+      try {
+        const decrypted = JSON.parse(
+          decrypt(cred.encryptedData, cred.iv, cred.authTag),
+        ) as Record<string, string>;
+        accessToken = decrypted.accessToken ?? '';
+      } catch {
+        reply.status(500);
+        return { error: 'Failed to decrypt Meta credentials' };
+      }
+
+      if (!accessToken) {
+        reply.status(400);
+        return { error: 'Meta access token is empty — re-connect Meta Ads' };
+      }
+
+      // Get ad IDs from tracking rows to activate them too
+      const trackedAds = await prisma.metaAd.findMany({
+        where: { campaignId: { in: await prisma.metaCampaign.findMany({ where: { campaignId: metaCampaignId }, select: { id: true } }).then(rows => rows.map(r => r.id)) } },
+        select: { adId: true },
+      });
+      const adIds = trackedAds.map((a) => a.adId);
+
+      const { activateMetaCampaign } = await import('../lib/meta-executor.js');
+      const resumeResult = await activateMetaCampaign(accessToken, metaCampaignId, metaAdSetIds, adIds);
+
+      if (!resumeResult.success) {
+        reply.status(502);
+        return { error: `Failed to resume campaign on Meta: ${resumeResult.error}` };
+      }
+    }
+
+    const campaign = await prisma.campaignStrategy.update({
+      where: { id },
+      data: { status: 'ACTIVE' },
+    });
+
+    // Update tracking rows
+    try {
+      if (metaCampaignId) {
+        await prisma.metaCampaign.updateMany({
+          where: { campaignId: metaCampaignId },
+          data: { status: 'ACTIVE' },
+        });
+      }
+      if (metaAdSetIds.length > 0) {
+        await prisma.metaAdSet.updateMany({
+          where: { adSetId: { in: metaAdSetIds } },
+          data: { status: 'ACTIVE' },
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+
     return { campaign };
   });
 }

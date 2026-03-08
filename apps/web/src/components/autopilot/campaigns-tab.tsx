@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Megaphone, Sparkles, Loader2, Calendar, TrendingUp,
-  Check, X, Pause, ShoppingBag, Tag, Star,
+  Check, X, Pause, Play, ShoppingBag, Tag, Star,
   Package, Gift, ArrowRight, Rocket, ExternalLink, Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,12 +49,13 @@ interface CampaignCardProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onPause: (id: string) => void;
+  onResume: (id: string) => void;
   onActivate: (id: string) => void;
   onUpdateBudget: (id: string, newBudget: number) => Promise<void>;
   actionLoading: string | null;
 }
 
-function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActivate, onUpdateBudget, actionLoading }: CampaignCardProps): JSX.Element {
+function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResume, onActivate, onUpdateBudget, actionLoading }: CampaignCardProps): JSX.Element {
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(Number(campaign.dailyBudget ?? 0)));
   const [savingBudget, setSavingBudget] = useState(false);
@@ -268,6 +269,29 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onActi
             </button>
           </>
         )}
+        {campaign.status === 'PAUSED' && campaign.metaCampaignId && (
+          <>
+            {!campaign.metaCampaignId.startsWith('demo_') && (
+              <a
+                href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${campaign.metaCampaignId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20 rounded-lg transition-all ease-spring press-scale"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View on Meta
+              </a>
+            )}
+            <button
+              onClick={() => onResume(campaign.id)}
+              disabled={isActioning}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-apple-green bg-[var(--tint-green)] hover:bg-apple-green/20 disabled:opacity-50 rounded-lg transition-all ease-spring press-scale"
+            >
+              {isActioning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+              {isActioning ? 'Resuming...' : 'Resume'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -404,8 +428,8 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
     setActionLoading(id);
     try {
       const res = await apiFetch(`/api/autopilot/strategies/${id}/activate`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Unknown error' }));
+      if (res.ok && data.success) {
         setCampaigns((prev) =>
           prev.map((c) =>
             c.id === id
@@ -417,10 +441,14 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
               : c,
           ),
         );
+        // Show summary with any warnings
+        const msg = `Campaign activated on Meta! ${data.adSetsCreated} ad sets, ${data.adsCreated} ads created.`;
+        if (data.warnings?.length > 0) {
+          alert(`${msg}\n\nWarnings:\n${data.warnings.join('\n')}`);
+        }
       } else {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('[Campaigns] Activate failed:', err);
-        alert(`Failed to activate: ${err.error ?? 'Unknown error'}`);
+        console.error('[Campaigns] Activate failed:', data);
+        alert(`Failed to activate: ${data.error ?? 'Unknown error'}`);
       }
     } catch (err) {
       console.error('[Campaigns] Activate failed:', err);
@@ -459,9 +487,33 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
         setCampaigns((prev) =>
           prev.map((c) => (c.id === id ? { ...c, status: 'PAUSED' as CampaignStrategyStatus } : c)),
         );
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to pause: ${err.error ?? 'Unknown error'}`);
       }
     } catch (err) {
       console.error('[Campaigns] Pause failed:', err);
+      alert('Network error pausing campaign');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResume = async (id: string): Promise<void> => {
+    setActionLoading(id);
+    try {
+      const res = await apiFetch(`/api/autopilot/strategies/${id}/resume`, { method: 'POST' });
+      if (res.ok) {
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, status: 'ACTIVE' as CampaignStrategyStatus } : c)),
+        );
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to resume: ${err.error ?? 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('[Campaigns] Resume failed:', err);
+      alert('Network error resuming campaign');
     } finally {
       setActionLoading(null);
     }
@@ -540,6 +592,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onResume={handleResume}
                     onActivate={handleActivate}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
@@ -575,6 +628,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onResume={handleResume}
                     onActivate={handleActivate}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
@@ -607,6 +661,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onPause={handlePause}
+                    onResume={handleResume}
                     onActivate={handleActivate}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}

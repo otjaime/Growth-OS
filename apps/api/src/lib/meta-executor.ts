@@ -449,6 +449,99 @@ export async function createProactiveAdSet(
   return metaPost(accessToken, `${accountId}/adsets`, fields);
 }
 
+/**
+ * Activate a Meta campaign (and optionally its ad sets and ads).
+ * Call this AFTER all ad sets/ads are created to turn on delivery.
+ * Updates campaign → ad sets → ads status from PAUSED to ACTIVE.
+ */
+export async function activateMetaCampaign(
+  accessToken: string,
+  campaignId: string,
+  adSetIds: readonly string[],
+  adIds: readonly string[],
+): Promise<ExecutionResult> {
+  const errors: string[] = [];
+
+  // 1. Activate ads first (bottom-up: ads → ad sets → campaign)
+  for (const adId of adIds) {
+    const result = await metaPost(accessToken, adId, { status: 'ACTIVE' });
+    if (!result.success) {
+      errors.push(`Ad ${adId}: ${result.error}`);
+    }
+  }
+
+  // 2. Activate ad sets
+  for (const adSetId of adSetIds) {
+    const result = await metaPost(accessToken, adSetId, { status: 'ACTIVE' });
+    if (!result.success) {
+      errors.push(`Ad set ${adSetId}: ${result.error}`);
+    }
+  }
+
+  // 3. Activate campaign last
+  const campaignResult = await metaPost(accessToken, campaignId, { status: 'ACTIVE' });
+  if (!campaignResult.success) {
+    return {
+      success: false,
+      error: `Failed to activate campaign: ${campaignResult.error}`,
+      metaResponse: { partialErrors: errors },
+    };
+  }
+
+  return {
+    success: true,
+    metaResponse: {
+      campaignId,
+      activatedAdSets: adSetIds.length,
+      activatedAds: adIds.length,
+      ...(errors.length > 0 ? { warnings: errors } : {}),
+    },
+  };
+}
+
+/**
+ * Pause a Meta campaign and all its ad sets.
+ * Top-down: campaign → ad sets (ads inherit paused state from parent).
+ */
+export async function pauseMetaCampaign(
+  accessToken: string,
+  campaignId: string,
+  adSetIds: readonly string[],
+): Promise<ExecutionResult> {
+  const errors: string[] = [];
+
+  // 1. Pause campaign first (top-down)
+  const campaignResult = await metaPost(accessToken, campaignId, { status: 'PAUSED' });
+  if (!campaignResult.success) {
+    errors.push(`Campaign: ${campaignResult.error}`);
+  }
+
+  // 2. Pause ad sets explicitly
+  for (const adSetId of adSetIds) {
+    const result = await metaPost(accessToken, adSetId, { status: 'PAUSED' });
+    if (!result.success) {
+      errors.push(`Ad set ${adSetId}: ${result.error}`);
+    }
+  }
+
+  if (!campaignResult.success) {
+    return {
+      success: false,
+      error: `Failed to pause campaign on Meta: ${errors.join('; ')}`,
+      metaResponse: { errors },
+    };
+  }
+
+  return {
+    success: true,
+    metaResponse: {
+      campaignId,
+      pausedAdSets: adSetIds.length,
+      ...(errors.length > 0 ? { warnings: errors } : {}),
+    },
+  };
+}
+
 // ── Internals ───────────────────────────────────────────────────
 
 interface MetaErrorResponse {
