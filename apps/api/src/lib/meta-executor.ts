@@ -325,19 +325,15 @@ export async function createMetaCampaign(
   accessToken: string,
   adAccountId: string,
   name: string,
-  budgetSmallestUnit: number,
   objective?: string,
 ): Promise<ExecutionResult> {
-  if (!Number.isInteger(budgetSmallestUnit) || budgetSmallestUnit < 1) {
-    return { success: false, error: 'Daily budget must be a positive integer in smallest currency unit', retryable: false };
-  }
-
   const accountId = normalizeAccountId(adAccountId);
+  // Budget is set per ad set, NOT at campaign level (no CBO).
+  // special_ad_categories is required — empty array for standard ads.
   return metaPost(accessToken, `${accountId}/campaigns`, {
     name,
     objective: objective ?? 'OUTCOME_SALES',
     status: 'PAUSED',
-    daily_budget: String(budgetSmallestUnit),
     special_ad_categories: '[]',
   });
 }
