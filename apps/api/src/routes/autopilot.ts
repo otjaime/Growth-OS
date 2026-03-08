@@ -3082,14 +3082,15 @@ export async function autopilotRoutes(app: FastifyInstance) {
     // 4. Decrypt credentials — accessToken is encrypted, adAccountId is in metadata
     let accessToken: string;
     let adAccountId: string;
+    let pixelId: string | undefined;
     try {
       const decrypted = JSON.parse(
         decrypt(credFallback.encryptedData, credFallback.iv, credFallback.authTag),
       ) as Record<string, string>;
       accessToken = decrypted.accessToken ?? '';
       const meta = (credFallback.metadata ?? {}) as Record<string, string>;
-      // Strip act_ prefix — meta-executor functions add it back
-      adAccountId = (meta.adAccountId ?? '').trim().replace(/^act_/, '');
+      adAccountId = (meta.adAccountId ?? '').trim();
+      pixelId = (meta.pixelId ?? '').trim() || undefined;
     } catch {
       reply.status(500);
       return { error: 'Failed to decrypt Meta credentials' };
@@ -3101,7 +3102,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3113,13 +3114,13 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
     const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
 
-    // 6. Create Meta Campaign
-    const totalBudgetCents = Math.round(dailyBudget * 100);
+    // 6. Create Meta Campaign — convert budget to smallest currency unit
+    const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
     const campaignResult = await createMetaCampaign(
       accessToken,
       adAccountId,
       strategy.name,
-      totalBudgetCents,
+      totalBudgetUnits,
     );
 
     if (!campaignResult.success) {
@@ -3157,9 +3158,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
     // 8. Generate copy + create ad sets + ads for each product
     const { generateProductCopy } = await import('../lib/product-copy-generator.js');
 
-    const perProductBudgetCents = Math.max(
-      100, // minimum 100 cents per ad set
-      Math.round(totalBudgetCents / productTitles.length),
+    const perProductBudget = Math.max(
+      1, // minimum 1 unit per ad set
+      Math.round(totalBudgetUnits / productTitles.length),
     );
 
     const createdAdSetIds: string[] = [];
@@ -3200,8 +3201,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
         adAccountId,
         metaCampaignId,
         productTitle,
-        perProductBudgetCents,
+        perProductBudget,
         targeting,
+        pixelId,
       );
 
       if (!adSetResult.success) {
@@ -3227,7 +3229,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
             adSetId: metaAdSetId,
             name: `GrowthOS — ${productTitle}`,
             status: 'PAUSED',
-            dailyBudget: perProductBudgetCents,
+            dailyBudget: perProductBudget,
             organizationId: orgId,
             campaignId: campaignDbId ?? '',
             accountId: adAccount?.id ?? '',
@@ -3283,7 +3285,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
       // Total failure — revert status
       reply.status(502);
       return {
-        error: 'Failed to create any ad sets on Meta',
+        error: errors.length > 0
+          ? `Failed to create ad sets: ${errors[0]}`
+          : 'Failed to create any ad sets on Meta',
         details: errors,
         metaCampaignId,
       };

@@ -12,6 +12,32 @@
 const META_API_VERSION = 'v21.0';
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
+/**
+ * Zero-decimal currencies — Meta expects budget in whole units (not × 100).
+ * For these currencies, the smallest unit IS the currency itself.
+ */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'CLP', 'JPY', 'KRW', 'VND', 'BIF', 'DJF', 'GNF', 'ISK', 'KMF',
+  'PYG', 'RWF', 'UGX', 'VUV', 'XAF', 'XOF', 'XPF',
+]);
+
+/**
+ * Convert a budget in display currency to Meta API "smallest unit" value.
+ * For USD: $5.00 → 500 (cents). For CLP: $5000 → 5000 (pesos, no cents).
+ */
+export function toSmallestUnit(amount: number, currency: string): number {
+  if (ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase())) {
+    return Math.round(amount); // already in smallest unit
+  }
+  return Math.round(amount * 100); // convert to cents
+}
+
+/** Normalize an ad account ID to include the act_ prefix. */
+function normalizeAccountId(id: string): string {
+  const raw = id.trim().replace(/^act_/, '');
+  return `act_${raw}`;
+}
+
 export interface ExecutionResult {
   success: boolean;
   metaResponse?: unknown;
@@ -299,18 +325,19 @@ export async function createMetaCampaign(
   accessToken: string,
   adAccountId: string,
   name: string,
-  dailyBudgetCents: number,
+  budgetSmallestUnit: number,
   objective?: string,
 ): Promise<ExecutionResult> {
-  if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents < 100) {
-    return { success: false, error: 'Daily budget must be at least 100 cents', retryable: false };
+  if (!Number.isInteger(budgetSmallestUnit) || budgetSmallestUnit < 1) {
+    return { success: false, error: 'Daily budget must be a positive integer in smallest currency unit', retryable: false };
   }
 
-  return metaPost(accessToken, `act_${adAccountId}/campaigns`, {
+  const accountId = normalizeAccountId(adAccountId);
+  return metaPost(accessToken, `${accountId}/campaigns`, {
     name,
     objective: objective ?? 'OUTCOME_SALES',
     status: 'PAUSED',
-    daily_budget: String(dailyBudgetCents),
+    daily_budget: String(budgetSmallestUnit),
     special_ad_categories: '[]',
   });
 }
@@ -325,11 +352,12 @@ export async function createProactiveAdSet(
   adAccountId: string,
   campaignId: string,
   productTitle: string,
-  dailyBudgetCents: number,
+  budgetSmallestUnit: number,
   targeting?: AdSetTargeting,
+  pixelId?: string,
 ): Promise<ExecutionResult> {
-  if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents < 100) {
-    return { success: false, error: 'Daily budget must be at least 100 cents ($1)', retryable: false };
+  if (!Number.isInteger(budgetSmallestUnit) || budgetSmallestUnit < 1) {
+    return { success: false, error: 'Daily budget must be a positive integer in smallest currency unit', retryable: false };
   }
 
   const countries = targeting?.countries?.length
@@ -338,15 +366,25 @@ export async function createProactiveAdSet(
   const ageMin = targeting?.ageMin ?? 18;
   const ageMax = targeting?.ageMax ?? 65;
 
-  return metaPost(accessToken, `act_${adAccountId}/adsets`, {
+  const accountId = normalizeAccountId(adAccountId);
+
+  // Build fields
+  const fields: Record<string, string> = {
     name: `GrowthOS — ${productTitle}`,
     campaign_id: campaignId,
-    daily_budget: String(dailyBudgetCents),
+    daily_budget: String(budgetSmallestUnit),
     billing_event: 'IMPRESSIONS',
-    optimization_goal: 'OFFSITE_CONVERSIONS',
+    optimization_goal: pixelId ? 'OFFSITE_CONVERSIONS' : 'LINK_CLICKS',
     status: 'PAUSED',
     targeting: JSON.stringify({ geo_locations: { countries }, age_min: ageMin, age_max: ageMax }),
-  });
+  };
+
+  // Add promoted_object with pixel if available (required for OFFSITE_CONVERSIONS)
+  if (pixelId) {
+    fields.promoted_object = JSON.stringify({ pixel_id: pixelId, custom_event_type: 'PURCHASE' });
+  }
+
+  return metaPost(accessToken, `${accountId}/adsets`, fields);
 }
 
 // ── Internals ───────────────────────────────────────────────────
