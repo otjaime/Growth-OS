@@ -336,6 +336,9 @@ export async function createMetaCampaign(
     objective: objective ?? 'OUTCOME_TRAFFIC',
     status: 'PAUSED',
     special_ad_categories: '[]',
+    // Budget lives at ad set level, not campaign level (no CBO).
+    // Meta requires this field explicitly when not using campaign budget.
+    is_adset_budget_sharing_enabled: 'false',
   });
 }
 
