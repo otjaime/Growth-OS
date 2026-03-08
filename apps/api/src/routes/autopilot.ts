@@ -3102,7 +3102,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId, getMinAdSetBudget } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3114,6 +3114,25 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
     const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
 
+    // 5b. Validate budget meets Meta's minimum per ad set
+    const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
+    const minPerAdSet = getMinAdSetBudget(currency);
+
+    if (totalBudgetUnits < minPerAdSet) {
+      reply.status(400);
+      return {
+        error: `Daily budget of ${currency} ${dailyBudget} is too low. Meta requires at least ${currency} ${minPerAdSet} per ad set per day. Increase the strategy budget to at least ${currency} ${minPerAdSet}.`,
+      };
+    }
+
+    // Cap the number of products to what the budget can support
+    const maxAdSets = Math.floor(totalBudgetUnits / minPerAdSet);
+    const productsToActivate = productTitles.slice(0, Math.min(productTitles.length, maxAdSets));
+    const perProductBudget = Math.max(
+      minPerAdSet,
+      Math.round(totalBudgetUnits / productsToActivate.length),
+    );
+
     // Fetch the Facebook Page ID — required for ad creative creation.
     // The page must be connected to the Business Manager / ad account.
     const facebookPageId = await fetchFacebookPageId(accessToken);
@@ -3123,7 +3142,6 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 6. Create Meta Campaign (budget set per ad set, not at campaign level)
-    const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
     const campaignResult = await createMetaCampaign(
       accessToken,
       adAccountId,
@@ -3165,16 +3183,11 @@ export async function autopilotRoutes(app: FastifyInstance) {
     // 8. Generate copy + create ad sets + ads for each product
     const { generateProductCopy } = await import('../lib/product-copy-generator.js');
 
-    const perProductBudget = Math.max(
-      1, // minimum 1 unit per ad set
-      Math.round(totalBudgetUnits / productTitles.length),
-    );
-
     const createdAdSetIds: string[] = [];
     const createdAdIds: string[] = [];
     const errors: string[] = [];
 
-    for (const productTitle of productTitles) {
+    for (const productTitle of productsToActivate) {
       // Look up product data for copy generation
       const product = await prisma.productPerformance.findFirst({
         where: { organizationId: orgId, productTitle },
@@ -3317,6 +3330,11 @@ export async function autopilotRoutes(app: FastifyInstance) {
       adSetsCreated: createdAdSetIds.length,
       adsCreated: createdAdIds.length,
       productsTotal: productTitles.length,
+      productsActivated: productsToActivate.length,
+      perProductBudget: `${currency} ${perProductBudget}/day`,
+      ...(productsToActivate.length < productTitles.length
+        ? { budgetNote: `Budget only covers ${productsToActivate.length} of ${productTitles.length} products at ${currency} ${minPerAdSet}/day minimum per ad set.` }
+        : {}),
       ...(errors.length > 0 ? { warnings: errors } : {}),
     };
   });

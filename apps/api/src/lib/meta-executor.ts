@@ -32,6 +32,39 @@ export function toSmallestUnit(amount: number, currency: string): number {
   return Math.round(amount * 100); // convert to cents
 }
 
+/**
+ * Meta minimum daily budget per ad set, in the currency's smallest unit.
+ * Meta enforces ~$1 USD equivalent minimum. Values are approximate.
+ * If a currency is not listed, we default to 100 (= $1.00 for cent-based).
+ */
+const META_MIN_ADSET_DAILY_BUDGET: Record<string, number> = {
+  CLP: 1000,   // ~$1 USD ≈ 1000 CLP
+  JPY: 150,    // ~$1 USD ≈ 150 JPY
+  KRW: 1400,   // ~$1 USD
+  MXN: 20,     // 20 MXN ≈ $1 USD (in cents: 2000)
+  BRL: 6,      // 6 BRL ≈ $1 USD (in cents: 600)
+  ARS: 1000,   // ~$1 USD at official rate
+  USD: 100,    // $1.00 in cents
+  EUR: 100,    // €1.00 in cents
+  GBP: 100,    // £1.00 in pence
+  CAD: 140,    // ~$1 USD in cents
+  AUD: 160,    // ~$1 USD in cents
+};
+
+/**
+ * Get the minimum daily budget per ad set for a given currency.
+ * Returns the value in the currency's smallest unit (cents/pesos/etc.).
+ */
+export function getMinAdSetBudget(currency: string): number {
+  const upper = currency.toUpperCase();
+  // For zero-decimal currencies, values are already in the map as whole units
+  if (META_MIN_ADSET_DAILY_BUDGET[upper] !== undefined) {
+    return META_MIN_ADSET_DAILY_BUDGET[upper];
+  }
+  // Default: 100 smallest units (= $1 for cent-based currencies)
+  return 100;
+}
+
 /** Normalize an ad account ID to include the act_ prefix. */
 function normalizeAccountId(id: string): string {
   const raw = id.trim().replace(/^act_/, '');
