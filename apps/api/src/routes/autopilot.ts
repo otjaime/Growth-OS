@@ -3143,7 +3143,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           campaignId: metaCampaignId,
           name: strategy.name,
           status: 'PAUSED',
-          objective: 'OUTCOME_SALES',
+          objective: 'OUTCOME_TRAFFIC',
           dailyBudget,
           organizationId: orgId,
           accountId: adAccount?.id ?? '',

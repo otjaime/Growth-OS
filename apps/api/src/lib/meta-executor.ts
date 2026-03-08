@@ -330,9 +330,10 @@ export async function createMetaCampaign(
   const accountId = normalizeAccountId(adAccountId);
   // Budget is set per ad set, NOT at campaign level (no CBO).
   // special_ad_categories is required — empty array for standard ads.
+  // OUTCOME_TRAFFIC is the safest default — OUTCOME_SALES requires pixel/catalog setup.
   return metaPost(accessToken, `${accountId}/campaigns`, {
     name,
-    objective: objective ?? 'OUTCOME_SALES',
+    objective: objective ?? 'OUTCOME_TRAFFIC',
     status: 'PAUSED',
     special_ad_categories: '[]',
   });
@@ -390,6 +391,8 @@ interface MetaErrorResponse {
   type?: string;
   code?: number;
   error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
 }
 
 /**
@@ -438,6 +441,8 @@ function handleMetaError(error: MetaErrorResponse | undefined, httpStatus: numbe
   const code = error?.code ?? httpStatus;
   const message = error?.message ?? `HTTP ${httpStatus}`;
   const subcode = error?.error_subcode;
+  // Meta often includes a user-friendly message with specific details
+  const userDetail = error?.error_user_msg ?? error?.error_user_title ?? '';
 
   // Meta error code classification
   // 190: Expired/invalid token → not retryable, user must re-auth
@@ -447,10 +452,14 @@ function handleMetaError(error: MetaErrorResponse | undefined, httpStatus: numbe
   // 2: Temporary error → retryable
   const retryable = code === 32 || code === 2;
 
-  // Provide actionable error messages for common issues
-  let userMessage = `Meta API error (${code}${subcode ? `/${subcode}` : ''}): ${message}`;
+  // Build error message with as much detail as possible
+  const codeStr = `${code}${subcode ? `/${subcode}` : ''}`;
+  let userMessage = userDetail
+    ? `Meta API error (${codeStr}): ${userDetail}`
+    : `Meta API error (${codeStr}): ${message}`;
+
   if (code === 200) {
-    userMessage = `Meta permission denied (${code}/${subcode ?? '?'}): ${message}. Check that your user has Admin role on the ad account in Business Settings.`;
+    userMessage = `Meta permission denied (${codeStr}): ${userDetail || message}. Check that your user has Admin role on the ad account in Business Settings.`;
   } else if (code === 190) {
     userMessage = 'Meta access token expired or invalid — re-connect Meta Ads in Data Connections.';
   } else if (code === 1487) {
