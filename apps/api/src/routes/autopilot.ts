@@ -3050,13 +3050,13 @@ export async function autopilotRoutes(app: FastifyInstance) {
     // 2. Get Meta credentials
     const cred = await prisma.connectorCredential.findFirst({
       where: { organizationId: orgId, connectorType: 'meta_ads' },
-      select: { encryptedData: true, iv: true, authTag: true },
+      select: { encryptedData: true, iv: true, authTag: true, metadata: true },
     });
 
     // Also try 'meta' connector type as fallback
     const credFallback = cred ?? await prisma.connectorCredential.findFirst({
       where: { organizationId: orgId, connectorType: 'meta' },
-      select: { encryptedData: true, iv: true, authTag: true },
+      select: { encryptedData: true, iv: true, authTag: true, metadata: true },
     });
 
     // 3. Demo mode — no credentials
@@ -3079,7 +3079,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       };
     }
 
-    // 4. Decrypt credentials
+    // 4. Decrypt credentials — accessToken is encrypted, adAccountId is in metadata
     let accessToken: string;
     let adAccountId: string;
     try {
@@ -3087,7 +3087,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
         decrypt(credFallback.encryptedData, credFallback.iv, credFallback.authTag),
       ) as Record<string, string>;
       accessToken = decrypted.accessToken ?? '';
-      adAccountId = decrypted.adAccountId ?? '';
+      const meta = (credFallback.metadata ?? {}) as Record<string, string>;
+      // Strip act_ prefix — meta-executor functions add it back
+      adAccountId = (meta.adAccountId ?? '').trim().replace(/^act_/, '');
     } catch {
       reply.status(500);
       return { error: 'Failed to decrypt Meta credentials' };
