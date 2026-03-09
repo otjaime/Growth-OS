@@ -423,6 +423,21 @@ describe('meta-executor', () => {
       expect(result).toEqual({ pageId: 'page_effective', pageName: 'Mr Pork Effective' });
     });
 
+    it('returns Unknown pageName when page name lookup fails (Strategy 0)', async () => {
+      // Active ads endpoint returns an ad with page_id
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ creative: { object_story_spec: { page_id: 'page_no_name' } } }],
+        }),
+      });
+      // Page name lookup fails (e.g. system user lacks page permissions)
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403 });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_no_name', pageName: 'Unknown' });
+    });
+
     it('returns page from promote_pages when no active ads exist', async () => {
       mockNoActiveAds();
       // promote_pages returns a published page
