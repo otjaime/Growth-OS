@@ -184,32 +184,50 @@ export async function fetchEligiblePageId(
   const accountId = normalizeAccountId(adAccountId);
   const token = encodeURIComponent(accessToken);
 
-  // Strategy 0: Extract page from existing ACTIVE ads on the account.
-  // If an ad is delivering, its page is proven to be eligible for advertising.
+  // Helper: look up the human-readable name for a page ID
+  async function resolvePageName(pageId: string): Promise<string> {
+    try {
+      const pgResp = await fetch(
+        `${META_BASE}/${pageId}?fields=name&access_token=${token}`,
+      );
+      if (pgResp.ok) {
+        const pgBody = await pgResp.json() as { name?: string };
+        return pgBody.name ?? 'Unknown';
+      }
+    } catch {
+      // Non-fatal
+    }
+    return 'Unknown';
+  }
+
+  // Strategy 0: Extract page from existing ads on the account.
+  // If an ad is/was delivering, its page is proven to be eligible for advertising.
+  // We check ACTIVE and PAUSED statuses — both prove the page was approved.
+  // IMPORTANT: URL-encode effective_status brackets/quotes for Meta Graph API.
   try {
+    const statusFilter = encodeURIComponent('["ACTIVE","PAUSED"]');
+    // Request both object_story_spec (original) and effective_object_story_spec
+    // (resolved). The system user token may lack page permissions for
+    // object_story_spec, but effective_object_story_spec may still work.
+    const fields = encodeURIComponent('creative{object_story_spec,effective_object_story_spec}');
     const adsResp = await fetch(
-      `${META_BASE}/${accountId}/ads?fields=creative{object_story_spec}&effective_status=["ACTIVE"]&limit=5&access_token=${token}`,
+      `${META_BASE}/${accountId}/ads?fields=${fields}&effective_status=${statusFilter}&limit=10&access_token=${token}`,
     );
     if (adsResp.ok) {
       const adsBody = await adsResp.json() as {
-        data?: Array<{ creative?: { object_story_spec?: { page_id?: string } } }>;
+        data?: Array<{
+          creative?: {
+            object_story_spec?: { page_id?: string };
+            effective_object_story_spec?: { page_id?: string };
+          };
+        }>;
       };
       for (const ad of adsBody.data ?? []) {
-        const pageId = ad.creative?.object_story_spec?.page_id;
+        const pageId =
+          ad.creative?.object_story_spec?.page_id ??
+          ad.creative?.effective_object_story_spec?.page_id;
         if (pageId) {
-          // Fetch page name
-          let pageName = 'Active Ad Page';
-          try {
-            const pgResp = await fetch(
-              `${META_BASE}/${pageId}?fields=name&access_token=${token}`,
-            );
-            if (pgResp.ok) {
-              const pgBody = await pgResp.json() as { name?: string };
-              pageName = pgBody.name ?? pageName;
-            }
-          } catch {
-            // Non-fatal
-          }
+          const pageName = await resolvePageName(pageId);
           return { pageId, pageName };
         }
       }
@@ -219,15 +237,26 @@ export async function fetchEligiblePageId(
   }
 
   // Strategy 1: promote_pages — pages specifically eligible for ads on this account
+  // If multiple pages are returned, check each for is_published status and prefer
+  // pages that are published (not restricted).
   try {
     const ppResp = await fetch(
-      `${META_BASE}/${accountId}/promote_pages?fields=id,name&limit=10&access_token=${token}`,
+      `${META_BASE}/${accountId}/promote_pages?fields=id,name,is_published&limit=10&access_token=${token}`,
     );
     if (ppResp.ok) {
-      const ppBody = await ppResp.json() as { data?: Array<{ id?: string; name?: string }> };
+      const ppBody = await ppResp.json() as {
+        data?: Array<{ id?: string; name?: string; is_published?: boolean }>;
+      };
       const pages = ppBody.data ?? [];
-      if (pages.length > 0 && pages[0]?.id) {
-        return { pageId: pages[0].id, pageName: pages[0].name ?? 'Unknown' };
+      // Prefer published pages (is_published=true means the page is active/not restricted)
+      const publishedPage = pages.find((p) => p.id && p.is_published === true);
+      if (publishedPage?.id) {
+        return { pageId: publishedPage.id, pageName: publishedPage.name ?? 'Unknown' };
+      }
+      // Fallback to first page with an ID (is_published might not be returned)
+      const firstPage = pages.find((p) => p.id);
+      if (firstPage?.id) {
+        return { pageId: firstPage.id, pageName: firstPage.name ?? 'Unknown' };
       }
     }
   } catch {
@@ -235,15 +264,23 @@ export async function fetchEligiblePageId(
   }
 
   // Strategy 2: All pages the token manages (broader, but may include restricted ones)
+  // Again prefer published pages.
   try {
     const meResp = await fetch(
-      `${META_BASE}/me/accounts?fields=id,name&limit=25&access_token=${token}`,
+      `${META_BASE}/me/accounts?fields=id,name,is_published&limit=25&access_token=${token}`,
     );
     if (meResp.ok) {
-      const meBody = await meResp.json() as { data?: Array<{ id?: string; name?: string }> };
+      const meBody = await meResp.json() as {
+        data?: Array<{ id?: string; name?: string; is_published?: boolean }>;
+      };
       const pages = meBody.data ?? [];
-      if (pages.length > 0 && pages[0]?.id) {
-        return { pageId: pages[0].id, pageName: pages[0].name ?? 'Unknown' };
+      const publishedPage = pages.find((p) => p.id && p.is_published === true);
+      if (publishedPage?.id) {
+        return { pageId: publishedPage.id, pageName: publishedPage.name ?? 'Unknown' };
+      }
+      const firstPage = pages.find((p) => p.id);
+      if (firstPage?.id) {
+        return { pageId: firstPage.id, pageName: firstPage.name ?? 'Unknown' };
       }
     }
   } catch {
