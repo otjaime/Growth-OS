@@ -3263,7 +3263,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const createdAdSetIds: string[] = [];
     const createdAdIds: string[] = [];
-    const errors: string[] = [];
+    const warnings: string[] = [];  // Non-fatal issues (missing images, etc.)
+    const errors: string[] = [];    // Fatal ad creation errors
 
     for (const productTitle of productsToActivate) {
       // Look up product data for copy generation
@@ -3333,12 +3334,12 @@ export async function autopilotRoutes(app: FastifyInstance) {
           request.log.info({ productTitle, imageHash }, 'Product image uploaded successfully');
         } else {
           // Non-fatal — ad will be created without image (uses page profile pic)
-          errors.push(`Image upload for "${productTitle}": ${imgResult.error ?? 'unknown error'}`);
+          warnings.push(`Image upload for "${productTitle}": ${imgResult.error ?? 'unknown error'}`);
           request.log.warn({ productTitle, error: imgResult.error }, 'Product image upload failed');
         }
       } else {
         request.log.warn({ productTitle }, 'No product image URL available — ad will use page profile picture');
-        errors.push(`No image URL for "${productTitle}" — ad uses page profile pic`);
+        warnings.push(`No image URL for "${productTitle}" — ad uses page profile pic`);
       }
 
       // Create ad set for this product
@@ -3453,21 +3454,25 @@ export async function autopilotRoutes(app: FastifyInstance) {
           ? `Failed to create ad sets: ${errors[0]}`
           : 'Failed to create any ad sets on Meta',
         details: errors,
+        warnings,
         metaCampaignId,
+        pageUsed: { id: facebookPageId, name: eligiblePage.pageName },
       };
     }
 
     if (createdAdIds.length === 0) {
-      // Ad sets created but ALL ads failed — likely a product URL or creative issue
+      // Ad sets created but ALL ads failed — likely a page restriction or creative issue
+      // Show the actual ad creation error, not image warnings
+      const adError = errors.find((e) => e.includes('Ad "')) ?? errors[0] ?? 'Unknown ad creation error';
       reply.status(502);
       return {
-        error: errors.length > 0
-          ? `Ad sets created but all ads failed. First error: ${errors[0]}`
-          : 'Failed to create any ads on Meta — check product URLs and Page connection',
+        error: `Ad sets created but all ads failed. Error: ${adError}`,
         details: errors,
+        warnings,
         metaCampaignId,
         adSetsCreated: createdAdSetIds.length,
         adsCreated: 0,
+        pageUsed: { id: facebookPageId, name: eligiblePage.pageName },
       };
     }
 
