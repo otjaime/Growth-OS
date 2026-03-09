@@ -448,7 +448,10 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
         }
       } else {
         console.error('[Campaigns] Activate failed:', data);
-        alert(`Failed to activate: ${data.error ?? 'Unknown error'}`);
+        const pageInfo = data.pageUsed ? `\nPage used: ${data.pageUsed.name} (${data.pageUsed.id})` : '';
+        const detailErrors = (data.details as string[] | undefined) ?? [];
+        const details = detailErrors.length > 0 ? `\n\nAll errors:\n${detailErrors.join('\n')}` : '';
+        alert(`Failed to activate: ${data.error ?? 'Unknown error'}${pageInfo}${details}`);
       }
     } catch (err) {
       console.error('[Campaigns] Activate failed:', err);
