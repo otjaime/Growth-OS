@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Megaphone, Sparkles, Loader2, Calendar, TrendingUp,
   Check, X, Pause, Play, ShoppingBag, Tag, Star,
-  Package, Gift, ArrowRight, Rocket, ExternalLink, Pencil,
+  Package, Gift, ArrowRight, Rocket, ExternalLink, Pencil, Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '@/lib/api';
@@ -51,11 +51,23 @@ interface CampaignCardProps {
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onActivate: (id: string) => void;
+  onDelete: (id: string) => void;
   onUpdateBudget: (id: string, newBudget: number) => Promise<void>;
   actionLoading: string | null;
 }
 
-function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResume, onActivate, onUpdateBudget, actionLoading }: CampaignCardProps): JSX.Element {
+/** Build correct Meta Ads Manager URL using the ad account ID and campaign filter */
+function buildMetaUrl(campaign: CampaignStrategy): string | null {
+  if (!campaign.metaCampaignId || campaign.metaCampaignId.startsWith('demo_')) return null;
+  const accountId = campaign.metaAdAccountId;
+  if (accountId) {
+    return `https://www.facebook.com/adsmanager/manage/campaigns?act=${accountId}&filter_set=SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING%1ECONTAINS%1E${encodeURIComponent(campaign.name)}`;
+  }
+  // Fallback: direct campaign URL (less reliable but better than wrong act=)
+  return `https://www.facebook.com/adsmanager/manage/campaigns?selected_campaign_ids=${campaign.metaCampaignId}`;
+}
+
+function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResume, onActivate, onDelete, onUpdateBudget, actionLoading }: CampaignCardProps): JSX.Element {
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(Number(campaign.dailyBudget ?? 0)));
   const [savingBudget, setSavingBudget] = useState(false);
@@ -248,9 +260,9 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResu
         )}
         {campaign.status === 'ACTIVE' && (
           <>
-            {campaign.metaCampaignId && !campaign.metaCampaignId.startsWith('demo_') && (
+            {buildMetaUrl(campaign) && (
               <a
-                href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${campaign.metaCampaignId}`}
+                href={buildMetaUrl(campaign)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20 rounded-lg transition-all ease-spring press-scale"
@@ -271,9 +283,9 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResu
         )}
         {campaign.status === 'PAUSED' && campaign.metaCampaignId && (
           <>
-            {!campaign.metaCampaignId.startsWith('demo_') && (
+            {buildMetaUrl(campaign) && (
               <a
-                href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${campaign.metaCampaignId}`}
+                href={buildMetaUrl(campaign)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-blue bg-[var(--tint-blue)] hover:bg-apple-blue/20 rounded-lg transition-all ease-spring press-scale"
@@ -291,6 +303,17 @@ function CampaignCard({ campaign, currency, onApprove, onReject, onPause, onResu
               {isActioning ? 'Resuming...' : 'Resume'}
             </button>
           </>
+        )}
+        {/* Delete button for past/inactive strategies */}
+        {(campaign.status === 'PAUSED' || campaign.status === 'COMPLETED' || campaign.status === 'REJECTED') && (
+          <button
+            onClick={() => onDelete(campaign.id)}
+            disabled={isActioning}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-apple-red bg-[var(--tint-red)] hover:bg-apple-red/20 disabled:opacity-50 rounded-lg transition-all ease-spring press-scale"
+          >
+            {isActioning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            Delete
+          </button>
         )}
       </div>
     </div>
@@ -522,6 +545,25 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
     }
   };
 
+  const handleDelete = async (id: string): Promise<void> => {
+    if (!confirm('Delete this campaign strategy? This only removes it from Growth OS — any Meta campaign will remain unchanged.')) return;
+    setActionLoading(id);
+    try {
+      const res = await apiFetch(`/api/autopilot/strategies/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to delete: ${err.error ?? 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('[Campaigns] Delete failed:', err);
+      alert('Network error deleting campaign');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // ── Grouped campaigns by status ────────────────────────────
   const suggestedCampaigns = campaigns.filter((c) => c.status === 'SUGGESTED');
   const activeCampaigns = campaigns.filter((c) => c.status === 'ACTIVE' || c.status === 'APPROVED');
@@ -597,6 +639,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onPause={handlePause}
                     onResume={handleResume}
                     onActivate={handleActivate}
+                    onDelete={handleDelete}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />
@@ -633,6 +676,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onPause={handlePause}
                     onResume={handleResume}
                     onActivate={handleActivate}
+                    onDelete={handleDelete}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />
@@ -666,6 +710,7 @@ export function CampaignsTab({ currency = 'USD' }: CampaignsTabProps): JSX.Eleme
                     onPause={handlePause}
                     onResume={handleResume}
                     onActivate={handleActivate}
+                    onDelete={handleDelete}
                     onUpdateBudget={handleUpdateBudget}
                     actionLoading={actionLoading}
                   />

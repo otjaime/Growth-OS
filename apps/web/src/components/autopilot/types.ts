@@ -381,6 +381,7 @@ export interface CampaignStrategy {
   actualRoas: number | null;
   metaCampaignId: string | null;
   metaAdSetIds: string[] | null;
+  metaAdAccountId: string | null;
   createdAt: string;
   updatedAt: string;
 }

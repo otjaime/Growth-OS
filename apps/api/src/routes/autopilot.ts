@@ -2732,6 +2732,19 @@ export async function autopilotRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Fetch ad account ID for building correct Meta Ads Manager URLs
+    let metaAdAccountId: string | null = null;
+    try {
+      const adAccount = await prisma.metaAdAccount.findFirst({
+        where: { organizationId: orgId },
+        select: { adAccountId: true },
+      });
+      // Strip act_ prefix — Ads Manager URLs use just the numeric ID
+      metaAdAccountId = adAccount?.adAccountId?.replace(/^act_/, '') ?? null;
+    } catch {
+      // Non-fatal — View on Meta links will be omitted
+    }
+
     // Convert Prisma Decimal fields to plain numbers for JSON serialization
     const strategies = campaigns.map((c) => ({
       id: c.id,
@@ -2753,6 +2766,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
       actualRoas: c.actualRoas != null ? Number(c.actualRoas) : null,
       metaCampaignId: c.metaCampaignId ?? null,
       metaAdSetIds: (c.metaAdSetIds as string[] | null) ?? null,
+      metaAdAccountId,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     }));
@@ -3605,6 +3619,37 @@ export async function autopilotRoutes(app: FastifyInstance) {
       data: { status: 'REJECTED' },
     });
     return { campaign };
+  });
+
+  // DELETE /autopilot/strategies/:id — Remove a strategy from Growth OS
+  app.delete('/autopilot/strategies/:id', {
+    schema: {
+      tags: ['autopilot'],
+      summary: 'Delete a campaign strategy',
+      description: 'Removes a campaign strategy from Growth OS. Does NOT delete the campaign on Meta — only the local record. Only past strategies (PAUSED, COMPLETED, REJECTED) can be deleted.',
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orgId = await ensureOrganization();
+
+    const existing = await prisma.campaignStrategy.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      reply.status(404);
+      return { error: 'Campaign strategy not found' };
+    }
+
+    // Only allow deleting past strategies — not active or suggested ones
+    const deletableStatuses = ['PAUSED', 'COMPLETED', 'REJECTED'];
+    if (!deletableStatuses.includes(existing.status)) {
+      reply.status(400);
+      return { error: `Cannot delete strategy with status ${existing.status}. Only paused, completed, or rejected strategies can be deleted.` };
+    }
+
+    await prisma.campaignStrategy.delete({ where: { id } });
+    return { success: true, deleted: id };
   });
 
   // POST /autopilot/strategies/:id/pause — Pause an active campaign on Meta
