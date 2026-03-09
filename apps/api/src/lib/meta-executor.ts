@@ -232,8 +232,10 @@ export async function fetchEligiblePageId(
         }
       }
     }
-  } catch {
+  } catch (err) {
     // Non-fatal — fall through to next strategy
+    // eslint-disable-next-line no-console
+    console.warn('[fetchEligiblePageId] Strategy 0 (ads) failed:', (err as Error).message);
   }
 
   // Strategy 1: promote_pages — pages specifically eligible for ads on this account
@@ -259,8 +261,10 @@ export async function fetchEligiblePageId(
         return { pageId: firstPage.id, pageName: firstPage.name ?? 'Unknown' };
       }
     }
-  } catch {
+  } catch (err) {
     // Non-fatal — fall through to next strategy
+    // eslint-disable-next-line no-console
+    console.warn('[fetchEligiblePageId] Strategy 1 (promote_pages) failed:', (err as Error).message);
   }
 
   // Strategy 2: All pages the token manages (broader, but may include restricted ones)
@@ -283,8 +287,10 @@ export async function fetchEligiblePageId(
         return { pageId: firstPage.id, pageName: firstPage.name ?? 'Unknown' };
       }
     }
-  } catch {
+  } catch (err) {
     // Non-fatal
+    // eslint-disable-next-line no-console
+    console.warn('[fetchEligiblePageId] Strategy 2 (/me/accounts) failed:', (err as Error).message);
   }
 
   return undefined;
