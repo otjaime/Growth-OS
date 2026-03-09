@@ -3154,7 +3154,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchFacebookPageId, getMinAdSetBudget, uploadImageToMeta } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchEligiblePageId, getMinAdSetBudget, uploadImageToMeta } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3185,13 +3185,16 @@ export async function autopilotRoutes(app: FastifyInstance) {
       Math.round(totalBudgetUnits / productsToActivate.length),
     );
 
-    // Fetch the Facebook Page ID — required for ad creative creation.
-    // The page must be connected to the Business Manager / ad account.
-    const facebookPageId = await fetchFacebookPageId(accessToken);
-    if (!facebookPageId) {
+    // Fetch a Facebook Page eligible for advertising on this ad account.
+    // Uses promote_pages first (only pages that can run ads), then falls back
+    // to /me/accounts. This avoids picking a restricted page.
+    const eligiblePage = await fetchEligiblePageId(accessToken, adAccountId);
+    if (!eligiblePage) {
       reply.status(400);
-      return { error: 'No Facebook Page found for this access token. Ensure a Facebook Page is connected to your Meta Business account.' };
+      return { error: 'No Facebook Page eligible for advertising found. Ensure a Facebook Page is connected to your Meta Business account and is not restricted.' };
     }
+    const facebookPageId = eligiblePage.pageId;
+    request.log.info({ pageId: facebookPageId, pageName: eligiblePage.pageName }, 'Using Facebook Page for ad creatives');
 
     // 6. Create Meta Campaign (budget set per ad set, not at campaign level)
     const campaignResult = await createMetaCampaign(

@@ -149,6 +149,9 @@ export async function updateCampaignBudget(
  * Fetch the first Facebook Page ID associated with the access token.
  * Uses GET /me/accounts which lists pages the user/system-user manages.
  * Returns undefined if no pages are found or the call fails.
+ *
+ * @deprecated Prefer `fetchEligiblePageId()` which checks `promote_pages`
+ * on the ad account to ensure the page can actually run ads.
  */
 export async function fetchFacebookPageId(accessToken: string): Promise<string | undefined> {
   try {
@@ -161,6 +164,57 @@ export async function fetchFacebookPageId(accessToken: string): Promise<string |
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Fetch a Facebook Page eligible for advertising on the given ad account.
+ *
+ * Strategy (in order):
+ *   1. `GET act_{id}/promote_pages` — pages the ad account can use for ads.
+ *      This filters out pages that are restricted from advertising.
+ *   2. Fallback: `GET /me/accounts` (all pages the token can manage).
+ *
+ * Returns `{ pageId, pageName }` or undefined when no page is found.
+ */
+export async function fetchEligiblePageId(
+  accessToken: string,
+  adAccountId: string,
+): Promise<{ pageId: string; pageName: string } | undefined> {
+  const accountId = normalizeAccountId(adAccountId);
+
+  // Strategy 1: promote_pages — pages specifically eligible for ads on this account
+  try {
+    const ppResp = await fetch(
+      `${META_BASE}/${accountId}/promote_pages?fields=id,name&limit=10&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    if (ppResp.ok) {
+      const ppBody = await ppResp.json() as { data?: Array<{ id?: string; name?: string }> };
+      const pages = ppBody.data ?? [];
+      if (pages.length > 0 && pages[0]?.id) {
+        return { pageId: pages[0].id, pageName: pages[0].name ?? 'Unknown' };
+      }
+    }
+  } catch {
+    // Non-fatal — fall through to next strategy
+  }
+
+  // Strategy 2: All pages the token manages (broader, but may include restricted ones)
+  try {
+    const meResp = await fetch(
+      `${META_BASE}/me/accounts?fields=id,name&limit=25&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    if (meResp.ok) {
+      const meBody = await meResp.json() as { data?: Array<{ id?: string; name?: string }> };
+      const pages = meBody.data ?? [];
+      if (pages.length > 0 && pages[0]?.id) {
+        return { pageId: pages[0].id, pageName: pages[0].name ?? 'Unknown' };
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return undefined;
 }
 
 /**
@@ -224,7 +278,7 @@ export async function uploadImageToMeta(
  *   2. Create a new Ad in the same ad set with a name suffix
  *
  * NOTE on pageId: Meta requires a Facebook Page ID in object_story_spec.
- * Without it, creative creation fails. Use fetchFacebookPageId() to get one.
+ * Without it, creative creation fails. Use fetchEligiblePageId() to get one.
  */
 export async function createAdFromVariant(
   accessToken: string,
