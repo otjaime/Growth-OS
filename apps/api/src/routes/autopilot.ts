@@ -3299,15 +3299,46 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
       // Upload product image to Meta if available — returns imageHash for ad creative
       let imageHash: string | undefined;
-      const productImageUrl = product?.imageUrl ?? null;
+      let productImageUrl: string | null = product?.imageUrl ?? null;
+
+      // Fallback: if ProductPerformance has no imageUrl, try Shopify raw_events catalog
+      if (!productImageUrl) {
+        try {
+          const rawProduct = await prisma.rawEvent.findFirst({
+            where: {
+              organizationId: orgId,
+              source: 'shopify',
+              entity: 'products',
+              payloadJson: { path: ['title'], equals: productTitle },
+            },
+            select: { payloadJson: true },
+            orderBy: { fetchedAt: 'desc' },
+          });
+          if (rawProduct?.payloadJson) {
+            const payload = rawProduct.payloadJson as Record<string, unknown>;
+            const images = payload.images as Array<{ url?: string }> | undefined;
+            const featuredImage = payload.featuredImage as { url?: string } | undefined;
+            productImageUrl = featuredImage?.url ?? images?.[0]?.url ?? null;
+          }
+        } catch {
+          // Non-fatal — Prisma JSON path filtering may not be supported
+        }
+      }
+
       if (productImageUrl) {
+        request.log.info({ productTitle, imageUrl: productImageUrl }, 'Uploading product image to Meta');
         const imgResult = await uploadImageToMeta(accessToken, adAccountId, productImageUrl);
         if (imgResult.success && imgResult.imageHash) {
           imageHash = imgResult.imageHash;
+          request.log.info({ productTitle, imageHash }, 'Product image uploaded successfully');
         } else {
           // Non-fatal — ad will be created without image (uses page profile pic)
           errors.push(`Image upload for "${productTitle}": ${imgResult.error ?? 'unknown error'}`);
+          request.log.warn({ productTitle, error: imgResult.error }, 'Product image upload failed');
         }
+      } else {
+        request.log.warn({ productTitle }, 'No product image URL available — ad will use page profile picture');
+        errors.push(`No image URL for "${productTitle}" — ad uses page profile pic`);
       }
 
       // Create ad set for this product

@@ -169,9 +169,10 @@ export async function fetchFacebookPageId(accessToken: string): Promise<string |
 /**
  * Fetch a Facebook Page eligible for advertising on the given ad account.
  *
- * Strategy (in order):
+ * Strategy (in order of reliability):
+ *   0. `GET act_{id}/ads` — extract page_id from existing ACTIVE ads.
+ *      If ads are already delivering, their page is guaranteed eligible.
  *   1. `GET act_{id}/promote_pages` — pages the ad account can use for ads.
- *      This filters out pages that are restricted from advertising.
  *   2. Fallback: `GET /me/accounts` (all pages the token can manage).
  *
  * Returns `{ pageId, pageName }` or undefined when no page is found.
@@ -181,11 +182,46 @@ export async function fetchEligiblePageId(
   adAccountId: string,
 ): Promise<{ pageId: string; pageName: string } | undefined> {
   const accountId = normalizeAccountId(adAccountId);
+  const token = encodeURIComponent(accessToken);
+
+  // Strategy 0: Extract page from existing ACTIVE ads on the account.
+  // If an ad is delivering, its page is proven to be eligible for advertising.
+  try {
+    const adsResp = await fetch(
+      `${META_BASE}/${accountId}/ads?fields=creative{object_story_spec}&effective_status=["ACTIVE"]&limit=5&access_token=${token}`,
+    );
+    if (adsResp.ok) {
+      const adsBody = await adsResp.json() as {
+        data?: Array<{ creative?: { object_story_spec?: { page_id?: string } } }>;
+      };
+      for (const ad of adsBody.data ?? []) {
+        const pageId = ad.creative?.object_story_spec?.page_id;
+        if (pageId) {
+          // Fetch page name
+          let pageName = 'Active Ad Page';
+          try {
+            const pgResp = await fetch(
+              `${META_BASE}/${pageId}?fields=name&access_token=${token}`,
+            );
+            if (pgResp.ok) {
+              const pgBody = await pgResp.json() as { name?: string };
+              pageName = pgBody.name ?? pageName;
+            }
+          } catch {
+            // Non-fatal
+          }
+          return { pageId, pageName };
+        }
+      }
+    }
+  } catch {
+    // Non-fatal — fall through to next strategy
+  }
 
   // Strategy 1: promote_pages — pages specifically eligible for ads on this account
   try {
     const ppResp = await fetch(
-      `${META_BASE}/${accountId}/promote_pages?fields=id,name&limit=10&access_token=${encodeURIComponent(accessToken)}`,
+      `${META_BASE}/${accountId}/promote_pages?fields=id,name&limit=10&access_token=${token}`,
     );
     if (ppResp.ok) {
       const ppBody = await ppResp.json() as { data?: Array<{ id?: string; name?: string }> };
@@ -201,7 +237,7 @@ export async function fetchEligiblePageId(
   // Strategy 2: All pages the token manages (broader, but may include restricted ones)
   try {
     const meResp = await fetch(
-      `${META_BASE}/me/accounts?fields=id,name&limit=25&access_token=${encodeURIComponent(accessToken)}`,
+      `${META_BASE}/me/accounts?fields=id,name&limit=25&access_token=${token}`,
     );
     if (meResp.ok) {
       const meBody = await meResp.json() as { data?: Array<{ id?: string; name?: string }> };
