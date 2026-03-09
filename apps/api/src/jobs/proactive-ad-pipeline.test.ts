@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   prepareAdImage: vi.fn(),
   createProactiveAdSet: vi.fn(),
   createAdFromVariant: vi.fn(),
+  fetchEligiblePageId: vi.fn(),
   pauseAd: vi.fn(),
   evaluateProductABTest: vi.fn(),
 }));
@@ -48,6 +49,7 @@ vi.mock('../lib/ad-image-manager.js', () => ({
 vi.mock('../lib/meta-executor.js', () => ({
   createProactiveAdSet: mocks.createProactiveAdSet,
   createAdFromVariant: mocks.createAdFromVariant,
+  fetchEligiblePageId: mocks.fetchEligiblePageId,
   pauseAd: mocks.pauseAd,
   reactivateAd: vi.fn(),
 }));
@@ -513,6 +515,8 @@ describe('publishProactiveJob', () => {
     mocks.decrypt.mockReturnValueOnce(
       JSON.stringify({ accessToken: 'tok_abc', adAccountId: 'act_123' }),
     );
+    // Eligible page
+    mocks.fetchEligiblePageId.mockResolvedValueOnce({ pageId: 'page_mrpork', pageName: 'Mr Pork' });
     // Campaign
     mocks.prisma.metaCampaign.findFirst.mockResolvedValueOnce({
       id: 'camp_db_1',
@@ -578,6 +582,7 @@ describe('publishProactiveJob', () => {
     mocks.decrypt.mockReturnValueOnce(
       JSON.stringify({ accessToken: 'tok', adAccountId: 'acct' }),
     );
+    mocks.fetchEligiblePageId.mockResolvedValueOnce({ pageId: 'page_1', pageName: 'Page' });
     mocks.prisma.metaCampaign.findFirst.mockResolvedValueOnce(null);
 
     const result = await publishProactiveJob('job_1');
@@ -609,6 +614,7 @@ describe('publishProactiveJob', () => {
     mocks.decrypt.mockReturnValueOnce(
       JSON.stringify({ accessToken: 'tok', adAccountId: 'acct' }),
     );
+    mocks.fetchEligiblePageId.mockResolvedValueOnce({ pageId: 'page_1', pageName: 'Page' });
     mocks.prisma.metaCampaign.findFirst.mockResolvedValueOnce({
       id: 'c1',
       campaignId: 'mc1',
@@ -654,6 +660,7 @@ describe('publishProactiveJob', () => {
     mocks.decrypt.mockReturnValueOnce(
       JSON.stringify({ accessToken: 'tok', adAccountId: 'acct' }),
     );
+    mocks.fetchEligiblePageId.mockResolvedValueOnce({ pageId: 'page_1', pageName: 'Page' });
     mocks.prisma.metaCampaign.findFirst.mockResolvedValueOnce({
       id: 'c1',
       campaignId: 'mc1',

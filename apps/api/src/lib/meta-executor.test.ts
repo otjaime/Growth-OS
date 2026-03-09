@@ -14,6 +14,7 @@ import {
   createMetaCampaign,
   createProactiveAdSet,
   fetchFacebookPageId,
+  fetchEligiblePageId,
   toSmallestUnit,
   activateMetaCampaign,
   pauseMetaCampaign,
@@ -370,6 +371,87 @@ describe('meta-executor', () => {
 
       const pageId = await fetchFacebookPageId(TOKEN);
       expect(pageId).toBeUndefined();
+    });
+  });
+
+  describe('fetchEligiblePageId', () => {
+    it('returns page from promote_pages when available', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'page_eligible', name: 'Eligible Page' }] }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_eligible', pageName: 'Eligible Page' });
+      expect(mockFetch.mock.calls[0]![0]).toContain('/promote_pages');
+      expect(mockFetch.mock.calls[0]![0]).toContain('act_111606408422861');
+    });
+
+    it('falls back to /me/accounts when promote_pages returns empty', async () => {
+      // promote_pages returns empty
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+      // /me/accounts returns a page
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'page_fallback', name: 'Fallback Page' }] }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_fallback', pageName: 'Fallback Page' });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1]![0]).toContain('/me/accounts');
+    });
+
+    it('falls back to /me/accounts when promote_pages request fails', async () => {
+      // promote_pages fails
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403 });
+      // /me/accounts returns a page
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'page_fb', name: 'FB Page' }] }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_fb', pageName: 'FB Page' });
+    });
+
+    it('returns undefined when both promote_pages and /me/accounts return empty', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toBeUndefined();
+    });
+
+    it('normalizes ad account ID with act_ prefix', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'page_999', name: 'Test Page' }] }),
+      });
+
+      await fetchEligiblePageId(TOKEN, 'act_123456');
+      // Should not double-prefix: should be act_123456, not act_act_123456
+      expect(mockFetch.mock.calls[0]![0]).toContain('act_123456/promote_pages');
+      expect(mockFetch.mock.calls[0]![0]).not.toContain('act_act_');
+    });
+
+    it('defaults pageName to Unknown when name is missing', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'page_noname' }] }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_noname', pageName: 'Unknown' });
     });
   });
 

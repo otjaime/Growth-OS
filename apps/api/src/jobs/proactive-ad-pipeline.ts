@@ -9,7 +9,7 @@ import { evaluateProactiveRules } from '@growth-os/etl';
 import type { ProactiveRulesInput } from '@growth-os/etl';
 import { generateProductCopy } from '../lib/product-copy-generator.js';
 import { prepareAdImage } from '../lib/ad-image-manager.js';
-import { createAdFromVariant, createProactiveAdSet } from '../lib/meta-executor.js';
+import { createAdFromVariant, createProactiveAdSet, fetchEligiblePageId } from '../lib/meta-executor.js';
 import pino from 'pino';
 
 const log = pino({ name: 'proactive-pipeline' });
@@ -424,6 +424,14 @@ export async function publishProactiveJob(
     return { success: false, error: 'Missing Meta access token or account ID' };
   }
 
+  // Fetch an eligible Facebook Page for ad creatives
+  const eligiblePage = await fetchEligiblePageId(accessToken, adAccountId);
+  if (!eligiblePage) {
+    return { success: false, error: 'No Facebook Page eligible for advertising found. Ensure a Facebook Page is connected to your Meta Business account.' };
+  }
+  const facebookPageId = eligiblePage.pageId;
+  log.info({ pageId: facebookPageId, pageName: eligiblePage.pageName }, 'Using Facebook Page for proactive ads');
+
   // Find an active campaign
   const campaign = await prisma.metaCampaign.findFirst({
     where: { organizationId: job.organizationId, status: 'ACTIVE' },
@@ -498,6 +506,7 @@ export async function publishProactiveJob(
       description: variant.description ?? undefined,
       imageHash: job.imageHash ?? undefined,
       linkUrl: product?.productUrl ?? undefined,
+      pageId: facebookPageId,
     });
 
     if (result.success) {
