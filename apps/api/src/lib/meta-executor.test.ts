@@ -383,7 +383,7 @@ describe('meta-executor', () => {
       });
     }
 
-    it('returns page from existing ACTIVE ads (Strategy 0) — highest priority', async () => {
+    it('returns page from existing ads via object_story_spec (Strategy 0) — highest priority', async () => {
       // Active ads endpoint returns an ad with page_id
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -400,19 +400,56 @@ describe('meta-executor', () => {
       const result = await fetchEligiblePageId(TOKEN, '111606408422861');
       expect(result).toEqual({ pageId: 'page_from_ad', pageName: 'Mr Pork Active' });
       expect(mockFetch.mock.calls[0]![0]).toContain('/ads?');
-      expect(mockFetch.mock.calls[0]![0]).toContain('ACTIVE');
+      // URL should contain properly encoded effective_status
+      expect(mockFetch.mock.calls[0]![0]).toContain('effective_status=');
+    });
+
+    it('falls back to effective_object_story_spec when object_story_spec is missing (Strategy 0)', async () => {
+      // Active ads endpoint returns an ad with effective_object_story_spec only
+      // (happens when system user lacks page permissions for object_story_spec)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ creative: { effective_object_story_spec: { page_id: 'page_effective' } } }],
+        }),
+      });
+      // Page name lookup
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Mr Pork Effective' }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_effective', pageName: 'Mr Pork Effective' });
     });
 
     it('returns page from promote_pages when no active ads exist', async () => {
       mockNoActiveAds();
-      // promote_pages returns a page
+      // promote_pages returns a published page
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: [{ id: 'page_eligible', name: 'Eligible Page' }] }),
+        json: async () => ({ data: [{ id: 'page_eligible', name: 'Eligible Page', is_published: true }] }),
       });
 
       const result = await fetchEligiblePageId(TOKEN, '111606408422861');
       expect(result).toEqual({ pageId: 'page_eligible', pageName: 'Eligible Page' });
+    });
+
+    it('prefers published pages from promote_pages over unpublished ones', async () => {
+      mockNoActiveAds();
+      // promote_pages returns both restricted (unpublished) and active (published) pages
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: 'page_restricted', name: 'MrPork.cl', is_published: false },
+            { id: 'page_good', name: 'Mr Pork', is_published: true },
+          ],
+        }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_good', pageName: 'Mr Pork' });
     });
 
     it('falls back to /me/accounts when promote_pages returns empty', async () => {
@@ -425,7 +462,7 @@ describe('meta-executor', () => {
       // /me/accounts returns a page
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: [{ id: 'page_fallback', name: 'Fallback Page' }] }),
+        json: async () => ({ data: [{ id: 'page_fallback', name: 'Fallback Page', is_published: true }] }),
       });
 
       const result = await fetchEligiblePageId(TOKEN, '111606408422861');
@@ -465,7 +502,7 @@ describe('meta-executor', () => {
       mockNoActiveAds();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: [{ id: 'page_999', name: 'Test Page' }] }),
+        json: async () => ({ data: [{ id: 'page_999', name: 'Test Page', is_published: true }] }),
       });
 
       await fetchEligiblePageId(TOKEN, 'act_123456');
