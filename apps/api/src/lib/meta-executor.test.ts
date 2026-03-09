@@ -375,7 +375,37 @@ describe('meta-executor', () => {
   });
 
   describe('fetchEligiblePageId', () => {
-    it('returns page from promote_pages when available', async () => {
+    /** Helper: mock the first call (existing ads query) to return no results. */
+    function mockNoActiveAds(): void {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+    }
+
+    it('returns page from existing ACTIVE ads (Strategy 0) — highest priority', async () => {
+      // Active ads endpoint returns an ad with page_id
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ creative: { object_story_spec: { page_id: 'page_from_ad' } } }],
+        }),
+      });
+      // Page name lookup
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Mr Pork Active' }),
+      });
+
+      const result = await fetchEligiblePageId(TOKEN, '111606408422861');
+      expect(result).toEqual({ pageId: 'page_from_ad', pageName: 'Mr Pork Active' });
+      expect(mockFetch.mock.calls[0]![0]).toContain('/ads?');
+      expect(mockFetch.mock.calls[0]![0]).toContain('ACTIVE');
+    });
+
+    it('returns page from promote_pages when no active ads exist', async () => {
+      mockNoActiveAds();
+      // promote_pages returns a page
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: [{ id: 'page_eligible', name: 'Eligible Page' }] }),
@@ -383,11 +413,10 @@ describe('meta-executor', () => {
 
       const result = await fetchEligiblePageId(TOKEN, '111606408422861');
       expect(result).toEqual({ pageId: 'page_eligible', pageName: 'Eligible Page' });
-      expect(mockFetch.mock.calls[0]![0]).toContain('/promote_pages');
-      expect(mockFetch.mock.calls[0]![0]).toContain('act_111606408422861');
     });
 
     it('falls back to /me/accounts when promote_pages returns empty', async () => {
+      mockNoActiveAds();
       // promote_pages returns empty
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -401,11 +430,10 @@ describe('meta-executor', () => {
 
       const result = await fetchEligiblePageId(TOKEN, '111606408422861');
       expect(result).toEqual({ pageId: 'page_fallback', pageName: 'Fallback Page' });
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch.mock.calls[1]![0]).toContain('/me/accounts');
     });
 
     it('falls back to /me/accounts when promote_pages request fails', async () => {
+      mockNoActiveAds();
       // promote_pages fails
       mockFetch.mockResolvedValueOnce({ ok: false, status: 403 });
       // /me/accounts returns a page
@@ -418,7 +446,8 @@ describe('meta-executor', () => {
       expect(result).toEqual({ pageId: 'page_fb', pageName: 'FB Page' });
     });
 
-    it('returns undefined when both promote_pages and /me/accounts return empty', async () => {
+    it('returns undefined when all strategies return empty', async () => {
+      mockNoActiveAds();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: [] }),
@@ -433,18 +462,20 @@ describe('meta-executor', () => {
     });
 
     it('normalizes ad account ID with act_ prefix', async () => {
+      mockNoActiveAds();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: [{ id: 'page_999', name: 'Test Page' }] }),
       });
 
       await fetchEligiblePageId(TOKEN, 'act_123456');
-      // Should not double-prefix: should be act_123456, not act_act_123456
-      expect(mockFetch.mock.calls[0]![0]).toContain('act_123456/promote_pages');
-      expect(mockFetch.mock.calls[0]![0]).not.toContain('act_act_');
+      // First call is the ads query, second is promote_pages
+      expect(mockFetch.mock.calls[1]![0]).toContain('act_123456/promote_pages');
+      expect(mockFetch.mock.calls[1]![0]).not.toContain('act_act_');
     });
 
     it('defaults pageName to Unknown when name is missing', async () => {
+      mockNoActiveAds();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: [{ id: 'page_noname' }] }),
