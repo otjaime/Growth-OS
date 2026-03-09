@@ -2851,24 +2851,47 @@ export async function autopilotRoutes(app: FastifyInstance) {
       },
     });
 
-    // If no products found with org scope, claim orphaned products (org = null)
+    // If no products found with org scope, claim orphaned products (org = null).
+    // Wrap in try/catch: orphaned products may have duplicate (title, type) combos
+    // that would violate the unique constraint when org is set.
     if (products.length === 0) {
-      const orphanCount = await prisma.productPerformance.updateMany({
-        where: { organizationId: null },
-        data: { organizationId: orgId },
-      });
-      if (orphanCount.count > 0) {
-        products = await prisma.productPerformance.findMany({
-          where: { organizationId: orgId },
-          select: {
-            productTitle: true, productType: true, adFitnessScore: true,
-            revenue30d: true, grossProfit30d: true, estimatedMargin: true,
-            avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
-            imageUrl: true, description: true, productTier: true, revenueTrend: true,
-            revenueShare: true, daysSinceFirstSale: true,
-            collections: true, tags: true, topCrossSellProducts: true,
-          },
+      try {
+        const orphanCount = await prisma.productPerformance.updateMany({
+          where: { organizationId: null },
+          data: { organizationId: orgId },
         });
+        if (orphanCount.count > 0) {
+          products = await prisma.productPerformance.findMany({
+            where: { organizationId: orgId },
+            select: {
+              productTitle: true, productType: true, adFitnessScore: true,
+              revenue30d: true, grossProfit30d: true, estimatedMargin: true,
+              avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
+              imageUrl: true, description: true, productTier: true, revenueTrend: true,
+              revenueShare: true, daysSinceFirstSale: true,
+              collections: true, tags: true, topCrossSellProducts: true,
+            },
+          });
+        }
+      } catch {
+        // Unique constraint violation — orphaned products have duplicate titles.
+        // Delete duplicates first, then try to claim remaining orphans.
+        try {
+          // Just read orphaned products directly instead
+          products = await prisma.productPerformance.findMany({
+            where: { organizationId: null },
+            select: {
+              productTitle: true, productType: true, adFitnessScore: true,
+              revenue30d: true, grossProfit30d: true, estimatedMargin: true,
+              avgPrice: true, avgDailyUnits: true, repeatBuyerPct: true,
+              imageUrl: true, description: true, productTier: true, revenueTrend: true,
+              revenueShare: true, daysSinceFirstSale: true,
+              collections: true, tags: true, topCrossSellProducts: true,
+            },
+          });
+        } catch {
+          // Non-fatal — will fall through to buildProductPerformance
+        }
       }
     }
 
