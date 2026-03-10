@@ -395,7 +395,7 @@ export async function createAdFromVariant(
         message: creative.primaryText,
         name: creative.headline,
         description: creative.description ?? '',
-        call_to_action: { type: creative.callToAction ?? 'LEARN_MORE', value: { link: linkUrl } },
+        call_to_action: { type: creative.callToAction ?? 'SHOP_NOW', value: { link: linkUrl } },
         link: linkUrl,
         ...(creative.imageHash ? { image_hash: creative.imageHash } : {}),
       },
@@ -555,11 +555,34 @@ export const CURRENCY_COUNTRY_MAP: Record<string, string> = {
   KRW: 'KR', INR: 'IN', NZD: 'NZ', ZAR: 'ZA', SGD: 'SG', HKD: 'HK',
 };
 
+/**
+ * Append UTM parameters to a URL for proper GA4/Shopify attribution.
+ * Handles URLs with or without existing query strings. Strips trailing slashes.
+ */
+export function appendUtmParams(
+  url: string,
+  params: { source: string; medium: string; campaign: string; content?: string },
+): string {
+  const trimmed = url.replace(/\/+$/, '');
+  const sep = trimmed.includes('?') ? '&' : '?';
+  const parts = [
+    `utm_source=${encodeURIComponent(params.source)}`,
+    `utm_medium=${encodeURIComponent(params.medium)}`,
+    `utm_campaign=${encodeURIComponent(params.campaign)}`,
+  ];
+  if (params.content) {
+    parts.push(`utm_content=${encodeURIComponent(params.content)}`);
+  }
+  return `${trimmed}${sep}${parts.join('&')}`;
+}
+
 /** Targeting specification for ad sets. */
 export interface AdSetTargeting {
   readonly countries: readonly string[];
   readonly ageMin?: number;
   readonly ageMax?: number;
+  /** Enable Advantage+ audience — Meta ML expands beyond base targeting. */
+  readonly advantagePlus?: boolean;
 }
 
 /**
@@ -625,7 +648,14 @@ export async function createProactiveAdSet(
     // Without this, Meta requires bid_amount or bid_constraints.
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     status: 'PAUSED',
-    targeting: JSON.stringify({ geo_locations: { countries }, age_min: ageMin, age_max: ageMax }),
+    targeting: JSON.stringify({
+      geo_locations: { countries },
+      age_min: ageMin,
+      age_max: ageMax,
+      // Advantage+ audience: Meta ML expands beyond base targeting to find
+      // high-intent users. Standard for all top DTC agencies.
+      ...(targeting?.advantagePlus ? { targeting_optimization: 'expansion_all' } : {}),
+    }),
   };
 
   // Add promoted_object with pixel if available (required for OFFSITE_CONVERSIONS)

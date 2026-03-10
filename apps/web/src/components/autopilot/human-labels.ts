@@ -211,6 +211,14 @@ export const ANGLE_LABELS: Record<string, { label: string; description: string }
     label: 'Creates urgency',
     description: 'Motivates the customer to act now',
   },
+  social_proof: {
+    label: 'Social proof',
+    description: 'Uses customer satisfaction and repeat buyer data',
+  },
+  value: {
+    label: 'Price justification',
+    description: 'Anchors value and justifies the price point',
+  },
 };
 
 // ── Helpers ──────────────────────────────────────────────────

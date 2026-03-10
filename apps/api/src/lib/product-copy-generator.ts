@@ -1,11 +1,14 @@
 // ──────────────────────────────────────────────────────────────
-// Growth OS — Product Ad Copy Generator
-// Generates 3 copy variants (benefit, pain_point, urgency)
-// for a product that has never been advertised before.
+// Growth OS — Product Ad Copy Generator (Agency Grade)
+// Generates 3-5 copy variants using proven DTC frameworks
+// (PAS, Before/After/Bridge, FOMO, Social Proof, Value)
+// for products being advertised for the first time.
 // Uses getClient() from ai.ts — never creates its own instance.
 // ──────────────────────────────────────────────────────────────
 
 import { getClient, isAIConfigured, AI_MODEL } from './ai.js';
+
+export type CopyAngle = 'benefit' | 'pain_point' | 'urgency' | 'social_proof' | 'value';
 
 export interface ProductCopyInput {
   productTitle: string;
@@ -19,6 +22,19 @@ export interface ProductCopyInput {
   language?: string;
   /** Currency symbol for price display (e.g., '$', '€'). Defaults to '$'. */
   currencySymbol?: string;
+  // Brand context for agency-grade copy
+  /** Store/brand name (e.g., "Mr Pork"). */
+  brandName?: string;
+  /** Brand voice and positioning (e.g., "Premium, artisanal, family BBQ"). */
+  brandVoice?: string;
+  /** Target audience description (e.g., "Chilean families who love premium meat"). */
+  targetAudience?: string;
+  /** Seasonal or campaign context (e.g., "BBQ season, summer grilling"). */
+  seasonalContext?: string;
+  /** Product tags from Shopify (e.g., ["wagyu", "premium", "gift"]). */
+  productTags?: string[];
+  /** Collections the product belongs to (e.g., ["BBQ Collection", "Premium Cuts"]). */
+  collections?: string[];
 }
 
 /**
@@ -42,38 +58,42 @@ export const CURRENCY_LANGUAGE_MAP: Record<string, { language: string; symbol: s
 };
 
 export interface ProductCopyVariant {
-  angle: 'benefit' | 'pain_point' | 'urgency';
+  angle: CopyAngle;
   headline: string;
   primaryText: string;
   description: string;
 }
 
-function buildSystemPrompt(language: string): string {
-  const langInstruction = language !== 'en'
-    ? `\n\nCRITICAL: Write ALL copy (headlines, primary text, descriptions) in ${getLanguageName(language)}. The target audience speaks ${getLanguageName(language)} — do NOT write in English.`
-    : '';
+/**
+ * Select which copy angles to generate based on product data.
+ * Always includes benefit + pain_point. Adds social_proof, urgency, or value
+ * based on repeat buyer rate, seasonal context, and price positioning.
+ */
+export function selectAngles(input: ProductCopyInput): CopyAngle[] {
+  const angles: CopyAngle[] = ['benefit', 'pain_point'];
 
-  return `You are a senior performance copywriter for Meta (Facebook/Instagram) ads. You specialize in DTC ecommerce product launches.
+  // Social proof when product has strong repeat buyers — proves product-market fit
+  if (input.repeatBuyerPct > 0.1) {
+    angles.push('social_proof');
+  }
 
-Your task: Generate 3 ad copy variants for a product that is being advertised for the first time. Each variant uses a different persuasion angle.
+  // Urgency when there's a seasonal hook or high fitness score
+  if (input.seasonalContext || input.adFitnessScore >= 70) {
+    angles.push('urgency');
+  }
 
-Rules:
-- Headline: MAX 40 characters. Short, punchy, scroll-stopping.
-- Primary text: MAX 125 characters for the hook (first line). Can be up to 3 lines total but the hook must grab attention.
-- Description: MAX 30 characters. CTA-supporting text.
-- Never use ALL CAPS for entire words (except brand names).
-- Never use more than one emoji per variant.
-- Write in second person ("you", "your" / "tú", "tu").
-- Be specific to the product — reference actual features, materials, benefits.
-- Each angle must feel distinctly different — not just rewording the same message.
+  // Value angle when product is premium (justify the price)
+  if (input.avgPrice > 0 && input.margin > 0.3) {
+    angles.push('value');
+  }
 
-Angles:
-1. "benefit" — Lead with the positive outcome/transformation the customer gets
-2. "pain_point" — Lead with the problem/frustration the customer currently has
-3. "urgency" — Lead with scarcity, time pressure, or FOMO
-${langInstruction}
+  // Ensure at least 3, at most 5 angles
+  if (angles.length < 3) {
+    if (!angles.includes('urgency')) angles.push('urgency');
+    if (angles.length < 3 && !angles.includes('value')) angles.push('value');
+  }
 
-Output ONLY valid JSON. No markdown, no code fences, no explanation. The JSON must be an array of exactly 3 objects with keys: angle, headline, primaryText, description.`;
+  return angles.slice(0, 5);
 }
 
 /** Get human-readable language name from ISO code. */
@@ -85,25 +105,96 @@ function getLanguageName(lang: string): string {
   return names[lang] ?? 'English';
 }
 
+function buildSystemPrompt(input: ProductCopyInput, angles: CopyAngle[]): string {
+  const lang = input.language ?? 'en';
+  const langName = getLanguageName(lang);
+
+  const langInstruction = lang !== 'en'
+    ? `\n\nCRITICAL LANGUAGE RULE: Write ALL copy (headlines, primary text, descriptions) in ${langName}. The target audience speaks ${langName} natively — write like a native speaker, NOT like a translation. Use natural ${langName} expressions, idioms, and phrasing.`
+    : '';
+
+  const brandContext = input.brandName
+    ? `\nBRAND: ${input.brandName}${input.brandVoice ? ` — ${input.brandVoice}` : ''}`
+    : '';
+
+  const audienceContext = input.targetAudience
+    ? `\nTARGET AUDIENCE: ${input.targetAudience}`
+    : '';
+
+  const seasonContext = input.seasonalContext
+    ? `\nSEASON/CONTEXT: ${input.seasonalContext} — reference this naturally in urgency/benefit angles.`
+    : '';
+
+  const tagContext = input.productTags?.length
+    ? `\nPRODUCT TAGS: ${input.productTags.join(', ')} — use these as creative hooks.`
+    : '';
+
+  const collectionContext = input.collections?.length
+    ? `\nCOLLECTIONS: ${input.collections.join(', ')}`
+    : '';
+
+  // Build angle instructions dynamically
+  const angleInstructions = angles.map((a, i) => {
+    switch (a) {
+      case 'benefit':
+        return `${i + 1}. "benefit" → Before/After/Bridge framework. Show the transformation: what life looks like AFTER using this product. Lead with the outcome, not the feature.`;
+      case 'pain_point':
+        return `${i + 1}. "pain_point" → PAS framework (Problem → Agitate → Solve). Name the specific frustration the customer has RIGHT NOW. Make them feel seen, then present the product as the solution.`;
+      case 'urgency':
+        return `${i + 1}. "urgency" → FOMO + scarcity. Why buy NOW? ${input.seasonalContext ? `Use the "${input.seasonalContext}" context.` : 'Use limited availability, trending status, or seasonal timing.'} Never use fake urgency — ground it in a real reason.`;
+      case 'social_proof':
+        return `${i + 1}. "social_proof" → Testimonial-style hook. ${input.repeatBuyerPct > 0.1 ? `${(input.repeatBuyerPct * 100).toFixed(0)}% of buyers come back — use this stat.` : 'Reference customer satisfaction.'} Write the hook as if a real customer is recommending it.`;
+      case 'value':
+        return `${i + 1}. "value" → Price anchoring + quality justification. Frame the price as an investment. Compare to alternatives, highlight what makes it worth ${input.currencySymbol ?? '$'}${input.avgPrice.toFixed(0)}. Quality over quantity narrative.`;
+    }
+  }).join('\n');
+
+  return `You are a top-performing DTC performance copywriter managing Meta (Facebook/Instagram) ads${input.brandName ? ` for ${input.brandName}` : ''}. You write ads that outperform agencies — scroll-stopping hooks, precise targeting, real conversion drivers.
+${brandContext}${audienceContext}${seasonContext}${tagContext}${collectionContext}
+
+Your task: Generate ${angles.length} ad copy variants for a product launch. Each variant uses a DIFFERENT persuasion framework.
+
+META AD FORMAT RULES (mobile-first — 85% of impressions are mobile):
+- Headline: MAX 40 characters. Appears BELOW the image in bold. Must be a clear, specific value proposition. Not clickbait.
+- Primary text: First line is the HOOK — MAX 125 characters before Meta shows "...See More".
+  Write 2-3 lines total. The hook MUST stop the scroll. Everything above the fold matters most.
+- Description: MAX 30 characters. Appears next to the "Shop Now" CTA button. Reinforce urgency or trust (e.g., "Envío gratis", "Free shipping", "Limited edition").
+
+PERSUASION FRAMEWORKS — use exactly one per variant:
+${angleInstructions}
+
+COPY RULES:
+- Reference the ACTUAL product by name and specific attributes — never write generic copy.
+- Each variant must feel like a completely DIFFERENT ad — different hook, different angle, different emotional trigger.
+- One emoji MAX per variant. Use it strategically to draw the eye, not decoratively.
+- Never ALL CAPS for entire words (brand names excepted).
+- Write in second person ("tú"/"you") — speak directly to the customer.
+- Be specific: "Tu próximo asado premium" is better than "Mejora tu vida".
+- Include a concrete detail in every hook: price, stat, product feature, or seasonal reference.
+${langInstruction}
+
+Output ONLY valid JSON. No markdown, no code fences, no explanation. The JSON must be an array of exactly ${angles.length} objects with keys: angle, headline, primaryText, description.`;
+}
+
 /** Demo fallback copy by language. */
 const DEMO_COPY: Record<string, (input: ProductCopyInput) => ProductCopyVariant[]> = {
   es: (input) => [
     {
       angle: 'benefit',
-      headline: `Lo mejor en ${input.productType}`,
-      primaryText: `${input.productTitle} — la mejora que mereces. Calidad premium, precio justo.`,
+      headline: `Tu ${input.productType} premium`,
+      primaryText: `${input.productTitle} — el upgrade que tu mesa merece. Calidad que se nota en cada bocado.`,
       description: 'Comprar ahora',
     },
     {
       angle: 'pain_point',
       headline: `¿Cansado de lo mismo?`,
-      primaryText: `Deja de conformarte. ${input.productTitle} resuelve lo que otros no pueden.`,
+      primaryText: `Deja de conformarte con cortes mediocres. ${input.productTitle}: sabor real, entrega rápida.`,
       description: 'Pruébalo hoy',
     },
     {
       angle: 'urgency',
-      headline: `${input.productTitle} se agota rápido`,
-      primaryText: `Nuestro más vendido no durará. Consigue el tuyo antes de que se acabe.`,
+      headline: `${input.productTitle} — últimas unidades`,
+      primaryText: `Nuestro más vendido no dura. Pedido hoy, en tu puerta mañana. 🔥`,
       description: 'Stock limitado',
     },
   ],
@@ -130,13 +221,15 @@ const DEMO_COPY: Record<string, (input: ProductCopyInput) => ProductCopyVariant[
 };
 
 /**
- * Generate 3 copy variants for a product that has never been advertised.
- * Returns hardcoded demo variants when AI is not configured.
- * When `language` is provided (e.g., 'es' for Spanish), copy is generated in that language.
+ * Generate copy variants for a product being advertised for the first time.
+ * Returns 3-5 variants using proven DTC copywriting frameworks.
+ * Falls back to hardcoded demo variants when AI is not configured.
+ * Language auto-detected from ad account currency (e.g., CLP → Spanish).
  */
 export async function generateProductCopy(input: ProductCopyInput): Promise<ProductCopyVariant[]> {
   const lang = input.language ?? 'en';
   const currencySymbol = input.currencySymbol ?? '$';
+  const angles = selectAngles(input);
 
   if (!isAIConfigured()) {
     // Deterministic demo fallback — use localized version if available
@@ -169,31 +262,47 @@ export async function generateProductCopy(input: ProductCopyInput): Promise<Prod
 
   const ai = getClient();
 
-  const repeatContext = input.repeatBuyerPct > 0.1
-    ? `${(input.repeatBuyerPct * 100).toFixed(0)}% of buyers come back — strong product-market fit.`
-    : '';
+  // Build rich product context for the AI
+  const contextLines: string[] = [
+    `- Name: ${input.productTitle}`,
+    `- Category: ${input.productType}`,
+    `- Price: ${currencySymbol}${input.avgPrice.toFixed(0)}`,
+    `- Description: ${input.productDescription ?? '(no description available)'}`,
+    `- Margin: ${(input.margin * 100).toFixed(0)}%`,
+    `- Ad Fitness Score: ${input.adFitnessScore.toFixed(0)}/100`,
+  ];
+
+  if (input.repeatBuyerPct > 0.1) {
+    contextLines.push(`- Repeat buyer rate: ${(input.repeatBuyerPct * 100).toFixed(0)}% — customers love this product`);
+  }
+  if (input.productTags?.length) {
+    contextLines.push(`- Tags: ${input.productTags.join(', ')}`);
+  }
+  if (input.collections?.length) {
+    contextLines.push(`- Collections: ${input.collections.join(', ')}`);
+  }
+  if (input.seasonalContext) {
+    contextLines.push(`- Campaign context: ${input.seasonalContext}`);
+  }
 
   const langNote = lang !== 'en'
-    ? `\n\nIMPORTANT: Write ALL ad copy in ${getLanguageName(lang)}. The target market speaks ${getLanguageName(lang)}.`
+    ? `\n\nIMPORTANT: Write ALL ad copy in ${getLanguageName(lang)}. The target market speaks ${getLanguageName(lang)} natively.`
     : '';
 
-  const userPrompt = `Product to advertise:
-- Name: ${input.productTitle}
-- Category: ${input.productType}
-- Price: ${currencySymbol}${input.avgPrice.toFixed(0)}
-- Description: ${input.productDescription ?? '(no description available)'}
-- Margin: ${(input.margin * 100).toFixed(0)}%
-- Ad Fitness Score: ${input.adFitnessScore.toFixed(0)}/100
-${repeatContext}${langNote}
+  const angleList = angles.map((a) => `"${a}"`).join(', ');
 
-This is the product's FIRST ad campaign. Generate 3 copy variants using the benefit, pain_point, and urgency angles. Output as JSON array.`;
+  const userPrompt = `Product to advertise:
+${contextLines.join('\n')}
+${langNote}
+
+This is the product's FIRST ad campaign. Generate exactly ${angles.length} copy variants using these angles: ${angleList}. Each variant must use a different persuasion framework as specified. Output as JSON array.`;
 
   const response = await ai.chat.completions.create({
     model: AI_MODEL,
     temperature: 0.7,
-    max_tokens: 600,
+    max_tokens: 1200,
     messages: [
-      { role: 'system', content: buildSystemPrompt(lang) },
+      { role: 'system', content: buildSystemPrompt(input, angles) },
       { role: 'user', content: userPrompt },
     ],
   });
@@ -208,12 +317,12 @@ This is the product's FIRST ad campaign. Generate 3 copy variants using the bene
     throw new Error(`Failed to parse AI copy response as JSON: ${raw.slice(0, 200)}`);
   }
 
-  if (!Array.isArray(parsed) || parsed.length !== 3) {
-    throw new Error(`Expected 3 copy variants, got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
+  if (!Array.isArray(parsed) || parsed.length < 3) {
+    throw new Error(`Expected ${angles.length} copy variants, got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
   }
 
   return (parsed as Record<string, string>[]).map((v) => ({
-    angle: v.angle as ProductCopyVariant['angle'],
+    angle: v.angle as CopyAngle,
     headline: (v.headline ?? '').slice(0, 40),
     primaryText: v.primaryText ?? '',
     description: (v.description ?? '').slice(0, 30),
