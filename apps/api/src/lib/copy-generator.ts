@@ -34,7 +34,7 @@ export interface CopyGeneratorInput {
 }
 
 export interface GeneratedCopy {
-  angle: 'benefit' | 'pain_point' | 'urgency';
+  angle: 'benefit' | 'pain_point' | 'urgency' | 'social_proof' | 'value';
   headline: string;
   primaryText: string;
   description: string;

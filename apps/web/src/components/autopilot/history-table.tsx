@@ -148,7 +148,7 @@ export function HistoryTable({ items, total, loading }: HistoryTableProps) {
                           }`}
                           title={v.headline}
                         >
-                          {v.angle === 'pain_point' ? 'Pain' : v.angle === 'benefit' ? 'Benefit' : 'Urgency'}
+                          {v.angle === 'pain_point' ? 'Pain' : v.angle === 'benefit' ? 'Benefit' : v.angle === 'social_proof' ? 'Social' : v.angle === 'value' ? 'Value' : 'Urgency'}
                         </span>
                       ))}
                     </div>

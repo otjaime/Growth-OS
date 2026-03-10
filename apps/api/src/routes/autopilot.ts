@@ -3191,7 +3191,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchEligiblePageId, getMinAdSetBudget, uploadImageToMeta } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchEligiblePageId, getMinAdSetBudget, uploadImageToMeta, appendUtmParams } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3201,7 +3201,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const currency = adAccount?.currency ?? 'USD';
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
-    const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65 };
+    const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65, advantagePlus: true };
 
     // 5b. Validate budget meets Meta's minimum per ad set
     const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
@@ -3234,10 +3234,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
     request.log.info({ pageId: facebookPageId, pageName: eligiblePage.pageName }, 'Using Facebook Page for ad creatives');
 
     // 6. Create Meta Campaign (budget set per ad set, not at campaign level)
+    // Use OUTCOME_SALES when pixel is available — optimizes for purchases, not clicks.
+    // This is the #1 reason agency campaigns outperform DIY setups.
+    const campaignObjective = pixelId ? 'OUTCOME_SALES' : 'OUTCOME_TRAFFIC';
     const campaignResult = await createMetaCampaign(
       accessToken,
       adAccountId,
       strategy.name,
+      campaignObjective,
     );
 
     if (!campaignResult.success) {
@@ -3261,7 +3265,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           campaignId: metaCampaignId,
           name: strategy.name,
           status: 'PAUSED',
-          objective: 'OUTCOME_TRAFFIC',
+          objective: campaignObjective,
           dailyBudget,
           organizationId: orgId,
           accountId: adAccount?.id ?? '',
@@ -3272,14 +3276,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
       // Non-fatal: campaign was created on Meta, tracking is best-effort
     }
 
-    // 8. Get store URL for fallback link — products may not have productUrl set
+    // 8. Get store URL + brand name for fallback link and copy generation
     let storeBaseUrl: string | null = null;
+    let storeName: string | null = null;
     try {
       const shopifyCred = await prisma.connectorCredential.findFirst({
         where: { organizationId: orgId, connectorType: 'shopify' },
         select: { metadata: true },
       });
-      const shopDomain = (shopifyCred?.metadata as Record<string, string> | null)?.shopDomain;
+      const meta = shopifyCred?.metadata as Record<string, string> | null;
+      const shopDomain = meta?.shopDomain;
+      storeName = meta?.shopName ?? null;
       if (shopDomain) {
         // Ensure it's a valid URL base
         storeBaseUrl = shopDomain.startsWith('http')
@@ -3318,11 +3325,13 @@ export async function autopilotRoutes(app: FastifyInstance) {
           productUrl: true,
           imageUrl: true,
           shopifyProductId: true,
+          tags: true,
+          collections: true,
         },
       });
 
-      // Generate copy variants (3 per product: benefit, pain_point, urgency)
-      // Language is auto-detected from the ad account currency (e.g., CLP → Spanish)
+      // Generate copy variants — language auto-detected from ad account currency (e.g., CLP → Spanish)
+      // Brand context feeds the agency-grade AI prompt for personalized, high-converting copy.
       const copyVariants = await generateProductCopy({
         productTitle,
         productType: product?.productType ?? 'product',
@@ -3333,6 +3342,12 @@ export async function autopilotRoutes(app: FastifyInstance) {
         adFitnessScore: Number(product?.adFitnessScore ?? 50),
         language: copyLanguage,
         currencySymbol,
+        // Brand context for agency-grade copy
+        brandName: storeName ?? undefined,
+        targetAudience: strategy.targetAudience ?? undefined,
+        seasonalContext: strategy.creativeDirection ?? undefined,
+        productTags: (product as Record<string, unknown>)?.tags as string[] ?? undefined,
+        collections: (product as Record<string, unknown>)?.collections as string[] ?? undefined,
       });
 
       // Upload product image to Meta if available — returns imageHash for ad creative
@@ -3440,14 +3455,27 @@ export async function autopilotRoutes(app: FastifyInstance) {
         }
       }
 
+      // Slugified campaign name for UTM tracking
+      const utmCampaign = strategy.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
       // Create ads from copy variants
       for (const variant of copyVariants) {
+        // Append UTM params for proper GA4/Shopify attribution
+        const linkWithUtm = productLinkUrl
+          ? appendUtmParams(productLinkUrl, {
+              source: 'meta',
+              medium: 'paid_social',
+              campaign: utmCampaign,
+              content: variant.angle,
+            })
+          : undefined;
+
         const adResult = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
           name: `${productTitle} — ${variant.angle}`,
           headline: variant.headline,
           primaryText: variant.primaryText,
           description: variant.description ?? undefined,
-          linkUrl: productLinkUrl,
+          linkUrl: linkWithUtm,
           pageId: facebookPageId,
           imageHash,
         });

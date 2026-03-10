@@ -86,10 +86,16 @@ function CopyVariantCard({
   onActivate: (id: string) => void;
   activating: boolean;
 }) {
-  const angleName = variant.angle === 'pain_point' ? 'Pain Point' : variant.angle === 'benefit' ? 'Benefit' : 'Urgency';
-  const angleColor = variant.angle === 'benefit' ? 'text-apple-green bg-[var(--tint-green)]'
-    : variant.angle === 'pain_point' ? 'text-apple-yellow bg-[var(--tint-yellow)]'
-    : 'text-apple-red bg-[var(--tint-red)]';
+  const ANGLE_NAME_MAP: Record<string, string> = { benefit: 'Benefit', pain_point: 'Pain Point', urgency: 'Urgency', social_proof: 'Social Proof', value: 'Value' };
+  const ANGLE_COLOR_MAP: Record<string, string> = {
+    benefit: 'text-apple-green bg-[var(--tint-green)]',
+    pain_point: 'text-apple-yellow bg-[var(--tint-yellow)]',
+    urgency: 'text-apple-red bg-[var(--tint-red)]',
+    social_proof: 'text-apple-blue bg-[var(--tint-blue)]',
+    value: 'text-apple-purple bg-[var(--tint-purple)]',
+  };
+  const angleName = ANGLE_NAME_MAP[variant.angle] ?? variant.angle;
+  const angleColor = ANGLE_COLOR_MAP[variant.angle] ?? 'text-apple-red bg-[var(--tint-red)]';
 
   const isActioned = variant.status !== 'DRAFT';
 

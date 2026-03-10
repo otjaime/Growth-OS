@@ -249,7 +249,7 @@ export interface AdVariant {
   id: string;
   diagnosisId: string;
   adId: string;
-  angle: 'benefit' | 'pain_point' | 'urgency';
+  angle: 'benefit' | 'pain_point' | 'urgency' | 'social_proof' | 'value';
   headline: string;
   primaryText: string;
   description: string | null;

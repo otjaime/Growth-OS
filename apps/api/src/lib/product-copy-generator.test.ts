@@ -167,7 +167,7 @@ describe('generateProductCopy', () => {
     });
 
     await expect(generateProductCopy(BASE_INPUT)).rejects.toThrow(
-      /Expected 3 copy variants, got 1/,
+      /Expected \d+ copy variants, got 1/,
     );
   });
 
@@ -196,7 +196,7 @@ describe('generateProductCopy', () => {
     const userMsg = mockCreate.mock.calls[0]![0].messages.find(
       (m: { role: string }) => m.role === 'user',
     )?.content;
-    expect(userMsg).toContain('25% of buyers come back');
+    expect(userMsg).toContain('Repeat buyer rate: 25%');
   });
 
   it('does not include repeat buyer context when repeatBuyerPct <= 10%', async () => {
@@ -224,7 +224,7 @@ describe('generateProductCopy', () => {
     const userMsg = mockCreate.mock.calls[0]![0].messages.find(
       (m: { role: string }) => m.role === 'user',
     )?.content;
-    expect(userMsg).not.toContain('buyers come back');
+    expect(userMsg).not.toContain('Repeat buyer rate');
   });
 
   // ── Language support ─────────────────────────────────────────
@@ -314,7 +314,7 @@ describe('generateProductCopy', () => {
     const call = mockCreate.mock.calls[0]![0];
     const sysMsg = call.messages.find((m: { role: string }) => m.role === 'system')?.content;
     // Should NOT contain language-specific instruction for English
-    expect(sysMsg).not.toContain('CRITICAL: Write ALL copy');
+    expect(sysMsg).not.toContain('CRITICAL LANGUAGE RULE: Write ALL copy');
   });
 });
 
