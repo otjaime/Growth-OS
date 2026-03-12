@@ -1140,6 +1140,7 @@ model ProductPerformance {
   shopifyProductId  String?       @map("shopify_product_id")
   imageUrl          String?       @map("image_url")
   productUrl        String?       @map("product_url")
+  productHandle     String?       @map("product_handle")
   description       String?       @db.Text
 
   // Trend metrics

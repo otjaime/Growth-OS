@@ -443,6 +443,95 @@ export async function createAdFromVariant(
 }
 
 /**
+ * Create a single ad with Advantage+ Creative (asset_feed_spec).
+ * Instead of creating separate ads per copy variant, this puts all headlines,
+ * primary texts, and descriptions into one ad. Meta's ML tests all combinations
+ * and automatically optimizes for the best-performing mix.
+ *
+ * This is how top agencies structure Meta ads — 1 ad with multiple text options
+ * rather than 3-5 separate ads competing against each other.
+ */
+export async function createAdvantagePlusAd(
+  accessToken: string,
+  adAccountId: string,
+  adSetId: string,
+  creative: {
+    name: string;
+    headlines: string[];      // 2-5 headline variants
+    primaryTexts: string[];   // 2-5 primary text variants
+    descriptions: string[];   // 1-5 description variants
+    imageHashes: string[];    // 1+ image hashes
+    linkUrl: string;
+    pageId: string;
+    callToAction?: string;
+  },
+): Promise<ExecutionResult> {
+  try {
+    if (!creative.pageId) {
+      return { success: false, error: 'Facebook Page ID is required.', retryable: false };
+    }
+    const linkUrl = creative.linkUrl?.trim();
+    if (!linkUrl) {
+      return { success: false, error: `No product URL for "${creative.name}".`, retryable: false };
+    }
+    if (creative.imageHashes.length === 0) {
+      return { success: false, error: `No image hash for "${creative.name}".`, retryable: false };
+    }
+
+    // Build asset_feed_spec — Meta's format for Advantage+ Creative
+    const assetFeedSpec: Record<string, unknown> = {
+      images: creative.imageHashes.map(hash => ({ hash })),
+      bodies: creative.primaryTexts.map(text => ({ text })),
+      titles: creative.headlines.map(text => ({ text })),
+      descriptions: creative.descriptions.filter(Boolean).map(text => ({ text })),
+      call_to_action_types: [creative.callToAction ?? 'SHOP_NOW'],
+      link_urls: [{ website_url: linkUrl }],
+      ad_formats: ['SINGLE_IMAGE'],
+    };
+
+    // object_story_spec still needs page_id
+    const objectStorySpec = { page_id: creative.pageId };
+
+    const creativeResult = await metaPost(accessToken, `${normalizeAccountId(adAccountId)}/adcreatives`, {
+      name: `${creative.name} — GrowthOS A+`,
+      object_story_spec: JSON.stringify(objectStorySpec),
+      asset_feed_spec: JSON.stringify(assetFeedSpec),
+    });
+
+    if (!creativeResult.success) {
+      return { ...creativeResult, error: `Advantage+ creative failed: ${creativeResult.error}` };
+    }
+
+    const creativeId = String(
+      (creativeResult.metaResponse as Record<string, unknown>)?.id ?? '',
+    );
+    if (!creativeId) {
+      return { success: false, error: 'Meta returned no creative ID', retryable: false };
+    }
+
+    // Create single ad using the Advantage+ creative
+    const adResult = await metaPost(accessToken, `${normalizeAccountId(adAccountId)}/ads`, {
+      name: `${creative.name} — GrowthOS`,
+      adset_id: adSetId,
+      creative: JSON.stringify({ creative_id: creativeId }),
+      status: 'PAUSED',
+    });
+
+    if (!adResult.success) {
+      return { ...adResult, error: `Ad creation failed: ${adResult.error}` };
+    }
+
+    const adId = String(
+      (adResult.metaResponse as Record<string, unknown>)?.id ?? '',
+    );
+
+    return { success: true, metaResponse: { creativeId, adId } };
+  } catch (err) {
+    return { success: false, error: `Network error: ${(err as Error).message}`, retryable: true };
+  }
+}
+
+/**
  * Duplicate an ad set with its winning ad to target fresh audiences.
  * Steps:
  *   1. Read source ad set configuration (targeting, budget, bid strategy)
@@ -579,6 +668,8 @@ export function appendUtmParams(
 /** Targeting specification for ad sets. */
 export interface AdSetTargeting {
   readonly countries: readonly string[];
+  /** Meta region keys from shipping zone resolver — more precise than country-level. */
+  readonly regions?: readonly { key: string }[];
   readonly ageMin?: number;
   readonly ageMax?: number;
   /** Enable Advantage+ audience — Meta ML expands beyond base targeting. */
@@ -649,7 +740,12 @@ export async function createProactiveAdSet(
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     status: 'PAUSED',
     targeting: JSON.stringify({
-      geo_locations: { countries },
+      geo_locations: {
+        countries,
+        // Include specific regions (provinces/states) if resolved from shipping zones.
+        // This narrows targeting to areas where the store actually ships.
+        ...(targeting?.regions?.length ? { regions: targeting.regions.map(r => ({ key: r.key })) } : {}),
+      },
       age_min: ageMin,
       age_max: ageMax,
       // Advantage+ audience: Meta ML expands beyond base targeting to find

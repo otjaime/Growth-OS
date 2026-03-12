@@ -38,6 +38,7 @@ const ORDERS_QUERY = `
                 originalUnitPriceSet { shopMoney { amount } }
                 variant {
                   product {
+                    handle
                     productType
                     featuredImage { url }
                     description
@@ -188,6 +189,7 @@ const PRODUCTS_QUERY = `
         node {
           id
           title
+          handle
           description
           productType
           vendor
@@ -289,6 +291,7 @@ export async function fetchShopifyProducts(
             // Flatten for easier lookup in step4
             imageUrl: featuredImage?.url ?? images[0]?.node?.url,
             descriptionText: node.description as string,
+            handle: node.handle as string,
           },
         });
       }
