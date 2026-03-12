@@ -43,6 +43,7 @@ interface CatalogEntry {
   description?: string;
   productId?: string;
   productUrl?: string;
+  productHandle?: string;
   collections?: string[];
   tags?: string[];
 }
@@ -333,6 +334,7 @@ export async function buildProductPerformance(
       description: payload.descriptionText as string | undefined,
       productId: payload.id as string | undefined,
       productUrl: payload.onlineStoreUrl as string | undefined,
+      productHandle: payload.handle as string | undefined,
       collections: rawCollections,
       tags: rawTags,
     });
@@ -479,6 +481,7 @@ export async function buildProductPerformance(
         shopifyProductId: catalog?.productId ?? null,
         imageUrl: catalog?.imageUrl ?? agg.imageUrl ?? null,
         productUrl: catalog?.productUrl ?? agg.productUrl ?? null,
+        productHandle: catalog?.productHandle ?? null,
         description: catalog?.description ?? agg.description ?? null,
         // v2 fields
         revenuePrev30d: revenuePrev30d,
@@ -508,6 +511,7 @@ export async function buildProductPerformance(
         shopifyProductId: catalog?.productId ?? null,
         imageUrl: catalog?.imageUrl ?? agg.imageUrl ?? null,
         productUrl: catalog?.productUrl ?? agg.productUrl ?? null,
+        productHandle: catalog?.productHandle ?? null,
         description: catalog?.description ?? agg.description ?? null,
         // v2 fields
         revenuePrev30d: revenuePrev30d,

@@ -9,7 +9,7 @@ import { evaluateProactiveRules } from '@growth-os/etl';
 import type { ProactiveRulesInput } from '@growth-os/etl';
 import { generateProductCopy } from '../lib/product-copy-generator.js';
 import { prepareAdImage } from '../lib/ad-image-manager.js';
-import { createAdFromVariant, createProactiveAdSet, fetchEligiblePageId } from '../lib/meta-executor.js';
+import { createAdFromVariant, createAdvantagePlusAd, createProactiveAdSet, fetchEligiblePageId, appendUtmParams } from '../lib/meta-executor.js';
 import pino from 'pino';
 
 const log = pino({ name: 'proactive-pipeline' });
@@ -492,44 +492,107 @@ export async function publishProactiveJob(
   // Get product URL for the link
   const product = await prisma.productPerformance.findFirst({
     where: { organizationId: job.organizationId, productTitle: job.productTitle },
-    select: { productUrl: true },
+    select: { productUrl: true, productHandle: true },
+  });
+
+  const productLinkUrl = product?.productUrl ?? undefined;
+  if (!productLinkUrl) {
+    await prisma.proactiveAdJob.update({
+      where: { id: jobId },
+      data: { status: 'FAILED', errorMessage: 'No product URL available. Ensure the product has a URL in Shopify.' },
+    });
+    return { success: false, error: 'No product URL available' };
+  }
+
+  if (!job.imageHash) {
+    await prisma.proactiveAdJob.update({
+      where: { id: jobId },
+      data: { status: 'FAILED', errorMessage: 'No product image available. Upload images in Shopify.' },
+    });
+    return { success: false, error: 'No product image available' };
+  }
+
+  const utmCampaign = job.productTitle.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const linkWithUtm = appendUtmParams(productLinkUrl, {
+    source: 'meta',
+    medium: 'paid_social',
+    campaign: utmCampaign,
   });
 
   const metaAdIds: string[] = [];
 
-  // Create each variant as an ad
-  for (const variant of copyVariants) {
-    const result = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
-      name: `${job.productTitle} — ${variant.angle}`,
-      headline: variant.headline,
-      primaryText: variant.primaryText,
-      description: variant.description ?? undefined,
-      imageHash: job.imageHash ?? undefined,
-      linkUrl: product?.productUrl ?? undefined,
-      pageId: facebookPageId,
-    });
+  // Try Advantage+ Creative first (1 ad with all copy variants)
+  const advantageResult = await createAdvantagePlusAd(accessToken, adAccountId, metaAdSetId, {
+    name: job.productTitle,
+    headlines: copyVariants.map(v => v.headline),
+    primaryTexts: copyVariants.map(v => v.primaryText),
+    descriptions: copyVariants.map(v => v.description).filter((d): d is string => !!d),
+    imageHashes: [job.imageHash],
+    linkUrl: linkWithUtm,
+    pageId: facebookPageId,
+  });
 
-    if (result.success) {
-      const adId = (result.metaResponse as Record<string, unknown>)?.adId;
-      if (typeof adId === 'string') {
-        metaAdIds.push(adId);
+  if (advantageResult.success) {
+    const adId = (advantageResult.metaResponse as Record<string, unknown>)?.adId;
+    if (typeof adId === 'string') {
+      metaAdIds.push(adId);
+      try {
+        await prisma.metaAd.create({
+          data: {
+            adId,
+            name: `${job.productTitle} — Advantage+ Creative`,
+            status: 'PAUSED',
+            organizationId: job.organizationId,
+            adSetId: adSetDbId ?? '',
+            campaignId: campaign.id,
+            accountId: adAccount?.id ?? '',
+          },
+        });
+      } catch {
+        log.warn({ adId, jobId }, 'Failed to create MetaAd tracking row');
+      }
+    }
+  } else {
+    // Fallback: create individual ads per variant
+    log.warn({ jobId, error: advantageResult.error }, 'Advantage+ failed, falling back to individual ads');
 
-        // 4.2: Sync to MetaAd table for A/B loop
-        try {
-          await prisma.metaAd.create({
-            data: {
-              adId,
-              name: `${job.productTitle} — ${variant.angle}`,
-              status: 'PAUSED',
-              organizationId: job.organizationId,
-              adSetId: adSetDbId ?? '',
-              campaignId: campaign.id,
-              accountId: adAccount?.id ?? '',
-            },
-          });
-        } catch {
-          // Non-fatal: the ad was created on Meta, just tracking failed
-          log.warn({ adId, jobId }, 'Failed to create MetaAd tracking row');
+    for (const variant of copyVariants) {
+      const variantLink = appendUtmParams(productLinkUrl, {
+        source: 'meta',
+        medium: 'paid_social',
+        campaign: utmCampaign,
+        content: variant.angle,
+      });
+
+      const result = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
+        name: `${job.productTitle} — ${variant.angle}`,
+        headline: variant.headline,
+        primaryText: variant.primaryText,
+        description: variant.description ?? undefined,
+        imageHash: job.imageHash,
+        linkUrl: variantLink,
+        pageId: facebookPageId,
+      });
+
+      if (result.success) {
+        const adId = (result.metaResponse as Record<string, unknown>)?.adId;
+        if (typeof adId === 'string') {
+          metaAdIds.push(adId);
+          try {
+            await prisma.metaAd.create({
+              data: {
+                adId,
+                name: `${job.productTitle} — ${variant.angle}`,
+                status: 'PAUSED',
+                organizationId: job.organizationId,
+                adSetId: adSetDbId ?? '',
+                campaignId: campaign.id,
+                accountId: adAccount?.id ?? '',
+              },
+            });
+          } catch {
+            log.warn({ adId, jobId }, 'Failed to create MetaAd tracking row');
+          }
         }
       }
     }

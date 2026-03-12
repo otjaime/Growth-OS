@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   prepareAdImage: vi.fn(),
   createProactiveAdSet: vi.fn(),
   createAdFromVariant: vi.fn(),
+  createAdvantagePlusAd: vi.fn(),
   fetchEligiblePageId: vi.fn(),
   pauseAd: vi.fn(),
   evaluateProductABTest: vi.fn(),
@@ -49,9 +50,11 @@ vi.mock('../lib/ad-image-manager.js', () => ({
 vi.mock('../lib/meta-executor.js', () => ({
   createProactiveAdSet: mocks.createProactiveAdSet,
   createAdFromVariant: mocks.createAdFromVariant,
+  createAdvantagePlusAd: mocks.createAdvantagePlusAd,
   fetchEligiblePageId: mocks.fetchEligiblePageId,
   pauseAd: mocks.pauseAd,
   reactivateAd: vi.fn(),
+  appendUtmParams: (url: string) => url,
 }));
 vi.mock('../lib/proactive-ab-engine.js', () => ({
   evaluateProductABTest: mocks.evaluateProductABTest,
@@ -534,11 +537,13 @@ describe('publishProactiveJob', () => {
     // Product URL
     mocks.prisma.productPerformance.findFirst.mockResolvedValueOnce({
       productUrl: 'https://shop.com/serum-x',
+      productHandle: 'serum-x',
     });
-    // createAdFromVariant for each variant
-    mocks.createAdFromVariant
-      .mockResolvedValueOnce({ success: true, metaResponse: { adId: 'ad_1' } })
-      .mockResolvedValueOnce({ success: true, metaResponse: { adId: 'ad_2' } });
+    // Advantage+ Creative (1 ad with all variants)
+    mocks.createAdvantagePlusAd.mockResolvedValueOnce({
+      success: true,
+      metaResponse: { adId: 'ad_advantage_1' },
+    });
     mocks.prisma.metaAd.create.mockResolvedValue({});
     mocks.prisma.proactiveAdJob.update.mockResolvedValueOnce({});
 
@@ -552,11 +557,12 @@ describe('publishProactiveJob', () => {
       'Serum X',
       2500, // $25 -> 2500 cents
     );
-    expect(mocks.createAdFromVariant).toHaveBeenCalledTimes(2);
-    expect(mocks.prisma.metaAd.create).toHaveBeenCalledTimes(2);
+    // Advantage+ creates 1 ad (not 2 separate ones)
+    expect(mocks.createAdvantagePlusAd).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.metaAd.create).toHaveBeenCalledTimes(1);
     const finalUpdate = mocks.prisma.proactiveAdJob.update.mock.calls[0]![0];
     expect(finalUpdate.data.status).toBe('PUBLISHED');
-    expect(finalUpdate.data.metaAdIds).toEqual(['ad_1', 'ad_2']);
+    expect(finalUpdate.data.metaAdIds).toEqual(['ad_advantage_1']);
   });
 
   it('returns error when no active campaign found', async () => {
@@ -671,11 +677,21 @@ describe('publishProactiveJob', () => {
       metaResponse: { id: 'adset_1' },
     });
     mocks.prisma.metaAdSet.create.mockResolvedValueOnce({ id: 'as_db1' });
-    mocks.prisma.productPerformance.findFirst.mockResolvedValueOnce(null);
+    mocks.prisma.productPerformance.findFirst.mockResolvedValueOnce({
+      productUrl: 'https://shop.com/products/widget',
+      productHandle: 'widget',
+    });
+    // Advantage+ fails
+    mocks.createAdvantagePlusAd.mockResolvedValueOnce({
+      success: false,
+      error: 'Creative rejected',
+    });
+    // Fallback individual ads also fail
     mocks.createAdFromVariant.mockResolvedValueOnce({
       success: false,
       error: 'Creative rejected',
     });
+    // Update for FAILED status
     mocks.prisma.proactiveAdJob.update.mockResolvedValueOnce({});
 
     const result = await publishProactiveJob('job_1');

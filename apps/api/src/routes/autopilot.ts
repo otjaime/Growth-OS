@@ -3191,7 +3191,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     }
 
     // 5. Detect targeting from MetaAdAccount currency + fetch Facebook Page ID
-    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchEligiblePageId, getMinAdSetBudget, uploadImageToMeta, appendUtmParams } =
+    const { createMetaCampaign, createProactiveAdSet, createAdFromVariant, createAdvantagePlusAd, CURRENCY_COUNTRY_MAP, toSmallestUnit, fetchEligiblePageId, getMinAdSetBudget, uploadImageToMeta, appendUtmParams } =
       await import('../lib/meta-executor.js');
 
     const adAccount = await prisma.metaAdAccount.findFirst({
@@ -3201,7 +3201,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const currency = adAccount?.currency ?? 'USD';
     const countryCode = CURRENCY_COUNTRY_MAP[currency] ?? 'US';
-    const targeting = { countries: [countryCode], ageMin: 18, ageMax: 65, advantagePlus: true };
+
+    // Resolve shipping zones from Shopify for precise geo targeting.
+    // Falls back to country-level if zones can't be fetched (e.g., scope not granted).
+    const { resolveShippingZoneTargeting } = await import('../lib/shipping-zone-resolver.js');
+    const shippingGeo = await resolveShippingZoneTargeting(orgId);
+
+    const targeting = shippingGeo?.regions?.length
+      ? {
+          countries: shippingGeo.countries,
+          regions: shippingGeo.regions,
+          ageMin: 18,
+          ageMax: 65,
+          advantagePlus: true as const,
+        }
+      : { countries: [countryCode], ageMin: 18, ageMax: 65, advantagePlus: true as const };
 
     // 5b. Validate budget meets Meta's minimum per ad set
     const totalBudgetUnits = toSmallestUnit(dailyBudget, currency);
@@ -3221,6 +3235,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
       minPerAdSet,
       Math.round(totalBudgetUnits / productsToActivate.length),
     );
+
+    // Warn if budget limits the number of products that can be advertised
+    const budgetWarnings: string[] = [];
+    if (maxAdSets < productTitles.length) {
+      budgetWarnings.push(
+        `Budget supports ${maxAdSets} of ${productTitles.length} products. Increase daily budget to advertise all products.`,
+      );
+    }
 
     // Fetch a Facebook Page eligible for advertising on this ad account.
     // Uses promote_pages first (only pages that can run ads), then falls back
@@ -3307,7 +3329,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     const createdAdSetIds: string[] = [];
     const createdAdIds: string[] = [];
-    const warnings: string[] = [];  // Non-fatal issues (missing images, etc.)
+    const warnings: string[] = [...budgetWarnings];  // Non-fatal issues (budget limits, missing images, etc.)
     const errors: string[] = [];    // Fatal ad creation errors
 
     for (const productTitle of productsToActivate) {
@@ -3323,6 +3345,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
           repeatBuyerPct: true,
           adFitnessScore: true,
           productUrl: true,
+          productHandle: true,
           imageUrl: true,
           shopifyProductId: true,
           tags: true,
@@ -3385,13 +3408,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
           imageHash = imgResult.imageHash;
           request.log.info({ productTitle, imageHash }, 'Product image uploaded successfully');
         } else {
-          // Non-fatal — ad will be created without image (uses page profile pic)
-          warnings.push(`Image upload for "${productTitle}": ${imgResult.error ?? 'unknown error'}`);
           request.log.warn({ productTitle, error: imgResult.error }, 'Product image upload failed');
         }
       } else {
-        request.log.warn({ productTitle }, 'No product image URL available — ad will use page profile picture');
-        warnings.push(`No image URL for "${productTitle}" — ad uses page profile pic`);
+        request.log.warn({ productTitle }, 'No product image URL available');
+      }
+
+      // Product image is REQUIRED — ads without images show the page profile pic (e.g., logo)
+      // which looks amateur and has much worse CTR. Skip this product instead.
+      if (!imageHash) {
+        errors.push(`Skipping "${productTitle}": no product image available. Upload images in Shopify.`);
+        continue;
       }
 
       // Create ad set for this product
@@ -3440,72 +3467,116 @@ export async function autopilotRoutes(app: FastifyInstance) {
       }
 
       // Build product link URL with fallback chain:
-      // 1. Product's own URL (from Shopify data)
-      // 2. Store URL + Shopify product ID path
-      // 3. Store base URL (homepage)
+      // 1. Product's own URL (from Shopify onlineStoreUrl)
+      // 2. Store URL + /products/{handle} (from Shopify product handle)
+      // 3. Store base URL (homepage — last resort)
+      // 4. Skip product entirely if no URL at all
       let productLinkUrl: string | undefined = product?.productUrl ?? undefined;
+      if (!productLinkUrl && storeBaseUrl && product?.productHandle) {
+        productLinkUrl = `${storeBaseUrl}/products/${product.productHandle}`;
+      }
       if (!productLinkUrl && storeBaseUrl) {
-        if (product?.shopifyProductId) {
-          // Shopify product URLs follow: /products/{handle} but we only have the ID
-          // Use the collections/all/products path which works with product IDs too
-          productLinkUrl = `${storeBaseUrl}/products`;
-        } else {
-          // Last resort: store homepage
-          productLinkUrl = storeBaseUrl;
-        }
+        productLinkUrl = storeBaseUrl;
+      }
+      if (!productLinkUrl) {
+        errors.push(`Skipping "${productTitle}": no product URL available. Ensure products have URLs in Shopify.`);
+        continue;
       }
 
       // Slugified campaign name for UTM tracking
       const utmCampaign = strategy.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-      // Create ads from copy variants
-      for (const variant of copyVariants) {
-        // Append UTM params for proper GA4/Shopify attribution
-        const linkWithUtm = productLinkUrl
-          ? appendUtmParams(productLinkUrl, {
-              source: 'meta',
-              medium: 'paid_social',
-              campaign: utmCampaign,
-              content: variant.angle,
-            })
-          : undefined;
+      // Append UTM params for proper GA4/Shopify attribution
+      const linkWithUtm = appendUtmParams(productLinkUrl, {
+        source: 'meta',
+        medium: 'paid_social',
+        campaign: utmCampaign,
+      });
 
-        const adResult = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
-          name: `${productTitle} — ${variant.angle}`,
-          headline: variant.headline,
-          primaryText: variant.primaryText,
-          description: variant.description ?? undefined,
-          linkUrl: linkWithUtm,
-          pageId: facebookPageId,
-          imageHash,
-        });
+      // Create a single Advantage+ Creative ad with all copy variants.
+      // Meta's ML tests all headline × text × description combinations automatically,
+      // which outperforms creating separate ads per variant.
+      const adResult = await createAdvantagePlusAd(accessToken, adAccountId, metaAdSetId, {
+        name: productTitle,
+        headlines: copyVariants.map(v => v.headline),
+        primaryTexts: copyVariants.map(v => v.primaryText),
+        descriptions: copyVariants.map(v => v.description).filter((d): d is string => !!d),
+        imageHashes: imageHash ? [imageHash] : [],
+        linkUrl: linkWithUtm,
+        pageId: facebookPageId,
+      });
 
-        if (adResult.success) {
-          const adId = String(
-            (adResult.metaResponse as Record<string, unknown>)?.adId ?? '',
-          );
-          if (adId) {
-            createdAdIds.push(adId);
+      if (adResult.success) {
+        const adId = String(
+          (adResult.metaResponse as Record<string, unknown>)?.adId ?? '',
+        );
+        if (adId) {
+          createdAdIds.push(adId);
 
-            // Create tracking row for ad
-            try {
-              await prisma.metaAd.create({
-                data: {
-                  adId,
-                  name: `${productTitle} — ${variant.angle}`,
-                  status: 'PAUSED',
-                  organizationId: orgId,
-                  adSetId: adSetDbId ?? '',
-                  campaignId: campaignDbId ?? '',
-                  accountId: adAccount?.id ?? '',
-                },
-              });
-            } catch {
-              // Non-fatal
-            }
+          // Create tracking row for ad
+          try {
+            await prisma.metaAd.create({
+              data: {
+                adId,
+                name: `${productTitle} — Advantage+ Creative`,
+                status: 'PAUSED',
+                organizationId: orgId,
+                adSetId: adSetDbId ?? '',
+                campaignId: campaignDbId ?? '',
+                accountId: adAccount?.id ?? '',
+              },
+            });
+          } catch {
+            // Non-fatal
           }
-        } else {
-          errors.push(`Ad "${productTitle}/${variant.angle}": ${adResult.error}`);
+        }
+      } else {
+        // Fallback: if Advantage+ fails, try individual ads per variant
+        request.log.warn({ productTitle, error: adResult.error }, 'Advantage+ creative failed, falling back to individual ads');
+
+        for (const variant of copyVariants) {
+          const variantLink = appendUtmParams(productLinkUrl, {
+            source: 'meta',
+            medium: 'paid_social',
+            campaign: utmCampaign,
+            content: variant.angle,
+          });
+
+          const fallbackResult = await createAdFromVariant(accessToken, adAccountId, metaAdSetId, {
+            name: `${productTitle} — ${variant.angle}`,
+            headline: variant.headline,
+            primaryText: variant.primaryText,
+            description: variant.description ?? undefined,
+            linkUrl: variantLink,
+            pageId: facebookPageId,
+            imageHash,
+          });
+
+          if (fallbackResult.success) {
+            const fallbackAdId = String(
+              (fallbackResult.metaResponse as Record<string, unknown>)?.adId ?? '',
+            );
+            if (fallbackAdId) {
+              createdAdIds.push(fallbackAdId);
+              try {
+                await prisma.metaAd.create({
+                  data: {
+                    adId: fallbackAdId,
+                    name: `${productTitle} — ${variant.angle}`,
+                    status: 'PAUSED',
+                    organizationId: orgId,
+                    adSetId: adSetDbId ?? '',
+                    campaignId: campaignDbId ?? '',
+                    accountId: adAccount?.id ?? '',
+                  },
+                });
+              } catch {
+                // Non-fatal
+              }
+            }
+          } else {
+            errors.push(`Ad "${productTitle}/${variant.angle}": ${fallbackResult.error}`);
+          }
         }
       }
     }
