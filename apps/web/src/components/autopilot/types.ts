@@ -15,7 +15,7 @@ export type DiagnosisAction =
   | 'DUPLICATE_AD_SET'
   | 'NONE';
 
-export type AutopilotTab = 'overview' | 'actions' | 'ads' | 'products' | 'campaigns';
+export type AutopilotTab = 'overview' | 'actions' | 'ads' | 'products' | 'campaigns' | 'psychology';
 
 // ── Proactive product types ─────────────────────────────────
 
@@ -428,4 +428,103 @@ export interface WeeklyAnalysis {
     worstType: string | null;
   };
   recommendations: string[];
+}
+
+// ── Psychology Layer types ───────────────────────────────────
+
+export type AwarenessLevel = 'UNAWARE' | 'PAIN_AWARE' | 'SOLUTION_AWARE' | 'PRODUCT_AWARE' | 'MOST_AWARE';
+export type EmotionalState = 'FRUSTRATED' | 'HOPEFUL' | 'SKEPTICAL' | 'CURIOUS' | 'PROUD' | 'ANXIOUS' | 'BORED' | 'ASPIRATIONAL';
+export type PsychTrigger =
+  | 'LOSS_AVERSION' | 'SOCIAL_PROOF_SPECIFICITY' | 'SOCIAL_PROOF_AUTHORITY'
+  | 'IDENTITY_TRIBAL' | 'IDENTITY_ASPIRATIONAL' | 'COGNITIVE_EASE'
+  | 'CURIOSITY_GAP' | 'ENDOWMENT_EFFECT' | 'REACTANCE'
+  | 'RECIPROCITY' | 'CONTRAST_EFFECT' | 'PEAK_END_RULE'
+  | 'SCARCITY' | 'COMMITMENT_CONSISTENCY';
+export type FunnelStage = 'TOFU' | 'MOFU' | 'BOFU' | 'RETENTION';
+export type TriggerConfidence = 'LOW' | 'MEDIUM' | 'HIGH';
+export type HypothesisOutcome = 'WIN' | 'LOSS' | 'INCONCLUSIVE';
+export type PsychDiagnosticCode =
+  | 'audience_mismatch' | 'creative_execution' | 'awareness_trigger_mismatch'
+  | 'promise_mismatch' | 'commitment_friction' | 'frequency_fatigue'
+  | 'healthy' | 'insufficient_data';
+
+export interface PostMortemData {
+  wasAwarenessCorrect: boolean;
+  didTriggerActivate: boolean;
+  whyWorkedOrFailed: string;
+  verticalLearning: string;
+}
+
+export interface PsychHypothesisRecord {
+  id: string;
+  awarenessLevel: AwarenessLevel;
+  awarenessEvidence: string;
+  emotionalState: EmotionalState;
+  primaryObjection: string;
+  minimumViableShift: string;
+  primaryTrigger: PsychTrigger;
+  secondaryTrigger: PsychTrigger | null;
+  triggerRationale: string | null;
+  vertical: string;
+  funnelStage: FunnelStage;
+  falsificationMetric: string;
+  falsificationTarget: number;
+  falsificationWindow: number;
+  outcome: HypothesisOutcome | null;
+  postMortem: PostMortemData | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TriggerPerformanceRecord {
+  id: string;
+  trigger: PsychTrigger;
+  vertical: string;
+  awarenessLevel: AwarenessLevel;
+  funnelStage: FunnelStage;
+  sampleSize: number;
+  winRate: number;
+  avgRoasDelta: number;
+  avgCtrDelta: number;
+  confidenceLevel: TriggerConfidence;
+  commonFailurePattern: string | null;
+  bestImplementationPattern: string | null;
+  updatedAt: string;
+}
+
+export interface AuditCheckItem {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface PsychologyAudit {
+  items: AuditCheckItem[];
+  overallPass: boolean;
+  passCount: number;
+  totalCount: number;
+}
+
+export interface DiagnoseStateResponse {
+  diagnosis: {
+    awarenessLevel: AwarenessLevel;
+    awarenessEvidence: string;
+    emotionalState: EmotionalState;
+    primaryObjection: string;
+    minimumViableShift: string;
+    source: string;
+  };
+  hypothesis: {
+    primaryTrigger: PsychTrigger;
+    secondaryTrigger?: PsychTrigger;
+    triggerRationale: string;
+    triggerSource: string;
+    falsificationMetric: string;
+    falsificationTarget: number;
+    falsificationWindow: number;
+    hypothesisText: string;
+  };
+  hypothesisId: string;
 }

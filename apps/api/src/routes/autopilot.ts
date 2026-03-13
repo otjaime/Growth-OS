@@ -4252,4 +4252,69 @@ export async function autopilotRoutes(app: FastifyInstance) {
       return { error: { code: 'INTERNAL_ERROR', message: 'Failed to close hypothesis' } };
     }
   });
+
+  // ── GET /autopilot/psychology/hypotheses ───────────────────
+  app.get('/autopilot/psychology/hypotheses', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'List psychology hypotheses',
+      description: 'Returns all PsychHypothesis records for the org, filterable by outcome.',
+    },
+  }, async (request, reply) => {
+    try {
+      const organizationId = await resolveOrgId(request);
+      const query = request.query as {
+        outcome?: string;
+        limit?: string;
+      };
+
+      const limit = Math.min(Number(query.limit) || 50, 200);
+
+      // outcome=OPEN means no outcome recorded yet (null)
+      const outcomeFilter = query.outcome === 'OPEN'
+        ? { outcome: null }
+        : query.outcome && ['WIN', 'LOSS', 'INCONCLUSIVE'].includes(query.outcome)
+          ? { outcome: query.outcome }
+          : {};
+
+      const [hypotheses, total] = await Promise.all([
+        prisma.psychHypothesis.findMany({
+          where: { organizationId, ...outcomeFilter },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+        }),
+        prisma.psychHypothesis.count({
+          where: { organizationId, ...outcomeFilter },
+        }),
+      ]);
+
+      const formatted = hypotheses.map((h) => ({
+        id: h.id,
+        awarenessLevel: h.awarenessLevel,
+        awarenessEvidence: h.awarenessEvidence,
+        emotionalState: h.emotionalState,
+        primaryObjection: h.primaryObjection,
+        minimumViableShift: h.minimumViableShift,
+        primaryTrigger: h.primaryTrigger,
+        secondaryTrigger: h.secondaryTrigger,
+        triggerRationale: h.triggerRationale,
+        vertical: h.vertical,
+        funnelStage: h.funnelStage,
+        falsificationMetric: h.falsificationMetric,
+        falsificationTarget: Number(h.falsificationTarget),
+        falsificationWindow: h.falsificationWindow,
+        outcome: h.outcome,
+        postMortem: h.postMortem,
+        closedAt: h.closedAt,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt,
+      }));
+
+      return { hypotheses: formatted, total };
+    } catch (err) {
+      request.log.error(err, 'Psychology list hypotheses failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to list hypotheses' } };
+    }
+  });
 }
