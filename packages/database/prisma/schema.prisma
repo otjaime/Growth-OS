@@ -72,6 +72,8 @@ model Organization {
   productPerformance   ProductPerformance[]
   proactiveAdJobs      ProactiveAdJob[]
   campaignStrategies   CampaignStrategy[]
+  psychHypotheses      PsychHypothesis[]
+  triggerPerformance   TriggerPerformanceRecord[]
   @@map("organizations")
 }
 
@@ -557,7 +559,8 @@ model Experiment {
   organizationId String?       @map("organization_id")
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  metrics ExperimentMetric[]
+  metrics          ExperimentMetric[]
+  psychHypothesis  PsychHypothesis?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -961,6 +964,8 @@ model AdVariant {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
+  psychHypothesis PsychHypothesis?
+
   @@index([diagnosisId])
   @@index([adId])
   @@index([status])
@@ -1216,6 +1221,8 @@ model ProactiveAdJob {
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
 
+  psychHypothesis PsychHypothesis?
+
   @@index([organizationId])
   @@index([status])
   @@map("proactive_ad_jobs")
@@ -1287,4 +1294,140 @@ model CampaignStrategy {
   @@index([organizationId])
   @@index([status])
   @@map("campaign_strategies")
+}
+
+// ══════════════════════════════════════════════════════════════
+// PSYCHOLOGY LAYER — Audience state, triggers, hypotheses
+// ══════════════════════════════════════════════════════════════
+
+enum AwarenessLevel {
+  UNAWARE
+  PAIN_AWARE
+  SOLUTION_AWARE
+  PRODUCT_AWARE
+  MOST_AWARE
+}
+
+enum PsychTrigger {
+  LOSS_AVERSION
+  SOCIAL_PROOF_SPECIFICITY
+  SOCIAL_PROOF_AUTHORITY
+  IDENTITY_TRIBAL
+  IDENTITY_ASPIRATIONAL
+  COGNITIVE_EASE
+  CURIOSITY_GAP
+  ENDOWMENT_EFFECT
+  REACTANCE
+  RECIPROCITY
+  CONTRAST_EFFECT
+  PEAK_END_RULE
+  SCARCITY
+  COMMITMENT_CONSISTENCY
+}
+
+enum EmotionalState {
+  FRUSTRATED
+  HOPEFUL
+  SKEPTICAL
+  CURIOUS
+  PROUD
+  ANXIOUS
+  BORED
+  ASPIRATIONAL
+}
+
+enum FunnelStage {
+  TOFU
+  MOFU
+  BOFU
+  RETENTION
+}
+
+enum TriggerConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ── Structured Hypothesis (State Diagnosis Protocol) ──
+
+model PsychHypothesis {
+  id                  String          @id @default(cuid())
+  organizationId      String          @map("organization_id")
+  organization        Organization    @relation(fields: [organizationId], references: [id])
+
+  // State Diagnosis Protocol
+  awarenessLevel      AwarenessLevel  @map("awareness_level")
+  awarenessEvidence   String          @map("awareness_evidence") @db.Text
+  emotionalState      EmotionalState  @map("emotional_state")
+  primaryObjection    String          @map("primary_objection") @db.Text
+  minimumViableShift  String          @map("minimum_viable_shift") @db.Text
+
+  // Trigger selection
+  primaryTrigger      PsychTrigger    @map("primary_trigger")
+  secondaryTrigger    PsychTrigger?   @map("secondary_trigger")
+  triggerRationale    String?         @map("trigger_rationale") @db.Text
+
+  // Vertical / audience context
+  vertical            String          // product type or category (e.g. "premium_food", "restaurant_tech")
+  funnelStage         FunnelStage     @map("funnel_stage")
+
+  // Falsification conditions
+  falsificationMetric  String         @map("falsification_metric")  // e.g. "ctr", "roas", "cvr"
+  falsificationTarget  Decimal        @map("falsification_target") @db.Decimal(8, 4) // threshold
+  falsificationWindow  Int            @map("falsification_window") // days
+
+  // Outcome (filled when hypothesis closes)
+  outcome             String?         // 'WIN' | 'LOSS' | 'INCONCLUSIVE'
+  postMortem          Json?           @map("post_mortem")
+  closedAt            DateTime?       @map("closed_at")
+
+  // Optional FK references — attached to one of these
+  adVariantId         String?         @unique @map("ad_variant_id")
+  adVariant           AdVariant?      @relation(fields: [adVariantId], references: [id])
+  proactiveAdJobId    String?         @unique @map("proactive_ad_job_id")
+  proactiveAdJob      ProactiveAdJob? @relation(fields: [proactiveAdJobId], references: [id])
+  experimentId        String?         @unique @map("experiment_id")
+  experiment          Experiment?     @relation(fields: [experimentId], references: [id])
+
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([primaryTrigger])
+  @@index([outcome])
+  @@map("psych_hypotheses")
+}
+
+// ── Trigger Performance Records (empirical calibration) ──
+
+model TriggerPerformanceRecord {
+  id                        String            @id @default(cuid())
+  organizationId            String            @map("organization_id")
+  organization              Organization      @relation(fields: [organizationId], references: [id])
+
+  trigger                   PsychTrigger
+  vertical                  String            // product type / category
+  awarenessLevel            AwarenessLevel    @map("awareness_level")
+  funnelStage               FunnelStage       @map("funnel_stage")
+
+  // Accumulated stats
+  sampleSize                Int               @default(0) @map("sample_size")
+  winRate                   Decimal           @default(0) @db.Decimal(5, 4) @map("win_rate")
+  avgRoasDelta              Decimal           @default(0) @db.Decimal(8, 4) @map("avg_roas_delta")
+  avgCtrDelta               Decimal           @default(0) @db.Decimal(8, 4) @map("avg_ctr_delta")
+
+  // Qualitative patterns (updated on hypothesis close)
+  commonFailurePattern      String?           @map("common_failure_pattern") @db.Text
+  bestImplementationPattern String?           @map("best_implementation_pattern") @db.Text
+
+  // Confidence based on sample size: <10 LOW, 10-29 MEDIUM, >=30 HIGH
+  confidenceLevel           TriggerConfidence @default(LOW) @map("confidence_level")
+
+  createdAt                 DateTime          @default(now()) @map("created_at")
+  updatedAt                 DateTime          @updatedAt @map("updated_at")
+
+  @@unique([organizationId, trigger, vertical, awarenessLevel, funnelStage])
+  @@index([organizationId])
+  @@map("trigger_performance_records")
 }
