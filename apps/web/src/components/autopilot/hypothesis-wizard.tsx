@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ArrowLeft, ArrowRight, Brain, Check, Loader2,
   AlertTriangle, Sparkles, Target, ClipboardCheck, FlaskConical,
@@ -14,8 +14,12 @@ import type {
   FunnelStage,
   PsychologyAudit,
   DiagnoseStateResponse,
+  ProductPerformanceRow,
 } from './types';
 import { AWARENESS_LABELS, EMOTION_LABELS, TRIGGER_LABELS, FUNNEL_LABELS } from './psychology-labels';
+import { ProductCombobox } from './product-combobox';
+import { AudienceSelector } from './audience-selector';
+import { ProductStatsCard } from './product-stats-card';
 
 interface HypothesisWizardProps {
   onComplete: (hypothesisId: string) => void;
@@ -35,10 +39,22 @@ const STEP_META: { label: string; icon: typeof Brain }[] = [
 const FUNNEL_OPTIONS: FunnelStage[] = ['TOFU', 'MOFU', 'BOFU', 'RETENTION'];
 const METRIC_OPTIONS = ['ctr', 'roas', 'cvr', 'cpc', 'frequency'] as const;
 
+interface SegmentData {
+  segment: string;
+  count: number;
+  totalRevenue: number;
+}
+
 export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps): JSX.Element {
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-populate data
+  const [products, setProducts] = useState<ProductPerformanceRow[]>([]);
+  const [segments, setSegments] = useState<SegmentData[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductPerformanceRow | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Step 1: Form inputs
   const [productTitle, setProductTitle] = useState('');
@@ -49,6 +65,47 @@ export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps
   const [metric, setMetric] = useState('ctr');
   const [targetLift, setTargetLift] = useState(15);
   const [windowDays, setWindowDays] = useState(14);
+
+  // Fetch products + segments on mount
+  useEffect(() => {
+    async function loadData(): Promise<void> {
+      setDataLoading(true);
+      try {
+        const [prodRes, segRes] = await Promise.all([
+          apiFetch('/api/metrics/products?limit=50&sortBy=adFitness'),
+          apiFetch('/api/metrics/segments'),
+        ]);
+        if (prodRes.ok) {
+          const data = await prodRes.json();
+          setProducts(data.products ?? []);
+        }
+        if (segRes.ok) {
+          const data = await segRes.json();
+          setSegments(data.segments ?? []);
+        }
+      } catch {
+        // Silently fall back to manual entry
+      } finally {
+        setDataLoading(false);
+      }
+    }
+    void loadData();
+  }, []);
+
+  function handleProductSelect(product: ProductPerformanceRow | null, manualTitle?: string): void {
+    if (product) {
+      setSelectedProduct(product);
+      setProductTitle(product.productTitle);
+      setProductType(product.productType);
+      // Derive vertical from collections (first one) or fallback to productType
+      const collections = product.collections as string[] | null;
+      const derivedVertical = collections?.[0] ?? product.productType;
+      setVertical(derivedVertical);
+    } else {
+      setSelectedProduct(null);
+      setProductTitle(manualTitle ?? '');
+    }
+  }
 
   // Steps 2-3: Diagnosis result
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnoseStateResponse | null>(null);
@@ -197,12 +254,11 @@ export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps
                   <label className="text-caption text-[var(--foreground-secondary)] mb-1 block">
                     Product Title <span className="text-apple-red">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <ProductCombobox
+                    products={products}
                     value={productTitle}
-                    onChange={(e) => setProductTitle(e.target.value)}
-                    placeholder="e.g. Premium Dog Food 5kg"
-                    className="w-full px-3 py-2 rounded-lg bg-glass-hover text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)] border border-white/5 focus:border-apple-blue/50 focus:outline-none transition-colors"
+                    onChange={handleProductSelect}
+                    loading={dataLoading}
                   />
                 </div>
                 <div>
@@ -213,7 +269,7 @@ export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps
                     type="text"
                     value={productType}
                     onChange={(e) => setProductType(e.target.value)}
-                    placeholder="e.g. premium_food"
+                    placeholder={selectedProduct ? '' : 'e.g. premium_food'}
                     className="w-full px-3 py-2 rounded-lg bg-glass-hover text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)] border border-white/5 focus:border-apple-blue/50 focus:outline-none transition-colors"
                   />
                 </div>
@@ -225,7 +281,7 @@ export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps
                     type="text"
                     value={vertical}
                     onChange={(e) => setVertical(e.target.value)}
-                    placeholder="e.g. pet_nutrition"
+                    placeholder={selectedProduct ? '' : 'e.g. pet_nutrition'}
                     className="w-full px-3 py-2 rounded-lg bg-glass-hover text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)] border border-white/5 focus:border-apple-blue/50 focus:outline-none transition-colors"
                   />
                 </div>
@@ -233,15 +289,19 @@ export function HypothesisWizard({ onComplete, onCancel }: HypothesisWizardProps
                   <label className="text-caption text-[var(--foreground-secondary)] mb-1 block">
                     Target Audience <span className="text-apple-red">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <AudienceSelector
                     value={targetAudience}
-                    onChange={(e) => setTargetAudience(e.target.value)}
-                    placeholder="e.g. Health-conscious dog owners 25-45"
-                    className="w-full px-3 py-2 rounded-lg bg-glass-hover text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)] border border-white/5 focus:border-apple-blue/50 focus:outline-none transition-colors"
+                    onChange={setTargetAudience}
+                    segments={segments}
+                    loading={dataLoading}
                   />
                 </div>
               </div>
+
+              {/* Product stats card (shown when a product is selected) */}
+              <AnimatePresence>
+                {selectedProduct && <ProductStatsCard product={selectedProduct} />}
+              </AnimatePresence>
 
               {/* Optional fields */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
