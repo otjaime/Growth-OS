@@ -6,9 +6,9 @@
 
 ## Project Overview
 
-Growth OS is a **unified analytics platform for DTC/ecommerce growth teams**. It ingests data from 7 sources (Shopify, Meta Ads, Google Ads, GA4, TikTok Ads, Klaviyo, Stripe), transforms it through a 3-step ETL pipeline into a star schema, and serves an executive dashboard with automated alerts, Weekly Business Reviews, AI-powered suggestions, RFM customer segmentation, seasonal forecasting, and an experimentation system.
+Growth OS is a **unified analytics platform for DTC/ecommerce growth teams**. It ingests data from 7 sources (Shopify, Meta Ads, Google Ads, GA4, TikTok Ads, Klaviyo, Stripe), transforms it through a 3-step ETL pipeline into a star schema, and serves an executive dashboard with automated alerts, Weekly Business Reviews, AI-powered suggestions, RFM customer segmentation, seasonal forecasting, an experimentation system, and a **Meta Ads Autopilot** with AI-driven ad diagnosis, copy generation, and automated budget optimization.
 
-**Business Domain**: Ecommerce analytics, marketing attribution, unit economics, cohort analysis, funnel optimization, growth experimentation.
+**Business Domain**: Ecommerce analytics, marketing attribution, unit economics, cohort analysis, funnel optimization, growth experimentation, automated ad management.
 
 **Users**: Growth leads, marketing managers, ecommerce directors who need a single source of truth for cross-channel performance.
 
@@ -27,6 +27,9 @@ Growth OS is a **unified analytics platform for DTC/ecommerce growth teams**. It
             │              packages/etl                                                  │
             │  connectors/ → pipeline/ (Raw→Staging→Marts) → kpis.ts                   │
             │  signals.ts → opportunities.ts → forecast.ts → segmentation.ts            │
+            │  diagnosis-rules.ts → budget-optimizer.ts → campaign-health.ts            │
+            │  anomaly-detection.ts → creative-decay.ts → growth-model.ts               │
+            │  proactive-rules.ts → campaign-suggestions.ts → seasonal-calendar.ts      │
             └──────────────────────────┬────────────────────────────────────────────────┘
                                        │
                               ┌────────▼────────┐
@@ -38,9 +41,9 @@ Growth OS is a **unified analytics platform for DTC/ecommerce growth teams**. It
                     │                  │                      │
              ┌──────▼──────┐   ┌──────▼──────┐       ┌──────▼──────┐
              │  apps/api   │   │  Scheduler   │       │  apps/web   │
-             │  Fastify    │   │  (periodic)  │       │  Next.js 14 │
-             │  REST API   │   │              │       │  Dashboard  │
-             │  port 4000  │   │              │       │  port 3000  │
+             │  Fastify    │   │  Jobs (BG)   │       │  Next.js 14 │
+             │  REST API   │   │  Autopilot   │       │  Dashboard  │
+             │  port 4000  │   │  Monitor     │       │  port 3000  │
              └─────────────┘   └──────────────┘       └─────────────┘
 ```
 
@@ -48,6 +51,23 @@ Growth OS is a **unified analytics platform for DTC/ecommerce growth teams**. It
 1. **Raw** — Unmodified API responses stored as-is (`raw_events` table)
 2. **Staging** — Cleaned, normalized, deduplicated (`stg_orders`, `stg_customers`, `stg_spend`, `stg_traffic`, `stg_email`)
 3. **Marts** — Star schema dimensional model (`fact_orders`, `fact_spend`, `fact_traffic`, `fact_email` + `dim_*` + `cohorts`)
+
+---
+
+## Multi-Tenancy
+
+The platform supports multi-tenancy via `Organization` and `User` models:
+
+- **Organization**: Top-level tenant with plan (FREE/STARTER/GROWTH/SCALE), Stripe billing, optional Clerk integration
+- **User**: Belongs to an Organization with role (OWNER/MEMBER)
+- **Scoping**: All data tables have optional `organizationId` FK; queries use `orgWhere(request)` helper
+- **Clerk Auth**: Optional integration via `CLERK_SECRET_KEY` env var; webhooks sync users/orgs
+- **Bearer Auth**: Fallback auth via `AUTH_SECRET` env var when Clerk is not configured
+- **Tenant helpers** (`apps/api/src/lib/tenant.ts`):
+  - `orgWhere(request)` — Prisma `where` fragment for org scoping
+  - `orgData(request)` — Prisma `data` fragment for org-scoped creates
+  - `orgSqlParam(request, nextIndex)` — Raw SQL fragment for org scoping
+  - `getOrgId(request)` — Extract organization ID from request
 
 ---
 
@@ -59,26 +79,50 @@ growth-os/
 │   ├── api/                    # Fastify REST API (see apps/api/CLAUDE.md)
 │   │   └── src/
 │   │       ├── routes/         # health, metrics, alerts, wbr, connections, jobs,
-│   │       │                   # experiments, suggestions, settings, ask, pipeline
-│   │       ├── lib/            # ai.ts, suggestions.ts, gather-metrics.ts, slack.ts, auth.ts, crypto.ts
+│   │       │                   # experiments, suggestions, settings, ask, pipeline,
+│   │       │                   # autopilot, billing, growth-model, clerk-webhooks
+│   │       ├── lib/            # ai.ts, suggestions.ts, gather-metrics.ts, slack.ts, auth.ts,
+│   │       │                   # tenant.ts, stripe.ts, clerk.ts, plan-guard.ts,
+│   │       │                   # autopilot-analyzer.ts, copy-generator.ts, meta-executor.ts,
+│   │       │                   # rule-tuner.ts, campaign-reporter.ts, ab-stats.ts,
+│   │       │                   # proactive-ab-engine.ts, product-copy-generator.ts,
+│   │       │                   # ad-image-manager.ts, build-connector-configs.ts,
+│   │       │                   # run-connector-sync.ts, shipping-zone-resolver.ts,
+│   │       │                   # google-oauth-config.ts
+│   │       ├── jobs/           # sync-meta-ads.ts, run-diagnosis.ts, execute-action.ts,
+│   │       │                   # rollback-action.ts, enrich-diagnosis.ts,
+│   │       │                   # campaign-monitor.ts, campaign-optimizer.ts,
+│   │       │                   # forecast-aware-budget.ts, circuit-breaker.ts,
+│   │       │                   # auto-execute.ts, proactive-ad-pipeline.ts,
+│   │       │                   # weekly-marketing-analysis.ts
 │   │       ├── scheduler.ts    # Periodic sync + daily marts
 │   │       └── index.ts        # Server entry + plugin registration
 │   ├── web/                    # Next.js 14 dashboard (see apps/web/CLAUDE.md)
 │   │   └── src/
-│   │       ├── app/            # App Router (16 pages)
-│   │       ├── components/     # Sidebar, KpiCard, Sparkline, DateRangePicker, connection components
+│   │       ├── app/
+│   │       │   ├── (dashboard)/ # App Router (17 dashboard pages)
+│   │       │   └── (marketing)/ # Landing page + setup wizard
+│   │       ├── components/     # Sidebar, KpiCard, Sparkline, DateRangePicker,
+│   │       │   │               # connection components, auth-gate, skeleton, tooltip
+│   │       │   ├── autopilot/  # 35+ components for Meta Ads Autopilot UI
+│   │       │   ├── connections/ # ConnectorCatalog, ConnectionCard, SetupWizard, CSVUpload
+│   │       │   ├── experiments/ # A/B results, kanban board, scorecard, search, modals
+│   │       │   └── ui/         # Animated list, counter ticker, glass surface, dock, etc.
 │   │       ├── contexts/       # FilterProvider (global channel filter)
-│   │       └── lib/            # api.ts (fetch wrapper + auth), format.ts (formatters), export.ts (CSV)
+│   │       └── lib/            # api.ts (fetch wrapper + auth), format.ts, export.ts (CSV)
 │   └── e2e/                    # Playwright E2E tests
 ├── packages/
 │   ├── database/               # Prisma schema, client, seed, crypto, mode (see packages/database/CLAUDE.md)
 │   │   ├── src/                # index.ts, client.ts, crypto.ts, mode.ts
 │   │   └── prisma/
-│   │       ├── schema.prisma   # 22 models, 6 enums
-│   │       └── seed.ts         # Seeds dim_channel (8) + dim_date (730 days)
+│   │       ├── schema.prisma   # 38+ models, 16+ enums
+│   │       └── seed.ts         # Seeds dim_channel (7) + dim_date (730 days)
 │   └── etl/                    # ETL engine (see packages/etl/CLAUDE.md)
 │       └── src/
-│           ├── connectors/     # shopify.ts, meta.ts, google-ads.ts, ga4.ts, tiktok.ts, klaviyo.ts, stripe.ts, demo-generator.ts
+│           ├── connectors/     # shopify.ts, meta.ts, meta-ads-creative.ts, google-ads.ts,
+│           │                   # ga4.ts, tiktok.ts, klaviyo.ts, stripe.ts, demo-generator.ts,
+│           │                   # demo-meta-ads.ts, demo-klaviyo.ts, demo-stripe.ts,
+│           │                   # demo-tiktok.ts, demo-products.ts
 │           ├── pipeline/       # step1-ingest-raw.ts, step2-normalize-staging.ts,
 │           │                   # step3-build-marts.ts, validate.ts, channel-mapping.ts
 │           ├── kpis.ts         # 18 KPI calculation functions
@@ -87,7 +131,23 @@ growth-os/
 │           ├── segmentation.ts # RFM customer segmentation (6 segments)
 │           ├── signals.ts      # Signal detection (wraps alerts + metric deltas + funnel drops)
 │           ├── opportunities.ts # Classify signals into opportunity types
+│           ├── growth-model.ts  # Scenario planning engine (monthly projections)
+│           ├── diagnosis-rules.ts # Ad-level diagnosis rule engine
+│           ├── budget-optimizer.ts # Portfolio budget optimization
+│           ├── campaign-health.ts # Campaign health scoring
+│           ├── anomaly-detection.ts # Metric anomaly detection
+│           ├── creative-decay.ts # Creative fatigue detection via linear regression
+│           ├── dynamic-thresholds.ts # Adaptive threshold computation
+│           ├── product-scoring.ts # Ad fitness scoring for products
+│           ├── product-scoring-v2.ts # DTC product scoring with campaign recommendations
+│           ├── proactive-rules.ts # Rules for proactive ad creation
+│           ├── campaign-suggestions.ts # Multi-product campaign suggestions
+│           ├── seasonal-calendar.ts # Seasonal event matching
+│           ├── budget-allocator.ts # Campaign budget allocation
 │           ├── demo.ts         # Demo pipeline runner (seed=42, 180 days)
+│           ├── demo-autopilot.ts # Seeds demo autopilot data
+│           ├── demo-experiments.ts # Seeds demo experiments
+│           ├── demo-opportunities.ts # Seeds demo opportunities
 │           └── sync.ts         # Real sync runner
 ├── docs/                       # Architecture, KPI defs, acceptance criteria
 ├── .github/workflows/qa.yml    # CI: 5-stage QA pipeline
@@ -109,6 +169,8 @@ growth-os/
 | Frontend      | Next.js (App Router) + Tailwind   | 14.1 / 3.4 |
 | Charts        | Recharts                          | 2.12     |
 | AI            | OpenAI (gpt-4o-mini default)      | via npm  |
+| Auth          | Clerk (optional) + Bearer token   | via npm  |
+| Billing       | Stripe                            | via npm  |
 | Unit Testing  | Vitest                            | 1.3      |
 | E2E Testing   | Playwright                        | 1.42     |
 | Infra         | Docker Compose                    | -        |
@@ -146,6 +208,7 @@ growth-os/
 - **Transactions** for multi-table writes (timeout: 60s, wait: 30s)
 - **Select only needed fields** — no `findMany()` without `select` on large tables
 - **Batch operations**: 200-500 records per batch with `skipDuplicates: true`
+- **Multi-tenancy**: Always include `organizationId` scoping via `orgWhere()`/`orgData()` helpers
 
 ### Testing
 - **Co-locate tests**: `{module}.test.ts` next to source
@@ -156,7 +219,11 @@ growth-os/
 
 ---
 
-## Database Schema Overview (22 models, 6 enums)
+## Database Schema Overview (38+ models, 16+ enums)
+
+### Multi-Tenancy
+- `Organization` — Tenant with plan (FREE/STARTER/GROWTH/SCALE), Stripe billing, Clerk integration
+- `User` — Belongs to org with role (OWNER/MEMBER), Clerk user ID
 
 ### Raw Layer
 - `RawEvent` — Unmodified API responses (source, entity, externalId, payloadJson)
@@ -171,17 +238,56 @@ growth-os/
 - `StgEmail` — Email campaign metrics (sends, opens, clicks, bounces, conversions, revenue)
 
 ### Mart Layer (Star Schema)
-- **Dimensions**: `DimDate`, `DimChannel` (8 slugs), `DimCampaign`, `DimCustomer` (with cohortMonth, LTV, RFM scores, segment)
+- **Dimensions**: `DimDate`, `DimChannel` (7 slugs), `DimCampaign`, `DimCustomer` (with cohortMonth, LTV, RFM scores, segment)
 - **Facts**: `FactOrder` (with paymentMethod, paymentStatus), `FactSpend`, `FactTraffic`, `FactEmail`
 - **Aggregate**: `Cohort` (d7/d30/d60/d90 retention, ltv30/90/180, paybackDays, avgCac)
 
 ### Feature Tables
-- `Experiment` — RICE scoring, status (IDEA/BACKLOG/RUNNING/COMPLETED/ARCHIVED)
+- `Experiment` — ICE scoring, A/B test stats, status (IDEA/BACKLOG/RUNNING/COMPLETED/ARCHIVED), type (CRO/CREATIVE/PRICING/LIFECYCLE/LANDING/OTHER)
 - `ExperimentMetric` — Time-series data per experiment
 - `Opportunity` — AI-detected growth opportunities (7 types)
 - `Suggestion` — AI recommendations per opportunity (3 types: AI_GENERATED/PLAYBOOK_MATCH/RULE_BASED)
 - `SuggestionFeedback` — User actions (APPROVE/REJECT/MODIFY/PROMOTE)
+- `GrowthScenario` — Scenario planning with input assumptions + projected outputs
 - `AppSetting` — Key-value store (demo_mode, google OAuth config)
+
+### Meta Ads Autopilot
+- `MetaAdAccount` — Meta ad accounts (currency, timezone, status)
+- `MetaCampaign` — Campaigns (objective, dailyBudget, status)
+- `MetaAdSet` — Ad sets (targeting, dailyBudget, status)
+- `MetaAd` — Individual ads with creative fields + 7d/14d performance metrics
+- `MetaAdSnapshot` — Daily metric history per ad for trend analysis
+- `Diagnosis` — Ad-level automated diagnosis (ruleId, severity, actionType, confidence, expiresAt)
+- `AdVariant` — AI-generated copy alternatives per diagnosis (angle, headline, primaryText)
+- `CopyVariant` — Creative variant tracking for A/B testing
+- `AutopilotConfig` — Per-org targets, safety limits, circuit breaker, proactive settings
+- `AutopilotActionLog` — Audit trail for all actions (manual + auto + rollback)
+- `DiagnosisFeedback` — Tracks approve/dismiss patterns per rule (feeds rule tuner)
+
+### Product Intelligence
+- `ProductPerformance` — Aggregated product-level analytics (units, revenue, margin, ad fitness, trends)
+- `ProactiveAdJob` — Lifecycle tracking for proactively created ads
+- `CampaignStrategy` — AI-suggested multi-product campaigns (HERO_PRODUCT/CATEGORY/SEASONAL/etc.)
+
+### Enums
+- `Plan`: FREE, STARTER, GROWTH, SCALE
+- `UserRole`: OWNER, MEMBER
+- `JobStatus`: PENDING, RUNNING, SUCCESS, FAILED, RETRYING
+- `ExperimentStatus`: IDEA, BACKLOG, RUNNING, COMPLETED, ARCHIVED
+- `ExperimentType`: CRO, CREATIVE, PRICING, LIFECYCLE, LANDING, OTHER
+- `OpportunityType`: EFFICIENCY_DROP, CAC_SPIKE, RETENTION_DECLINE, FUNNEL_LEAK, GROWTH_PLATEAU, CHANNEL_IMBALANCE, QUICK_WIN
+- `OpportunityStatus`: NEW, REVIEWED, ACTED, DISMISSED
+- `SuggestionType`: AI_GENERATED, PLAYBOOK_MATCH, RULE_BASED
+- `SuggestionStatus`: PENDING, APPROVED, REJECTED, PROMOTED
+- `FeedbackAction`: APPROVE, REJECT, MODIFY, PROMOTE
+- `MetaAdStatus`: ACTIVE, PAUSED, DELETED, ARCHIVED
+- `DiagnosisAction`: GENERATE_COPY_VARIANTS, PAUSE_AD, REACTIVATE_AD, INCREASE_BUDGET, DECREASE_BUDGET, REFRESH_CREATIVE, DUPLICATE_AD_SET, NONE
+- `DiagnosisStatus`: PENDING, APPROVED, EXECUTED, DISMISSED, EXPIRED
+- `DiagnosisSeverity`: CRITICAL, WARNING, INFO
+- `VariantStatus`: DRAFT, APPROVED, PUBLISHED, REJECTED, WINNER, LOSER
+- `ProactiveAdStatus`: PENDING, GENERATING, READY, APPROVED, PUBLISHED, TESTING, WINNER, PAUSED, FAILED
+- `CampaignStrategyType`: HERO_PRODUCT, CATEGORY, SEASONAL, NEW_ARRIVAL, CROSS_SELL, BEST_SELLERS
+- `CampaignStrategyStatus`: SUGGESTED, APPROVED, ACTIVE, PAUSED, COMPLETED, REJECTED
 
 ---
 
@@ -206,7 +312,7 @@ growth-os/
 | `percentagePointChange` | `(currentPct: number, previousPct: number) => number` | For CM% etc |
 | `newCustomerShare` | `(newOrders: number, totalOrders: number) => number` | Guards /0 |
 | `cpc` | `(spend: number, clicks: number) => number` | Guards /0 |
-| `cpm` | `(spend: number, impressions: number) => number` | ×1000 |
+| `cpm` | `(spend: number, impressions: number) => number` | x1000 |
 | `ctr` | `(clicks: number, impressions: number) => number` | Guards /0 |
 
 ---
@@ -251,10 +357,90 @@ Key functions:
 
 Two forecasting modes:
 - **Double Exponential** (`forecast()`) — Holt-Winters with alpha/beta grid search, min 14 data points
-- **Triple Exponential** (`forecastSeasonal()`) — Holt-Winters with alpha/beta/gamma + seasonal factors, min 2× seasonal period
+- **Triple Exponential** (`forecastSeasonal()`) — Holt-Winters with alpha/beta/gamma + seasonal factors, min 2x seasonal period
 
 Both return `ForecastResult` with: `forecast[]`, `lower80[]`, `upper80[]`, `lower95[]`, `upper95[]`, `alpha`, `beta`, `mse`.
 Seasonal adds: `gamma`, `seasonalFactors[]`.
+
+---
+
+## Growth Model / Scenario Planning (growth-model.ts)
+
+Pure computation engine for interactive scenario planning:
+
+- `computeGrowthModel(input: GrowthModelInput)` — Full projection with break-even analysis
+- `computeMonthlyBreakdown(input)` — Month-by-month projections (customers, orders, revenue, COGS, CM)
+- `computeSafeSpendRange(constraints)` — Calculate safe budget ranges based on CAC/ROAS targets
+- `DEMO_SCENARIOS` — Pre-built scenarios for demo mode
+
+**GrowthModelInput**: monthlyBudget, targetCac, expectedCvr, avgOrderValue, cogsPercent, monthlyTraffic, returnRate, avgOrdersPerCustomer, horizonMonths
+
+---
+
+## Meta Ads Autopilot System
+
+The autopilot is a comprehensive ad management system with these layers:
+
+### ETL Layer (packages/etl)
+- **diagnosis-rules.ts** — Rule engine evaluating ad performance (creative fatigue, ROAS negative, CTR drop, etc.)
+- **budget-optimizer.ts** — Portfolio-level budget optimization across ad sets
+- **campaign-health.ts** — Campaign health scoring (aggregate ad set health)
+- **anomaly-detection.ts** — Statistical anomaly detection on metric time series
+- **creative-decay.ts** — Detect creative fatigue via linear regression on CTR/ROAS trends
+- **dynamic-thresholds.ts** — Compute adaptive thresholds from historical ad metrics
+- **product-scoring.ts** / **product-scoring-v2.ts** — Score products for ad fitness
+- **proactive-rules.ts** — Rules for when to proactively create new ads
+- **campaign-suggestions.ts** — Generate multi-product campaign suggestions
+- **seasonal-calendar.ts** — Match products to upcoming seasonal events
+- **budget-allocator.ts** — Allocate budget across campaigns
+
+### API Layer (apps/api)
+- **routes/autopilot.ts** — Endpoints for Meta ad data, sync, diagnosis, actions, config
+- **jobs/sync-meta-ads.ts** — Sync ad creative data from Meta API
+- **jobs/run-diagnosis.ts** — Run diagnosis rules on synced ads
+- **jobs/execute-action.ts** — Execute approved actions (pause, budget change, etc.)
+- **jobs/rollback-action.ts** — Undo previously executed actions
+- **jobs/enrich-diagnosis.ts** — Add AI insights to diagnoses
+- **jobs/campaign-monitor.ts** — Monitor campaign performance
+- **jobs/campaign-optimizer.ts** — Auto-optimize campaigns
+- **jobs/forecast-aware-budget.ts** — Budget decisions informed by forecasts
+- **jobs/circuit-breaker.ts** — Safety circuit breaker for auto-execution
+- **jobs/auto-execute.ts** — Auto-execute high-confidence diagnoses
+- **jobs/proactive-ad-pipeline.ts** — Pipeline for proactive ad creation
+- **lib/autopilot-analyzer.ts** — AI-powered diagnosis analysis
+- **lib/copy-generator.ts** — AI copy generation for ad variants
+- **lib/meta-executor.ts** — Execute actions via Meta Marketing API
+- **lib/rule-tuner.ts** — Adjust rule thresholds based on feedback patterns
+- **lib/ab-stats.ts** — Statistical functions for A/B testing
+- **lib/proactive-ab-engine.ts** — Proactive A/B test orchestration
+- **lib/product-copy-generator.ts** — Product-specific ad copy generation
+- **lib/ad-image-manager.ts** — Ad image upload and management
+
+### Dashboard Layer (apps/web)
+- **autopilot page** — Full autopilot UI with tabs (Overview, Campaigns, Products)
+- **35+ autopilot components** — Diagnosis list, action cards, AI insights, budget views, campaign health, severity badges, confidence breakdowns, settings, help drawer, etc.
+
+### Autopilot Modes
+1. **Monitor** — Alerts only, no actions taken
+2. **Suggest** — Diagnoses created, approval required before execution
+3. **Auto** — High-confidence actions auto-executed within safety limits
+
+### Safety Features
+- Circuit breaker (auto-trips after N failures in time window)
+- Daily action limits
+- Minimum confidence threshold for auto-execution
+- Execution time window
+- Budget change caps
+- Rollback capability for all actions
+
+---
+
+## Billing System
+
+- **routes/billing.ts** — Checkout, portal, webhook, plan status endpoints
+- **lib/stripe.ts** — Stripe integration (checkout sessions, portal, webhook events)
+- **lib/plan-guard.ts** — Feature gating by plan tier
+- Plans: FREE, STARTER, GROWTH, SCALE (configured in `PLAN_CONFIGS`)
 
 ---
 
@@ -267,7 +453,7 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 | GET | `/api/metrics/summary?days=7` | 16 KPIs with WoW deltas |
 | GET | `/api/metrics/timeseries?days=30` | Daily revenue/spend/traffic/margin arrays |
 | GET | `/api/metrics/channels?days=7` | Per-channel performance (spend, revenue, CAC, ROAS, CM) |
-| GET | `/api/metrics/funnel?days=7` | Orders summary + GA4 funnel (sessions→purchases) |
+| GET | `/api/metrics/funnel?days=7` | Orders summary + GA4 funnel (sessions->purchases) |
 | GET | `/api/metrics/unit-economics?days=30` | Margin decomposition (COGS, shipping, ops, CM) |
 | GET | `/api/metrics/cohorts` | Cohort retention + LTV table |
 | GET | `/api/metrics/cohort-projections` | Projections with decay ratios (clamped 0-1) |
@@ -302,7 +488,7 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/experiments` | List experiments (filter by status/channel) |
-| POST | `/api/experiments` | Create experiment with RICE scoring |
+| POST | `/api/experiments` | Create experiment with ICE scoring |
 | GET | `/api/experiments/:id` | Get experiment with metrics |
 | PATCH | `/api/experiments/:id` | Update experiment fields |
 | DELETE | `/api/experiments/:id` | Delete experiment |
@@ -313,10 +499,48 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 |--------|----------|-------------|
 | POST | `/api/signals/detect` | Detect signals from current metrics |
 | GET | `/api/opportunities` | List opportunities with suggestions |
-| POST | `/api/opportunities/generate` | Full pipeline: signals→opportunities→suggestions |
+| POST | `/api/opportunities/generate` | Full pipeline: signals->opportunities->suggestions |
 | GET | `/api/suggestions` | List suggestions (filter by status/opportunity) |
 | POST | `/api/suggestions/:id/feedback` | Approve/reject/modify suggestion |
 | POST | `/api/suggestions/:id/promote` | Promote suggestion to experiment |
+
+### Growth Model
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/growth-model/scenarios` | List saved scenarios |
+| POST | `/growth-model/scenarios` | Create scenario (computes projections) |
+| GET | `/growth-model/scenarios/:id` | Get single scenario |
+| PATCH | `/growth-model/scenarios/:id` | Update scenario |
+| DELETE | `/growth-model/scenarios/:id` | Delete scenario |
+| POST | `/growth-model/compute` | Compute projections without saving |
+| GET | `/growth-model/defaults` | Get default inputs from current data |
+| GET | `/growth-model/safe-spend` | Compute safe spend range |
+
+### Autopilot (Meta Ads)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/autopilot/ads` | List Meta ads with metrics |
+| POST | `/api/autopilot/sync` | Trigger Meta ads sync |
+| POST | `/api/autopilot/diagnose` | Run diagnosis rules |
+| GET | `/api/autopilot/diagnoses` | List diagnoses |
+| POST | `/api/autopilot/diagnoses/:id/approve` | Approve a diagnosis action |
+| POST | `/api/autopilot/diagnoses/:id/dismiss` | Dismiss a diagnosis |
+| POST | `/api/autopilot/diagnoses/:id/execute` | Execute an approved action |
+| POST | `/api/autopilot/diagnoses/:id/rollback` | Rollback an executed action |
+| GET | `/api/autopilot/config` | Get autopilot configuration |
+| PATCH | `/api/autopilot/config` | Update autopilot configuration |
+| GET | `/api/autopilot/history` | Action history / audit log |
+| POST | `/api/autopilot/copy-variants` | Generate AI copy variants |
+| GET | `/api/autopilot/campaigns` | Campaign-level view with health |
+| GET | `/api/autopilot/budget` | Budget optimization suggestions |
+
+### Billing
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/billing/status` | Current plan info |
+| POST | `/billing/checkout` | Create Stripe checkout session |
+| POST | `/billing/portal` | Create Stripe customer portal |
+| POST | `/billing/webhook` | Stripe webhook handler |
 
 ### Infrastructure
 | Method | Endpoint | Description |
@@ -326,7 +550,7 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 | GET | `/api/pipeline/overview` | Row counts, freshness, stats |
 | GET | `/api/pipeline/quality` | 10 data quality checks with score |
 | GET | `/api/settings/mode` | Current mode (demo/live) + data counts |
-| POST | `/api/settings/mode` | Switch mode (clears data on demo→live) |
+| POST | `/api/settings/mode` | Switch mode (clears data on demo->live) |
 | POST | `/api/settings/clear-data` | Delete all data |
 | POST | `/api/settings/seed-demo` | Run demo pipeline |
 | GET/POST | `/api/settings/google-oauth` | Google OAuth client configuration |
@@ -339,6 +563,7 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 | GET | `/api/auth/shopify` | Initiate Shopify OAuth flow |
 | GET | `/api/auth/shopify/callback` | Shopify OAuth callback |
 | POST | `/api/webhooks/:id` | Receive webhook data (HMAC validated) |
+| POST | `/api/clerk-webhooks` | Clerk webhook handler (user/org sync) |
 
 ---
 
@@ -346,12 +571,15 @@ Seasonal adds: `gamma`, `seasonalFactors[]`.
 
 - **AES-256-GCM** encryption for connector credentials at rest (`packages/database/src/crypto.ts`)
 - **Bearer token auth**: Optional via `AUTH_SECRET` env var; timing-safe comparison
+- **Clerk auth**: Optional via `CLERK_SECRET_KEY`; JWT verification + org scoping
 - **OAuth flows**: Google (Ads + GA4) and Shopify with token exchange
 - **HMAC-SHA256**: Webhook signature validation
+- **Svix**: Clerk webhook signature verification
 - **Never log** API keys, tokens, or credentials
 - **Never commit** `.env` files — use `.env.example` as template
 - **Validate all inputs** at API layer with Fastify schemas
 - **Rate limit** external API calls to respect provider limits (max 5 retries with exponential backoff)
+- **Plan gating**: Feature access controlled by organization plan tier via `plan-guard.ts`
 
 ---
 
@@ -367,7 +595,7 @@ pnpm demo:start           # Start servers in demo mode
 # Database
 pnpm db:up                # Start PostgreSQL + Redis (Docker)
 pnpm db:migrate           # Run Prisma migrations
-pnpm db:seed              # Seed dimension tables (8 channels + 730 days)
+pnpm db:seed              # Seed dimension tables (7 channels + 730 days)
 pnpm db:reset             # Drop DB + re-migrate + re-seed
 
 # Testing
@@ -416,6 +644,9 @@ When I give you a complex task, break it down and use subagents:
 - Don't create new API routes without Fastify schema validation
 - Don't create new OpenAI clients — use `getClient()` from `apps/api/src/lib/ai.ts`
 - Don't forget `Math.min(1, ...)` when computing retention projections
+- Don't forget multi-tenancy scoping — use `orgWhere(request)` and `orgData(request)` in all queries
+- Don't create Meta API calls without going through `meta-executor.ts`
+- Don't bypass the circuit breaker or safety limits in autopilot actions
 
 ---
 
