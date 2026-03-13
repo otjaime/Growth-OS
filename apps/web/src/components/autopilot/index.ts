@@ -66,6 +66,7 @@ export { AdDetailSheet } from './ad-detail-sheet';
 export { ProductsTab } from './products-tab';
 export { ProactiveJobCard } from './proactive-job-card';
 export { CampaignsTab } from './campaigns-tab';
+export { PsychologyTab } from './psychology-tab';
 export {
   ACTION_LABELS,
   SEVERITY_LABELS,

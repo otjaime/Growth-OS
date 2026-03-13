@@ -44,3 +44,7 @@ export { getUpcomingEvents, matchProductsToEvent, DEFAULT_SEASONAL_EVENTS } from
 export type { SeasonalEvent } from './seasonal-calendar.js';
 export { allocateBudget } from './budget-allocator.js';
 export type { BudgetAllocationInput as CampaignBudgetAllocationInput, CampaignBudgetAllocation } from './budget-allocator.js';
+export { selectTrigger, mapMetricToPsychSignal, inferAwarenessFromFunnel, TRIGGER_MATRIX, AWARENESS_LEVELS, EMOTIONAL_STATES, PSYCH_TRIGGERS } from './trigger-selection.js';
+export type { AwarenessLevel, PsychTrigger, EmotionalState, FunnelStage, TriggerConfidenceLevel, TriggerPerformanceData, TriggerSelectionInput, TriggerRecommendation, PsychSignal } from './trigger-selection.js';
+export { diagnosePsychology } from './psych-diagnostic.js';
+export type { PsychDiagnosticInput, PsychDiagnosticNode, PsychDiagnosticCode, PsychBenchmarks } from './psych-diagnostic.js';

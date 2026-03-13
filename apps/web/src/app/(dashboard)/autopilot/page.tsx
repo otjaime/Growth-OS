@@ -35,6 +35,7 @@ import { AdsSearchBar } from '@/components/autopilot/ads-search-bar';
 import { AdDetailSheet } from '@/components/autopilot/ad-detail-sheet';
 import { ProductsTab } from '@/components/autopilot/products-tab';
 import { CampaignsTab } from '@/components/autopilot/campaigns-tab';
+import { PsychologyTab } from '@/components/autopilot/psychology-tab';
 import { ReflectiveCard } from '@/components/ui/reflective-card';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -699,6 +700,9 @@ export default function AutopilotPage() {
 
           {/* ── Campaigns Tab ───────────────────────────────────── */}
           {activeTab === 'campaigns' && <CampaignsTab currency={autopilotStats?.currency} />}
+
+          {/* ── Psychology Tab ─────────────────────────────────── */}
+          {activeTab === 'psychology' && <PsychologyTab />}
         </motion.div>
       </AnimatePresence>
 

@@ -7,6 +7,8 @@
 // ──────────────────────────────────────────────────────────────
 
 import { getClient, isAIConfigured, AI_MODEL } from './ai.js';
+import { buildTriggerPromptSection } from './trigger-copy-patterns.js';
+import type { PsychTrigger, AwarenessLevel, EmotionalState } from '@growth-os/etl';
 
 export type CopyAngle = 'benefit' | 'pain_point' | 'urgency' | 'social_proof' | 'value';
 
@@ -323,6 +325,157 @@ This is the product's FIRST ad campaign. Generate exactly ${angles.length} copy 
 
   return (parsed as Record<string, string>[]).map((v) => ({
     angle: v.angle as CopyAngle,
+    headline: (v.headline ?? '').slice(0, 40),
+    primaryText: v.primaryText ?? '',
+    description: (v.description ?? '').slice(0, 30),
+  }));
+}
+
+// ──────────────────────────────────────────────────────────────
+// Psychology-Driven Copy Generation
+// Uses trigger-specific implementation patterns instead of
+// generic angle frameworks (PAS, Before/After, FOMO).
+// ──────────────────────────────────────────────────────────────
+
+export interface PsychCopyInput extends ProductCopyInput {
+  readonly psychTrigger: PsychTrigger;
+  readonly secondaryTrigger?: PsychTrigger;
+  readonly awarenessLevel: AwarenessLevel;
+  readonly emotionalState: EmotionalState;
+  readonly primaryObjection: string;
+}
+
+/**
+ * Generate copy variants driven by a specific psychological trigger.
+ * Produces 3 variants:
+ *   - Variants 1-2: primary trigger only
+ *   - Variant 3: primary + secondary trigger combined
+ * All variants address the stated primary objection.
+ *
+ * Falls back to demo copy when AI is not configured.
+ */
+export async function generatePsychDrivenCopy(input: PsychCopyInput): Promise<ProductCopyVariant[]> {
+  const lang = input.language ?? 'en';
+  const currencySymbol = input.currencySymbol ?? '$';
+
+  if (!isAIConfigured()) {
+    // Deterministic fallback — reuse the locale-appropriate demo copy
+    const localizedDemo = DEMO_COPY[lang];
+    if (localizedDemo) return localizedDemo(input);
+    return [
+      {
+        angle: 'benefit',
+        headline: `Get the best ${input.productType}`,
+        primaryText: `${input.productTitle} — the upgrade your routine deserves. Premium quality, fair price.`,
+        description: 'Shop now',
+      },
+      {
+        angle: 'pain_point',
+        headline: `Tired of bad ${input.productType}?`,
+        primaryText: `Stop settling. ${input.productTitle} solves what others can't.`,
+        description: 'Try it today',
+      },
+      {
+        angle: 'urgency',
+        headline: `${input.productTitle} is selling fast`,
+        primaryText: `Our best-seller won't last. Get yours before it's gone.`,
+        description: 'Limited stock',
+      },
+    ];
+  }
+
+  const ai = getClient();
+  const langName = getLanguageName(lang);
+
+  const langInstruction = lang !== 'en'
+    ? `\n\nCRITICAL LANGUAGE RULE: Write ALL copy in ${langName}. The target audience speaks ${langName} natively — write like a native speaker, NOT like a translation.`
+    : '';
+
+  const brandContext = input.brandName
+    ? `\nBRAND: ${input.brandName}${input.brandVoice ? ` — ${input.brandVoice}` : ''}`
+    : '';
+
+  const audienceContext = input.targetAudience
+    ? `\nTARGET AUDIENCE: ${input.targetAudience}`
+    : '';
+
+  // Build the trigger-specific prompt section
+  const triggerSection = buildTriggerPromptSection(
+    input.psychTrigger,
+    input.secondaryTrigger,
+    input.awarenessLevel,
+    input.emotionalState,
+    input.primaryObjection,
+  );
+
+  const systemPrompt = `You are a top-performing DTC performance copywriter who uses behavioral psychology to write ads that convert. You don't just write copy — you engineer specific psychological responses.
+${brandContext}${audienceContext}
+
+META AD FORMAT RULES (mobile-first):
+- Headline: MAX 40 characters. Clear, specific value prop. Not clickbait.
+- Primary text: Hook in first 125 characters (before "...See More"). 2-3 lines total.
+- Description: MAX 30 characters. Reinforces urgency or trust.
+
+${triggerSection}
+
+COPY RULES:
+- Reference the ACTUAL product by name — never generic copy.
+- Each variant must feel like a DIFFERENT execution of the trigger — same mechanism, different creative expression.
+- One emoji MAX per variant.
+- Write in second person ("tú"/"you") — speak directly to the customer.
+- Be specific with every hook: price, stat, product feature, or concrete detail.
+${langInstruction}
+
+Output ONLY valid JSON. No markdown, no code fences. Array of exactly 3 objects with keys: angle, headline, primaryText, description.
+The "angle" field should describe the trigger implementation (e.g., "loss_aversion_cost", "loss_aversion_time", "loss_aversion_combined").`;
+
+  const contextLines: string[] = [
+    `- Name: ${input.productTitle}`,
+    `- Category: ${input.productType}`,
+    `- Price: ${currencySymbol}${input.avgPrice.toFixed(0)}`,
+    `- Description: ${input.productDescription ?? '(no description)'}`,
+  ];
+  if (input.repeatBuyerPct > 0.1) {
+    contextLines.push(`- ${(input.repeatBuyerPct * 100).toFixed(0)}% repeat buyer rate`);
+  }
+  if (input.productTags?.length) {
+    contextLines.push(`- Tags: ${input.productTags.join(', ')}`);
+  }
+
+  const userPrompt = `Product:
+${contextLines.join('\n')}
+
+Audience objection to address: "${input.primaryObjection}"
+Trigger to use: ${input.psychTrigger}${input.secondaryTrigger ? ` (combine with ${input.secondaryTrigger} in variant 3)` : ''}
+
+Generate 3 psychology-driven ad copy variants. Output as JSON array.`;
+
+  const response = await ai.chat.completions.create({
+    model: AI_MODEL,
+    temperature: 0.7,
+    max_tokens: 1200,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content ?? '[]';
+
+  let parsed: unknown;
+  try {
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error(`Failed to parse AI psych copy response: ${raw.slice(0, 200)}`);
+  }
+
+  if (!Array.isArray(parsed) || parsed.length < 3) {
+    throw new Error(`Expected 3 psych copy variants, got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
+  }
+
+  return (parsed as Record<string, string>[]).map((v) => ({
+    angle: (v.angle ?? 'benefit') as CopyAngle,
     headline: (v.headline ?? '').slice(0, 40),
     primaryText: v.primaryText ?? '',
     description: (v.description ?? '').slice(0, 30),

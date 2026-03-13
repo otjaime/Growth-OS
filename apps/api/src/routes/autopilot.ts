@@ -3937,4 +3937,384 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
     return { campaign };
   });
+
+  // ══════════════════════════════════════════════════════════
+  // PSYCHOLOGY LAYER ENDPOINTS
+  // ══════════════════════════════════════════════════════════
+
+  // ── POST /autopilot/psychology/diagnose-state ─────────────
+  app.post('/autopilot/psychology/diagnose-state', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'Run State Diagnosis Protocol',
+      description: 'Diagnose audience awareness level, emotional state, primary objection, and minimum viable shift for a product/audience.',
+    },
+  }, async (request, reply) => {
+    try {
+      const { diagnoseAudienceState, buildStructuredHypothesis } = await import('../lib/psychology-hypothesis.js');
+      const body = request.body as {
+        productTitle: string;
+        productType: string;
+        vertical: string;
+        targetAudience: string;
+        adMetrics?: Record<string, number>;
+        manualAwareness?: string;
+        manualEmotion?: string;
+        manualObjection?: string;
+        funnelStage?: string;
+        metric?: string;
+        targetLift?: number;
+        windowDays?: number;
+      };
+
+      if (!body.productTitle || !body.productType || !body.vertical || !body.targetAudience) {
+        reply.status(400);
+        return { error: 'Missing required fields: productTitle, productType, vertical, targetAudience' };
+      }
+
+      const organizationId = await resolveOrgId(request);
+
+      const diagnosis = await diagnoseAudienceState({
+        productTitle: body.productTitle,
+        productType: body.productType,
+        vertical: body.vertical,
+        targetAudience: body.targetAudience,
+        adMetrics: body.adMetrics as import('../lib/psychology-hypothesis.js').StateDiagnosisInput['adMetrics'],
+        manualAwareness: body.manualAwareness as import('../lib/psychology-hypothesis.js').StateDiagnosisInput['manualAwareness'],
+        manualEmotion: body.manualEmotion as import('../lib/psychology-hypothesis.js').StateDiagnosisInput['manualEmotion'],
+        manualObjection: body.manualObjection,
+      });
+
+      // Build full structured hypothesis
+      const funnelStage = (body.funnelStage ?? 'TOFU') as import('@growth-os/etl').FunnelStage;
+
+      // Load existing performance records for empirical override
+      const performanceRecords = await prisma.triggerPerformanceRecord.findMany({
+        where: { organizationId },
+      });
+
+      const empiricalData = performanceRecords.map((r) => ({
+        trigger: r.trigger as import('@growth-os/etl').PsychTrigger,
+        vertical: r.vertical,
+        awarenessLevel: r.awarenessLevel as import('@growth-os/etl').AwarenessLevel,
+        funnelStage: r.funnelStage as import('@growth-os/etl').FunnelStage,
+        sampleSize: r.sampleSize,
+        winRate: Number(r.winRate),
+        avgRoasDelta: Number(r.avgRoasDelta),
+        avgCtrDelta: Number(r.avgCtrDelta),
+        confidenceLevel: r.confidenceLevel as import('@growth-os/etl').TriggerConfidenceLevel,
+      }));
+
+      const hypothesis = buildStructuredHypothesis(
+        diagnosis,
+        body.vertical,
+        funnelStage,
+        empiricalData,
+        body.metric,
+        body.targetLift,
+        body.windowDays,
+      );
+
+      // Persist hypothesis to DB so audit + close endpoints can reference it
+      const saved = await prisma.psychHypothesis.create({
+        data: {
+          organizationId,
+          awarenessLevel: diagnosis.awarenessLevel,
+          awarenessEvidence: diagnosis.primaryObjection,
+          emotionalState: diagnosis.emotionalState,
+          primaryObjection: diagnosis.primaryObjection,
+          minimumViableShift: diagnosis.minimumViableShift,
+          primaryTrigger: hypothesis.primaryTrigger,
+          secondaryTrigger: hypothesis.secondaryTrigger ?? null,
+          triggerRationale: hypothesis.triggerRationale,
+          falsificationMetric: hypothesis.falsificationMetric,
+          falsificationTarget: hypothesis.falsificationTarget,
+          falsificationWindow: hypothesis.falsificationWindow,
+          vertical: body.vertical,
+          funnelStage,
+        },
+      });
+
+      return { diagnosis, hypothesis, hypothesisId: saved.id };
+    } catch (err) {
+      request.log.error(err, 'Psychology diagnose-state failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to diagnose audience state' } };
+    }
+  });
+
+  // ── POST /autopilot/psychology/select-trigger ─────────────
+  app.post('/autopilot/psychology/select-trigger', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'Get trigger recommendation',
+      description: 'Select the optimal psychological trigger for a given awareness level and emotional state.',
+    },
+  }, async (request, reply) => {
+    try {
+      const { selectTrigger: selectTriggerFn } = await import('@growth-os/etl');
+      const body = request.body as {
+        awarenessLevel: string;
+        emotionalState: string;
+        vertical: string;
+        funnelStage: string;
+      };
+
+      if (!body.awarenessLevel || !body.emotionalState) {
+        reply.status(400);
+        return { error: 'Missing required fields: awarenessLevel, emotionalState' };
+      }
+
+      const organizationId = await resolveOrgId(request);
+
+      // Load empirical data
+      const performanceRecords = await prisma.triggerPerformanceRecord.findMany({
+        where: { organizationId },
+      });
+
+      const empiricalData = performanceRecords.map((r) => ({
+        trigger: r.trigger as import('@growth-os/etl').PsychTrigger,
+        vertical: r.vertical,
+        awarenessLevel: r.awarenessLevel as import('@growth-os/etl').AwarenessLevel,
+        funnelStage: r.funnelStage as import('@growth-os/etl').FunnelStage,
+        sampleSize: r.sampleSize,
+        winRate: Number(r.winRate),
+        avgRoasDelta: Number(r.avgRoasDelta),
+        avgCtrDelta: Number(r.avgCtrDelta),
+        confidenceLevel: r.confidenceLevel as import('@growth-os/etl').TriggerConfidenceLevel,
+      }));
+
+      const recommendation = selectTriggerFn({
+        awarenessLevel: body.awarenessLevel as import('@growth-os/etl').AwarenessLevel,
+        emotionalState: body.emotionalState as import('@growth-os/etl').EmotionalState,
+        vertical: body.vertical,
+        funnelStage: body.funnelStage as import('@growth-os/etl').FunnelStage,
+        performanceRecords: empiricalData,
+      });
+
+      return { recommendation };
+    } catch (err) {
+      request.log.error(err, 'Psychology select-trigger failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to select trigger' } };
+    }
+  });
+
+  // ── GET /autopilot/psychology/audit/:hypothesisId ─────────
+  app.get('/autopilot/psychology/audit/:hypothesisId', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'Pre-launch psychology audit',
+      description: 'Run a 9-item pass/fail checklist on a structured hypothesis before launch.',
+    },
+  }, async (request, reply) => {
+    try {
+      const { auditHypothesis } = await import('../lib/psychology-hypothesis.js');
+      const { hypothesisId } = request.params as { hypothesisId: string };
+      const organizationId = await resolveOrgId(request);
+
+      const hypothesis = await prisma.psychHypothesis.findFirst({
+        where: { id: hypothesisId, organizationId },
+      });
+
+      if (!hypothesis) {
+        reply.status(404);
+        return { error: 'Hypothesis not found' };
+      }
+
+      const audit = auditHypothesis({
+        awarenessLevel: hypothesis.awarenessLevel as import('@growth-os/etl').AwarenessLevel | null,
+        emotionalState: hypothesis.emotionalState as import('@growth-os/etl').EmotionalState | null,
+        primaryObjection: hypothesis.primaryObjection,
+        minimumViableShift: hypothesis.minimumViableShift,
+        primaryTrigger: hypothesis.primaryTrigger as import('@growth-os/etl').PsychTrigger | null,
+        secondaryTrigger: hypothesis.secondaryTrigger as import('@growth-os/etl').PsychTrigger | null,
+        triggerRationale: hypothesis.triggerRationale,
+        falsificationMetric: hypothesis.falsificationMetric,
+        falsificationTarget: hypothesis.falsificationTarget != null ? Number(hypothesis.falsificationTarget) : null,
+        falsificationWindow: hypothesis.falsificationWindow,
+      });
+
+      return { hypothesisId, audit };
+    } catch (err) {
+      request.log.error(err, 'Psychology audit failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to audit hypothesis' } };
+    }
+  });
+
+  // ── GET /autopilot/psychology/trigger-performance ─────────
+  app.get('/autopilot/psychology/trigger-performance', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'Query trigger performance library',
+      description: 'Returns accumulated trigger win rates and patterns filtered by optional trigger, vertical, and awareness level.',
+    },
+  }, async (request, reply) => {
+    try {
+      const organizationId = await resolveOrgId(request);
+      const query = request.query as {
+        trigger?: string;
+        vertical?: string;
+        awarenessLevel?: string;
+        funnelStage?: string;
+      };
+
+      const records = await prisma.triggerPerformanceRecord.findMany({
+        where: {
+          organizationId,
+          ...(query.trigger ? { trigger: query.trigger as import('@growth-os/etl').PsychTrigger } : {}),
+          ...(query.vertical ? { vertical: query.vertical } : {}),
+          ...(query.awarenessLevel ? { awarenessLevel: query.awarenessLevel as import('@growth-os/etl').AwarenessLevel } : {}),
+          ...(query.funnelStage ? { funnelStage: query.funnelStage as import('@growth-os/etl').FunnelStage } : {}),
+        },
+        orderBy: [{ sampleSize: 'desc' }, { winRate: 'desc' }],
+        take: 200, // Prevent unbounded result sets
+      });
+
+      const formatted = records.map((r) => ({
+        id: r.id,
+        trigger: r.trigger,
+        vertical: r.vertical,
+        awarenessLevel: r.awarenessLevel,
+        funnelStage: r.funnelStage,
+        sampleSize: r.sampleSize,
+        winRate: Number(r.winRate),
+        avgRoasDelta: Number(r.avgRoasDelta),
+        avgCtrDelta: Number(r.avgCtrDelta),
+        confidenceLevel: r.confidenceLevel,
+        commonFailurePattern: r.commonFailurePattern,
+        bestImplementationPattern: r.bestImplementationPattern,
+        updatedAt: r.updatedAt,
+      }));
+
+      return { records: formatted, total: formatted.length };
+    } catch (err) {
+      request.log.error(err, 'Psychology trigger-performance query failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to query trigger performance' } };
+    }
+  });
+
+  // ── POST /autopilot/psychology/close-hypothesis ───────────
+  app.post('/autopilot/psychology/close-hypothesis', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'Record hypothesis outcome',
+      description: 'Close a hypothesis with WIN/LOSS/INCONCLUSIVE outcome and update the trigger performance library.',
+    },
+  }, async (request, reply) => {
+    try {
+      const { closeHypothesis } = await import('../lib/trigger-performance-tracker.js');
+      const body = request.body as {
+        hypothesisId: string;
+        outcome: 'WIN' | 'LOSS' | 'INCONCLUSIVE';
+        roasDelta?: number;
+        ctrDelta?: number;
+        postMortem: {
+          wasAwarenessCorrect: boolean;
+          didTriggerActivate: boolean;
+          whyWorkedOrFailed: string;
+          verticalLearning: string;
+        };
+      };
+
+      if (!body.hypothesisId || !body.outcome || !body.postMortem) {
+        reply.status(400);
+        return { error: 'Missing required fields: hypothesisId, outcome, postMortem' };
+      }
+
+      if (!['WIN', 'LOSS', 'INCONCLUSIVE'].includes(body.outcome)) {
+        reply.status(400);
+        return { error: 'outcome must be WIN, LOSS, or INCONCLUSIVE' };
+      }
+
+      const organizationId = await resolveOrgId(request);
+
+      const result = await closeHypothesis({
+        hypothesisId: body.hypothesisId,
+        organizationId,
+        outcome: body.outcome,
+        roasDelta: body.roasDelta,
+        ctrDelta: body.ctrDelta,
+        postMortem: body.postMortem,
+      });
+
+      if (!result.success) {
+        reply.status(400);
+        return { error: result.error };
+      }
+
+      return result;
+    } catch (err) {
+      request.log.error(err, 'Psychology close-hypothesis failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to close hypothesis' } };
+    }
+  });
+
+  // ── GET /autopilot/psychology/hypotheses ───────────────────
+  app.get('/autopilot/psychology/hypotheses', {
+    schema: {
+      tags: ['psychology'],
+      summary: 'List psychology hypotheses',
+      description: 'Returns all PsychHypothesis records for the org, filterable by outcome.',
+    },
+  }, async (request, reply) => {
+    try {
+      const organizationId = await resolveOrgId(request);
+      const query = request.query as {
+        outcome?: string;
+        limit?: string;
+      };
+
+      const limit = Math.min(Number(query.limit) || 50, 200);
+
+      // outcome=OPEN means no outcome recorded yet (null)
+      const outcomeFilter = query.outcome === 'OPEN'
+        ? { outcome: null }
+        : query.outcome && ['WIN', 'LOSS', 'INCONCLUSIVE'].includes(query.outcome)
+          ? { outcome: query.outcome }
+          : {};
+
+      const [hypotheses, total] = await Promise.all([
+        prisma.psychHypothesis.findMany({
+          where: { organizationId, ...outcomeFilter },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+        }),
+        prisma.psychHypothesis.count({
+          where: { organizationId, ...outcomeFilter },
+        }),
+      ]);
+
+      const formatted = hypotheses.map((h) => ({
+        id: h.id,
+        awarenessLevel: h.awarenessLevel,
+        awarenessEvidence: h.awarenessEvidence,
+        emotionalState: h.emotionalState,
+        primaryObjection: h.primaryObjection,
+        minimumViableShift: h.minimumViableShift,
+        primaryTrigger: h.primaryTrigger,
+        secondaryTrigger: h.secondaryTrigger,
+        triggerRationale: h.triggerRationale,
+        vertical: h.vertical,
+        funnelStage: h.funnelStage,
+        falsificationMetric: h.falsificationMetric,
+        falsificationTarget: Number(h.falsificationTarget),
+        falsificationWindow: h.falsificationWindow,
+        outcome: h.outcome,
+        postMortem: h.postMortem,
+        closedAt: h.closedAt,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt,
+      }));
+
+      return { hypotheses: formatted, total };
+    } catch (err) {
+      request.log.error(err, 'Psychology list hypotheses failed');
+      reply.status(500);
+      return { error: { code: 'INTERNAL_ERROR', message: 'Failed to list hypotheses' } };
+    }
+  });
 }
