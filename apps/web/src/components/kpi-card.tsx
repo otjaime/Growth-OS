@@ -14,6 +14,7 @@ interface KpiCardProps {
   invertColor?: boolean;
   sparkData?: number[];
   benchmark?: string;
+  subtitle?: string;
 }
 
 const FORMAT_FNS: Record<string, (v: number) => string> = {
@@ -23,7 +24,7 @@ const FORMAT_FNS: Record<string, (v: number) => string> = {
   multiplier: formatMultiplier,
 };
 
-export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData, benchmark }: KpiCardProps) {
+export function KpiCard({ title, value, change, format = 'currency', invertColor = false, sparkData, benchmark, subtitle }: KpiCardProps) {
   const safeValue = Number.isFinite(value) ? value : 0;
   const formatFn = FORMAT_FNS[format];
 
@@ -43,6 +44,9 @@ export function KpiCard({ title, value, change, format = 'currency', invertColor
       <p className={`text-sm font-medium ${changeColor(change ?? 0, invertColor)}`}>
         {change !== undefined ? `${formatPercentChange(change)} vs prior period` : '\u00A0'}
       </p>
+      {subtitle && (
+        <p className="text-[10px] text-[var(--foreground-secondary)]/70 mt-0.5">{subtitle}</p>
+      )}
       {benchmark && (
         <p className="text-[10px] text-[var(--foreground-secondary)]/50">DTC benchmark: {benchmark}</p>
       )}

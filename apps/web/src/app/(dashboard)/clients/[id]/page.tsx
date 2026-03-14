@@ -3,10 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatMultiplier } from '@/lib/format';
+import { KpiCard } from '@/components/kpi-card';
+import { KpiCardSkeleton, TableSkeleton } from '@/components/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { ErrorState } from '@/components/ui/error-state';
+import { Badge, getStatusVariant } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface Hypothesis {
@@ -41,22 +46,8 @@ interface ClientDetail {
   stopLossEvents: StopLossEvent[];
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: 'bg-gray-500/20 text-gray-400',
-  APPROVED: 'bg-blue-500/20 text-blue-400',
-  LIVE: 'bg-amber-500/20 text-amber-400',
-  WINNER: 'bg-green-500/20 text-green-400',
-  LOSER: 'bg-red-500/20 text-red-400',
-  INCONCLUSIVE: 'bg-gray-500/20 text-gray-400',
-};
-
 const STATUS_ORDER: Record<string, number> = {
-  LIVE: 0,
-  APPROVED: 1,
-  DRAFT: 2,
-  WINNER: 3,
-  LOSER: 4,
-  INCONCLUSIVE: 5,
+  LIVE: 0, APPROVED: 1, DRAFT: 2, WINNER: 3, LOSER: 4, INCONCLUSIVE: 5,
 };
 
 function ConvictionDots({ level }: { level: number }) {
@@ -78,7 +69,9 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(false);
     apiFetch(`/api/clients/${clientId}`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -90,12 +83,18 @@ export default function ClientDetailPage() {
         setError(true);
         setLoading(false);
       });
-  }, [clientId]);
+  };
+
+  useEffect(() => { load(); }, [clientId]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-apple-blue" />
+      <div className="space-y-6">
+        <PageHeader title="Client" breadcrumb={{ label: 'All Clients', href: '/clients' }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton />
+        </div>
+        <TableSkeleton rows={5} cols={7} />
       </div>
     );
   }
@@ -103,10 +102,8 @@ export default function ClientDetailPage() {
   if (error || !client) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Client</h1>
-        <div className="card border-apple-red/50 flex items-center justify-center h-64">
-          <p className="text-apple-red">Failed to load client data.</p>
-        </div>
+        <PageHeader title="Client" breadcrumb={{ label: 'All Clients', href: '/clients' }} />
+        <ErrorState message="Failed to load client data." onRetry={load} />
       </div>
     );
   }
@@ -122,63 +119,40 @@ export default function ClientDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <Link href="/clients" className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors">
-            &larr; All Clients
-          </Link>
-          <h1 className="text-2xl font-bold text-[var(--foreground)]">{client.name}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/clients/${clientId}/tradebook`}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06] transition-all ease-spring"
-          >
-            Trade Book
-          </Link>
-          <Link
-            href={`/clients/${clientId}/track-record`}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06] transition-all ease-spring"
-          >
-            Track Record
-          </Link>
-          <Link
-            href={`/hypotheses/new?clientId=${clientId}`}
-            className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring"
-          >
-            <Plus className="h-4 w-4" />
-            New Hypothesis
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title={client.name}
+        breadcrumb={{ label: 'All Clients', href: '/clients' }}
+        actions={
+          <>
+            <Link
+              href={`/clients/${clientId}/tradebook`}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06] transition-all ease-spring"
+            >
+              Trade Book
+            </Link>
+            <Link
+              href={`/clients/${clientId}/track-record`}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[var(--glass-border)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-white/[0.06] transition-all ease-spring"
+            >
+              Track Record
+            </Link>
+            <Link
+              href={`/hypotheses/new?clientId=${clientId}`}
+              className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring"
+            >
+              <Plus className="h-4 w-4" />
+              New Hypothesis
+            </Link>
+          </>
+        }
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <GlassSurface className="card p-5">
-          <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Current ROAS</p>
-          <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-            {client.currentROAS != null ? `${client.currentROAS.toFixed(2)}x` : '--'}
-          </p>
-        </GlassSurface>
-        <GlassSurface className="card p-5">
-          <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Win Rate</p>
-          <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-            {client.winRate != null ? `${(client.winRate * 100).toFixed(0)}%` : '--'}
-          </p>
-        </GlassSurface>
-        <GlassSurface className="card p-5">
-          <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Total Spend</p>
-          <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-            {formatCurrency(client.totalSpend)}
-          </p>
-        </GlassSurface>
-        <GlassSurface className="card p-5">
-          <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Monthly AUM</p>
-          <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-            {formatCurrency(client.monthlyAum)}
-          </p>
-        </GlassSurface>
+        <KpiCard title="Current ROAS" value={client.currentROAS ?? 0} format="multiplier" />
+        <KpiCard title="Win Rate" value={client.winRate ?? 0} format="percent" />
+        <KpiCard title="Total Spend" value={client.totalSpend} format="currency" />
+        <KpiCard title="Monthly AUM" value={client.monthlyAum} format="currency" />
       </div>
 
       {/* Hypothesis Pipeline */}
@@ -207,25 +181,21 @@ export default function ClientDetailPage() {
               {sortedHypotheses.map((h) => (
                 <tr key={h.id} className="border-b border-[var(--glass-border)]/50 hover:bg-white/[0.02] transition-colors">
                   <td className="px-5 py-3">
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[h.status] ?? STATUS_STYLES.DRAFT}`}>
-                      {h.status}
-                    </span>
+                    <Badge variant={getStatusVariant(h.status)}>{h.status}</Badge>
                     {h.stopLoss && <span className="ml-1" title="Stop-loss triggered">{'\u26A0\uFE0F'}</span>}
                   </td>
                   <td className="px-5 py-3 text-sm text-[var(--foreground)]">{h.title}</td>
                   <td className="px-5 py-3">
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-300">
-                      {h.trigger}
-                    </span>
+                    <Badge variant="slate">{h.trigger}</Badge>
                   </td>
                   <td className="px-5 py-3 text-center">
                     <ConvictionDots level={h.conviction} />
                   </td>
                   <td className="px-5 py-3 text-right font-mono text-xs text-[var(--foreground)]">
-                    {h.expectedROAS != null ? `${h.expectedROAS.toFixed(2)}x` : '--'}
+                    {h.expectedROAS != null ? formatMultiplier(h.expectedROAS) : '--'}
                   </td>
                   <td className="px-5 py-3 text-right font-mono text-xs text-[var(--foreground)]">
-                    {h.actualROAS != null ? `${h.actualROAS.toFixed(2)}x` : '--'}
+                    {h.actualROAS != null ? formatMultiplier(h.actualROAS) : '--'}
                   </td>
                   <td className={clsx(
                     'px-5 py-3 text-right font-mono text-xs',

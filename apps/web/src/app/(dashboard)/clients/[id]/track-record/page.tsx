@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import { Loader2, TrendingUp, Target, BarChart3, Shield } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatMultiplier } from '@/lib/format';
+import { KpiCard } from '@/components/kpi-card';
+import { KpiCardSkeleton } from '@/components/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { ErrorState } from '@/components/ui/error-state';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface ClientTrackRecord {
@@ -33,7 +36,9 @@ export default function ClientTrackRecordPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(false);
     apiFetch(`/api/clients/${clientId}/track-record`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -45,12 +50,17 @@ export default function ClientTrackRecordPage() {
         setError(true);
         setLoading(false);
       });
-  }, [clientId]);
+  };
+
+  useEffect(() => { load(); }, [clientId]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-apple-blue" />
+      <div className="space-y-6">
+        <PageHeader title="Track Record" breadcrumb={{ label: 'Back to Client', href: `/clients/${clientId}` }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton />
+        </div>
       </div>
     );
   }
@@ -58,71 +68,45 @@ export default function ClientTrackRecordPage() {
   if (error || !record) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Track Record</h1>
-        <div className="card border-apple-red/50 flex items-center justify-center h-64">
-          <p className="text-apple-red">Failed to load track record.</p>
-        </div>
+        <PageHeader title="Track Record" breadcrumb={{ label: 'Back to Client', href: `/clients/${clientId}` }} />
+        <ErrorState message="Failed to load track record." onRetry={load} />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <Link href={`/clients/${clientId}`} className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors">
-          &larr; {record.clientName}
-        </Link>
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">{record.clientName} — Track Record</h1>
-      </div>
+      <PageHeader
+        title={`${record.clientName} — Track Record`}
+        icon={Trophy}
+        breadcrumb={{ label: record.clientName, href: `/clients/${clientId}` }}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <GlassSurface className="card p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Target className="h-3.5 w-3.5 text-apple-blue" />
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Win Rate</p>
-          </div>
-          <p className="text-3xl font-bold font-mono text-[var(--foreground)]">
-            {(record.winRate * 100).toFixed(0)}%
-          </p>
-          <p className="text-[10px] text-[var(--foreground-secondary)] mt-1">
-            {record.wins}W / {record.losses}L / {record.inconclusive}I
-          </p>
-        </GlassSurface>
-
-        <GlassSurface className="card p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="h-3.5 w-3.5 text-green-400" />
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Expected Value</p>
-          </div>
-          <p className="text-3xl font-bold font-mono text-[var(--foreground)]">
-            {record.expectedValue >= 0 ? '+' : ''}{record.expectedValue.toFixed(2)}x
-          </p>
-        </GlassSurface>
-
-        <GlassSurface className="card p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart3 className="h-3.5 w-3.5 text-amber-400" />
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Sharpe Equiv.</p>
-          </div>
-          <p className="text-3xl font-bold font-mono text-[var(--foreground)]">
-            {record.sharpeEquivalent != null ? record.sharpeEquivalent.toFixed(2) : '--'}
-          </p>
-        </GlassSurface>
-
-        <GlassSurface className="card p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Shield className="h-3.5 w-3.5 text-purple-400" />
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider">Alpha</p>
-          </div>
-          <p className="text-3xl font-bold font-mono text-[var(--foreground)]">
-            {record.alpha != null ? `${record.alpha >= 0 ? '+' : ''}${record.alpha.toFixed(2)}x` : '--'}
-          </p>
-          <p className="text-[10px] text-[var(--foreground-secondary)] mt-1">
-            vs {record.industryBenchmarkROAS}x benchmark
-          </p>
-        </GlassSurface>
+        <KpiCard
+          title="Win Rate"
+          value={record.winRate}
+          format="percent"
+          subtitle={`${record.wins}W / ${record.losses}L / ${record.inconclusive}I`}
+        />
+        <KpiCard
+          title="Expected Value"
+          value={record.expectedValue}
+          format="multiplier"
+        />
+        <KpiCard
+          title="Sharpe Equiv."
+          value={record.sharpeEquivalent ?? 0}
+          format="multiplier"
+          subtitle="Risk-adjusted return"
+        />
+        <KpiCard
+          title="Alpha"
+          value={record.alpha ?? 0}
+          format="multiplier"
+          subtitle={`vs ${record.industryBenchmarkROAS}x benchmark`}
+        />
       </div>
 
       {record.sampleDisclaimer && (
@@ -136,11 +120,11 @@ export default function ClientTrackRecordPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-[var(--foreground-secondary)]">Avg Winner ROAS</span>
-              <span className="font-mono text-green-400">{record.avgWinnerROAS.toFixed(2)}x</span>
+              <span className="font-mono text-green-400">{formatMultiplier(record.avgWinnerROAS)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-[var(--foreground-secondary)]">Avg Loser ROAS</span>
-              <span className="font-mono text-red-400">{record.avgLoserROAS.toFixed(2)}x</span>
+              <span className="font-mono text-red-400">{formatMultiplier(record.avgLoserROAS)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-[var(--foreground-secondary)]">Total Spend</span>
