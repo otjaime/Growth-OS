@@ -33,6 +33,11 @@ import { growthModelRoutes } from './routes/growth-model.js';
 import { clerkWebhookRoutes } from './routes/clerk-webhooks.js';
 import { autopilotRoutes } from './routes/autopilot.js';
 import { billingRoutes } from './routes/billing.js';
+import { clientsRoutes } from './routes/clients.js';
+import { hypothesesRoutes } from './routes/hypotheses.js';
+import { portfolioRoutes } from './routes/portfolio.js';
+import { tradebookRoutes } from './routes/tradebook.js';
+import { stopLossRoutes } from './routes/stop-loss.js';
 import { runFullSync } from './lib/run-connector-sync.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '4000', 10);
@@ -83,6 +88,11 @@ async function main() {
         { name: 'growth-model', description: 'Growth model scenario planning and projections' },
         { name: 'autopilot', description: 'Meta Ads autopilot — ad-level creative data, syncing, and diagnosis' },
         { name: 'billing', description: 'Stripe billing — checkout, portal, webhook, and plan management' },
+        { name: 'clients', description: '0to1 — Client management and AUM tracking' },
+        { name: 'hypotheses', description: '0to1 — Campaign hypothesis lifecycle (DRAFT → LIVE → WINNER/LOSER)' },
+        { name: 'portfolio', description: '0to1 — Portfolio-level analytics, trigger scores, tradebook' },
+        { name: 'tradebook', description: '0to1 — Per-client tradebook, track record, performance fees' },
+        { name: 'stop-loss', description: '0to1 — Stop-loss event history and manual evaluation' },
       ],
     },
   });
@@ -111,6 +121,12 @@ async function main() {
   await app.register(clerkWebhookRoutes, { prefix: '/api' });
   await app.register(autopilotRoutes, { prefix: '/api' });
   await app.register(billingRoutes, { prefix: '/api' });
+  // 0to1 routes
+  await app.register(clientsRoutes, { prefix: '/api' });
+  await app.register(hypothesesRoutes, { prefix: '/api' });
+  await app.register(portfolioRoutes, { prefix: '/api' });
+  await app.register(tradebookRoutes, { prefix: '/api' });
+  await app.register(stopLossRoutes, { prefix: '/api' });
 
   // Auto-sync: periodic full sync (replaces BullMQ scheduler, no Redis needed)
   let syncRunning = false;

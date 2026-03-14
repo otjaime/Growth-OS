@@ -24,6 +24,7 @@ import {
   X,
   Mail,
   Zap,
+  Briefcase,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
@@ -64,6 +65,8 @@ const NAV_ITEMS = [
   { href: '/wbr', label: 'Weekly Review', icon: FileText },
   { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
   { href: '/autopilot', label: 'Meta Autopilot', icon: Zap },
+  { href: '/clients', label: 'Client Portfolio', icon: Briefcase },
+  { href: '/portfolio', label: 'Track Record', icon: TrendingUp },
   { href: '/experiments', label: 'Experiments', icon: FlaskConical },
   { href: '/suggestions', label: 'AI Suggestions', icon: Lightbulb },
   { href: '/growth-model', label: 'Growth Model', icon: TrendingUp },
