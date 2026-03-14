@@ -238,11 +238,11 @@ export async function hypothesesRoutes(app: FastifyInstance): Promise<void> {
   app.post('/clients/:id/hypotheses/:hId/launch', {
     schema: {
       tags: ['hypotheses'],
-      summary: 'Launch hypothesis — requires metaCampaignId',
+      summary: 'Launch hypothesis — uses metaCampaignId or auto-creates via executeHypothesis',
     },
   }, async (req, reply) => {
     const { hId } = req.params as { id: string; hId: string };
-    const body = req.body as { metaCampaignId: string };
+    const body = req.body as { metaCampaignId?: string };
 
     const hypothesis = await prisma.campaignHypothesis.findUnique({ where: { id: hId } });
     if (!hypothesis) {
@@ -255,21 +255,43 @@ export async function hypothesesRoutes(app: FastifyInstance): Promise<void> {
       return { error: { code: 'INVALID_TRANSITION', message: `Cannot launch from ${hypothesis.status}` } };
     }
 
-    if (!body.metaCampaignId) {
-      reply.status(400);
-      return { error: { code: 'VALIDATION_ERROR', message: 'metaCampaignId is required' } };
+    // If metaCampaignId provided directly, use it (backward compatible)
+    if (body.metaCampaignId) {
+      const updated = await prisma.campaignHypothesis.update({
+        where: { id: hId },
+        data: {
+          status: 'LIVE',
+          metaCampaignId: body.metaCampaignId,
+          launchedAt: new Date(),
+        },
+      });
+
+      return { hypothesis: updated };
     }
 
-    const updated = await prisma.campaignHypothesis.update({
-      where: { id: hId },
-      data: {
-        status: 'LIVE',
-        metaCampaignId: body.metaCampaignId,
-        launchedAt: new Date(),
-      },
-    });
+    // If no metaCampaignId but hypothesis has a creative brief, auto-execute
+    if (hypothesis.creativeBrief) {
+      try {
+        const { executeHypothesis } = await import('../lib/hypothesis-executor.js');
+        const result = await executeHypothesis(hId, prisma);
 
-    return { hypothesis: updated };
+        if (!result.success) {
+          reply.status(400);
+          return { error: { code: 'EXECUTION_FAILED', message: result.error } };
+        }
+
+        const updated = await prisma.campaignHypothesis.findUnique({ where: { id: hId } });
+        return { hypothesis: updated, execution: result };
+      } catch (err) {
+        app.log.error(err, 'Failed to auto-execute hypothesis on launch');
+        reply.status(500);
+        return { error: { code: 'EXECUTION_ERROR', message: String(err) } };
+      }
+    }
+
+    // Neither metaCampaignId nor creativeBrief
+    reply.status(400);
+    return { error: { code: 'VALIDATION_ERROR', message: 'Either metaCampaignId or a creative brief is required. Generate a brief first.' } };
   });
 
   // ── CLOSE hypothesis (LIVE → WINNER/LOSER/INCONCLUSIVE) ───
@@ -301,6 +323,40 @@ export async function hypothesesRoutes(app: FastifyInstance): Promise<void> {
     if (!closableStatuses.includes(hypothesis.status)) {
       reply.status(400);
       return { error: { code: 'INVALID_TRANSITION', message: `Cannot close from ${hypothesis.status}` } };
+    }
+
+    // Auto-populate actual metrics from synced data if available
+    if (hypothesis.metricsSnapshot && typeof hypothesis.metricsSnapshot === 'object') {
+      const snap = hypothesis.metricsSnapshot as Record<string, number>;
+      if (body.actualROAS == null && snap.roas != null) body.actualROAS = snap.roas;
+      if (body.actualCTR == null && snap.ctr != null) body.actualCTR = snap.ctr;
+      if (body.actualCVR == null && snap.cvr != null) body.actualCVR = snap.cvr;
+      if (body.actualSpend == null && snap.spend != null) body.actualSpend = snap.spend;
+      if (body.actualRevenue == null && snap.revenue != null) body.actualRevenue = snap.revenue;
+    }
+
+    // Auto-pause Meta campaign if still live
+    if (hypothesis.metaCampaignId && (hypothesis.status === 'LIVE')) {
+      try {
+        const { pauseMetaCampaign } = await import('../lib/meta-executor.js');
+        const client = await prisma.client.findUnique({ where: { id: hypothesis.clientId } });
+        if (client?.metaAccountId) {
+          const cred = await prisma.connectorCredential.findFirst({
+            where: { connectorType: 'meta', organizationId: client.organizationId },
+          });
+          if (cred) {
+            const { decrypt: dec } = await import('@growth-os/database');
+            const decrypted = dec(cred.encryptedData, cred.iv, cred.authTag);
+            const parsed = JSON.parse(decrypted) as { accessToken?: string };
+            if (parsed.accessToken) {
+              const adSetIds = hypothesis.metaAdSetId ? [hypothesis.metaAdSetId] : [];
+              await pauseMetaCampaign(parsed.accessToken, hypothesis.metaCampaignId, adSetIds);
+            }
+          }
+        }
+      } catch (err) {
+        app.log.error(err, 'Failed to auto-pause Meta campaign on close');
+      }
     }
 
     if (!body.verdict) {
@@ -450,5 +506,133 @@ export async function hypothesesRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { hypothesis: updated };
+  });
+
+  // ── GENERATE creative brief ────────────────────────────────
+  app.post('/clients/:id/hypotheses/:hId/generate-brief', {
+    schema: {
+      tags: ['hypotheses'],
+      summary: 'Generate AI creative brief for hypothesis',
+    },
+  }, async (req, reply) => {
+    const { id, hId } = req.params as { id: string; hId: string };
+
+    const hypothesis = await prisma.campaignHypothesis.findUnique({
+      where: { id: hId },
+      include: { client: true },
+    });
+
+    if (!hypothesis) {
+      reply.status(404);
+      return { error: { code: 'NOT_FOUND', message: 'Hypothesis not found' } };
+    }
+
+    if (hypothesis.clientId !== id) {
+      reply.status(400);
+      return { error: { code: 'INVALID_CLIENT', message: 'Hypothesis does not belong to this client' } };
+    }
+
+    if (hypothesis.status !== 'DRAFT' && hypothesis.status !== 'APPROVED') {
+      reply.status(400);
+      return { error: { code: 'INVALID_STATUS', message: `Cannot generate brief from status ${hypothesis.status}` } };
+    }
+
+    try {
+      const { generateHypothesisBrief } = await import('../lib/hypothesis-brief-generator.js');
+      const brief = await generateHypothesisBrief(hypothesis, hypothesis.client, prisma);
+
+      const updated = await prisma.campaignHypothesis.update({
+        where: { id: hId },
+        data: {
+          creativeBrief: JSON.parse(JSON.stringify(brief)),
+          dailyBudget: brief.dailyBudget,
+        },
+      });
+
+      return { hypothesis: updated, brief };
+    } catch (err) {
+      app.log.error(err, 'Failed to generate creative brief');
+      reply.status(500);
+      return { error: { code: 'BRIEF_GENERATION_FAILED', message: String(err) } };
+    }
+  });
+
+  // ── EXECUTE hypothesis on Meta ─────────────────────────────
+  app.post('/clients/:id/hypotheses/:hId/execute', {
+    schema: {
+      tags: ['hypotheses'],
+      summary: 'Create Meta campaign from hypothesis creative brief',
+    },
+  }, async (req, reply) => {
+    const { hId } = req.params as { id: string; hId: string };
+
+    const hypothesis = await prisma.campaignHypothesis.findUnique({ where: { id: hId } });
+    if (!hypothesis) {
+      reply.status(404);
+      return { error: { code: 'NOT_FOUND', message: 'Hypothesis not found' } };
+    }
+
+    if (hypothesis.status !== 'APPROVED') {
+      reply.status(400);
+      return { error: { code: 'INVALID_STATUS', message: `Cannot execute from status ${hypothesis.status}. Approve first.` } };
+    }
+
+    if (!hypothesis.creativeBrief) {
+      reply.status(400);
+      return { error: { code: 'NO_BRIEF', message: 'No creative brief found. Generate a brief first.' } };
+    }
+
+    try {
+      const { executeHypothesis } = await import('../lib/hypothesis-executor.js');
+      const result = await executeHypothesis(hId, prisma);
+
+      if (!result.success) {
+        reply.status(400);
+        return { error: { code: 'EXECUTION_FAILED', message: result.error } };
+      }
+
+      // Refetch updated hypothesis
+      const updated = await prisma.campaignHypothesis.findUnique({ where: { id: hId } });
+      return { hypothesis: updated, execution: result };
+    } catch (err) {
+      app.log.error(err, 'Failed to execute hypothesis on Meta');
+      reply.status(500);
+      return { error: { code: 'EXECUTION_ERROR', message: String(err) } };
+    }
+  });
+
+  // ── GET hypothesis metrics ─────────────────────────────────
+  app.get('/clients/:id/hypotheses/:hId/metrics', {
+    schema: {
+      tags: ['hypotheses'],
+      summary: 'Get live + historical metrics for a hypothesis',
+    },
+  }, async (req, reply) => {
+    const { hId } = req.params as { id: string; hId: string };
+
+    const hypothesis = await prisma.campaignHypothesis.findUnique({
+      where: { id: hId },
+      include: {
+        metricLogs: {
+          orderBy: { syncedAt: 'asc' },
+        },
+      },
+    });
+
+    if (!hypothesis) {
+      reply.status(404);
+      return { error: { code: 'NOT_FOUND', message: 'Hypothesis not found' } };
+    }
+
+    return {
+      current: hypothesis.metricsSnapshot,
+      history: hypothesis.metricLogs,
+      lastSync: hypothesis.lastMetricsSyncAt,
+      expected: {
+        roas: hypothesis.expectedROAS,
+        ctr: hypothesis.expectedCTR,
+        cvr: hypothesis.expectedCVR,
+      },
+    };
   });
 }

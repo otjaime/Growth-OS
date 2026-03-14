@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, ChevronLeft, ChevronRight, Check, ExternalLink } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { Badge } from '@/components/ui/badge';
 
 const STEPS = [
   'Client + Context',
@@ -89,6 +91,34 @@ const INITIAL_FORM: FormData = {
   budgetOverride: '',
 };
 
+interface CopyVariant {
+  angle: string;
+  headline: string;
+  primaryText: string;
+  description: string;
+}
+
+interface BriefResult {
+  variants: CopyVariant[];
+  [key: string]: unknown;
+}
+
+interface ExecutionResult {
+  campaignId: string;
+  [key: string]: unknown;
+}
+
+interface PostCreationState {
+  hypothesisId: string;
+  clientId: string;
+  brief: BriefResult | null;
+  execution: ExecutionResult | null;
+  briefLoading: boolean;
+  execLoading: boolean;
+  briefError: string | null;
+  execError: string | null;
+}
+
 export default function NewHypothesisPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,6 +132,7 @@ export default function NewHypothesisPage() {
   const [loadingTriggers, setLoadingTriggers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [postCreation, setPostCreation] = useState<PostCreationState | null>(null);
 
   // Load clients
   useEffect(() => {
@@ -228,7 +259,18 @@ export default function NewHypothesisPage() {
       });
 
       if (res.ok) {
-        router.push(`/clients/${form.clientId}`);
+        const created = await res.json();
+        setPostCreation({
+          hypothesisId: created.id,
+          clientId: form.clientId,
+          brief: null,
+          execution: null,
+          briefLoading: false,
+          execLoading: false,
+          briefError: null,
+          execError: null,
+        });
+        setSubmitting(false);
       } else {
         setValidationError('Failed to create hypothesis. Please try again.');
         setSubmitting(false);
@@ -239,8 +281,154 @@ export default function NewHypothesisPage() {
     }
   };
 
+  const handleGenerateBrief = async () => {
+    if (!postCreation) return;
+    setPostCreation((s) => s ? { ...s, briefLoading: true, briefError: null } : s);
+    try {
+      const res = await apiFetch(
+        `/api/clients/${postCreation.clientId}/hypotheses/${postCreation.hypothesisId}/generate-brief`,
+        { method: 'POST' },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPostCreation((s) => s ? { ...s, brief: data, briefLoading: false } : s);
+      } else {
+        setPostCreation((s) => s ? { ...s, briefError: 'Failed to generate brief. Please try again.', briefLoading: false } : s);
+      }
+    } catch {
+      setPostCreation((s) => s ? { ...s, briefError: 'Network error. Please try again.', briefLoading: false } : s);
+    }
+  };
+
+  const handleExecuteLaunch = async () => {
+    if (!postCreation) return;
+    setPostCreation((s) => s ? { ...s, execLoading: true, execError: null } : s);
+    try {
+      const res = await apiFetch(
+        `/api/clients/${postCreation.clientId}/hypotheses/${postCreation.hypothesisId}/execute`,
+        { method: 'POST' },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPostCreation((s) => s ? { ...s, execution: data, execLoading: false } : s);
+      } else {
+        setPostCreation((s) => s ? { ...s, execError: 'Failed to launch on Meta. Please try again.', execLoading: false } : s);
+      }
+    } catch {
+      setPostCreation((s) => s ? { ...s, execError: 'Network error. Please try again.', execLoading: false } : s);
+    }
+  };
+
   const selectedClient = clients.find((c) => c.id === form.clientId);
   const selectedTrigger = triggers.find((t) => t.id === form.triggerId);
+
+  if (postCreation) {
+    const { hypothesisId, clientId, brief, execution, briefLoading, execLoading, briefError, execError } = postCreation;
+    const detailHref = `/hypotheses/${hypothesisId}?clientId=${clientId}`;
+
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Hypothesis Created!</h1>
+          <p className="text-sm text-[var(--foreground-secondary)] mt-1">Your hypothesis has been saved. You can now generate a creative brief and launch it.</p>
+        </div>
+
+        {/* Generate Brief */}
+        {!brief && !execution && (
+          <GlassSurface className="card p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">Generate Creative Brief</h2>
+            <p className="text-sm text-[var(--foreground-secondary)]">
+              Generate AI-powered copy variants for this hypothesis.
+            </p>
+            {briefError && (
+              <p className="text-xs text-red-400">{briefError}</p>
+            )}
+            <button
+              onClick={handleGenerateBrief}
+              disabled={briefLoading}
+              className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {briefLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {briefLoading ? 'Generating...' : 'Generate Creative Brief'}
+            </button>
+          </GlassSurface>
+        )}
+
+        {/* Brief Preview */}
+        {brief && !execution && (
+          <GlassSurface className="card p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">Creative Brief Preview</h2>
+            <div className="space-y-3">
+              {brief.variants.map((variant, i) => (
+                <GlassSurface key={i} className="card p-4 bg-white/[0.03] space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="blue">{variant.angle}</Badge>
+                  </div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{variant.headline}</p>
+                  <p className="text-xs text-[var(--foreground-secondary)]">{variant.primaryText}</p>
+                  <p className="text-xs text-[var(--foreground-secondary)]/70 italic">{variant.description}</p>
+                </GlassSurface>
+              ))}
+            </div>
+
+            {/* Launch on Meta */}
+            {execError && (
+              <p className="text-xs text-red-400">{execError}</p>
+            )}
+            <button
+              onClick={handleExecuteLaunch}
+              disabled={execLoading}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-6 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            >
+              {execLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4" />
+              )}
+              {execLoading ? 'Launching...' : 'Launch on Meta'}
+            </button>
+          </GlassSurface>
+        )}
+
+        {/* Execution Success */}
+        {execution && (
+          <GlassSurface className="card p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-green-400" />
+              <h2 className="text-lg font-semibold text-green-400">Launched Successfully</h2>
+            </div>
+            <p className="text-sm text-[var(--foreground-secondary)]">
+              Meta Campaign ID: <span className="font-mono text-[var(--foreground)]">{execution.campaignId}</span>
+            </p>
+            <div className="flex items-center gap-3 pt-2">
+              <Link
+                href={detailHref}
+                className="flex items-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-[var(--foreground)] text-sm font-medium px-4 py-2 rounded-lg transition-all ease-spring"
+              >
+                View Hypothesis
+              </Link>
+            </div>
+          </GlassSurface>
+        )}
+
+        {/* View Hypothesis link (always visible) */}
+        {!execution && (
+          <div className="flex items-center gap-3">
+            <Link
+              href={detailHref}
+              className="text-sm text-[var(--foreground-secondary)] hover:text-apple-blue transition-colors"
+            >
+              Skip &mdash; View Hypothesis
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">

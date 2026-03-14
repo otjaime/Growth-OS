@@ -41,6 +41,7 @@ export type {
   Client,
   CampaignHypothesis,
   StopLossEvent,
+  HypothesisMetricLog,
   TrackRecord,
   TriggerScore,
   PerformanceFee,
