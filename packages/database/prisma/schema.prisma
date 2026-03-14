@@ -75,6 +75,8 @@ model Organization {
   campaignStrategies   CampaignStrategy[]
   psychHypotheses      PsychHypothesis[]
   triggerPerformance   TriggerPerformanceRecord[]
+  // 0to1
+  clients              Client[]
   @@map("organizations")
 }
 
@@ -1352,6 +1354,11 @@ enum PsychTrigger {
   PEAK_END_RULE
   SCARCITY
   COMMITMENT_CONSISTENCY
+  // 0to1 additions
+  AUTONOMY_BIAS
+  SCARCITY_REAL
+  SCARCITY_URGENCY
+  SOCIAL_PROOF_SPECIFIC
 }
 
 enum EmotionalState {
@@ -1459,4 +1466,219 @@ model TriggerPerformanceRecord {
   @@unique([organizationId, trigger, vertical, awarenessLevel, funnelStage])
   @@index([organizationId])
   @@map("trigger_performance_records")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 0to1 — HEDGE FUND MARKETING OS
+// Campaign hypotheses as trades, portfolio tracking, stop-loss
+// ══════════════════════════════════════════════════════════════
+
+enum HypothesisStatus {
+  DRAFT
+  APPROVED
+  LIVE
+  PAUSED_BY_SYSTEM
+  PAUSED_BY_USER
+  WINNER
+  LOSER
+  INCONCLUSIVE
+}
+
+enum HypothesisVerdict {
+  WIN
+  LOSS
+  INCONCLUSIVE_VERDICT  // Prisma requires distinct from HypothesisStatus.INCONCLUSIVE
+}
+
+enum Vertical {
+  ECOMMERCE_DTC
+  FOOD_BEVERAGE
+  SAAS
+  FITNESS
+  BEAUTY
+  HOME
+  PETS
+  OTHER
+}
+
+enum FeeStatus {
+  PENDING
+  INVOICED
+  PAID
+}
+
+// ── Client ────────────────────────────────────────────────────
+
+model Client {
+  id               String       @id @default(cuid())
+  organizationId   String       @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  name             String
+  vertical         Vertical
+  baselineROAS     Float    @map("baseline_roas")  // Industry benchmark for alpha calculation
+  targetROAS       Float    @map("target_roas")    // Agreed performance target
+  monthlyAdSpend   Float    @map("monthly_ad_spend") // Current monthly ad spend in USD
+  metaAccountId    String?  @map("meta_account_id") // act_xxxxx
+  feeStructure     Json     @map("fee_structure")  // { baseRetainer, perfFeePercent, benchmarkROAS }
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  hypotheses       CampaignHypothesis[]
+  trackRecords     TrackRecord[]
+  performanceFees  PerformanceFee[]
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+// ── Campaign Hypothesis (The Trade) ──────────────────────────
+
+model CampaignHypothesis {
+  id               String   @id @default(cuid())
+  clientId         String   @map("client_id")
+  client           Client   @relation(fields: [clientId], references: [id])
+
+  // The Thesis — documented BEFORE launch
+  title            String
+  trigger          PsychTrigger
+  triggerMechanism String   @map("trigger_mechanism") @db.Text // WHY this trigger applies
+  awarenessLevel   AwarenessLevel @map("awareness_level")
+  audience         String   @db.Text  // Specific: who exactly
+  funnelStage      FunnelStage @map("funnel_stage")
+  creativeAngle    String   @map("creative_angle") @db.Text
+  copyHook         String   @map("copy_hook") @db.Text
+  primaryEmotion   String   @map("primary_emotion")
+  primaryObjection String   @map("primary_objection") @db.Text
+
+  // Pre-Trade Parameters — documented BEFORE launch
+  conviction       Int      // 1–5 scale
+  budgetUSD        Float    @map("budget_usd")
+  durationDays     Int      @map("duration_days")
+  falsificationCondition String @map("falsification_condition") @db.Text
+
+  // Expected outcomes — documented BEFORE launch
+  expectedROAS     Float    @map("expected_roas")
+  expectedCTR      Float    @map("expected_ctr")
+  expectedCVR      Float    @map("expected_cvr")
+
+  // Execution
+  status           HypothesisStatus @default(DRAFT)
+  metaCampaignId   String?  @map("meta_campaign_id")
+  launchedAt       DateTime? @map("launched_at")
+  closedAt         DateTime? @map("closed_at")
+
+  // Actual results — filled after close
+  actualROAS       Float?   @map("actual_roas")
+  actualCTR        Float?   @map("actual_ctr")
+  actualCVR        Float?   @map("actual_cvr")
+  actualSpend      Float?   @map("actual_spend")
+  actualRevenue    Float?   @map("actual_revenue")
+  delta            Float?   // actualROAS - expectedROAS
+
+  // Post-Trade — required to close
+  verdict          HypothesisVerdict? @map("verdict")
+  lesson           String?  @db.Text  // Required to move to WINNER/LOSER. Cannot be empty.
+  triggerEffective Boolean? @map("trigger_effective")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  stopLossEvents   StopLossEvent[]
+
+  @@index([clientId])
+  @@index([status])
+  @@map("campaign_hypotheses")
+}
+
+// ── Stop-Loss Events ─────────────────────────────────────────
+
+model StopLossEvent {
+  id               String   @id @default(cuid())
+  hypothesisId     String   @map("hypothesis_id")
+  hypothesis       CampaignHypothesis @relation(fields: [hypothesisId], references: [id])
+  rule             String   // Which rule triggered
+  metricAtTrigger  Json     @map("metric_at_trigger") // { roas, ctr, spend, daysRunning }
+  actionTaken      String   @map("action_taken") // PAUSED | SCALED | ALERT_ONLY
+  executedAt       DateTime @default(now()) @map("executed_at")
+
+  @@index([hypothesisId])
+  @@map("stop_loss_events")
+}
+
+// ── Track Record ─────────────────────────────────────────────
+
+model TrackRecord {
+  id               String   @id @default(cuid())
+  clientId         String?  @map("client_id") // null = global track record
+  client           Client?  @relation(fields: [clientId], references: [id])
+  period           String   // "all-time" | "2025-Q1" | "2025-04"
+
+  totalHypotheses  Int      @map("total_hypotheses")
+  wins             Int
+  losses           Int
+  inconclusive     Int
+
+  winRate          Float    @map("win_rate")
+  avgWinROAS       Float    @map("avg_win_roas")
+  avgLossROAS      Float    @map("avg_loss_roas")
+  avgExpectedROAS  Float    @map("avg_expected_roas")
+
+  expectedValue    Float    @map("expected_value")  // winRate * avgUpside - lossRate * avgDownside
+  sharpeEquivalent Float    @map("sharpe_equivalent") // EV / stdDev(returns)
+  alpha            Float    // avgActualROAS - industryBenchmark
+
+  totalSpend       Float    @map("total_spend")
+  totalRevenue     Float    @map("total_revenue")
+
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@map("track_records")
+}
+
+// ── Trigger Score (empirical win rate per trigger×vertical×awareness) ──
+
+model TriggerScore {
+  id               String   @id @default(cuid())
+  trigger          PsychTrigger
+  vertical         Vertical
+  awarenessLevel   AwarenessLevel @map("awareness_level")
+
+  sampleSize       Int      @default(0) @map("sample_size")
+  wins             Int      @default(0)
+  losses           Int      @default(0)
+  winRate          Float    @default(0) @map("win_rate")
+  avgROASDelta     Float    @default(0) @map("avg_roas_delta")
+  confidenceLevel  String   @default("LOW") @map("confidence_level") // LOW | MEDIUM | HIGH
+
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([trigger, vertical, awarenessLevel])
+  @@map("trigger_scores")
+}
+
+// ── Performance Fee ──────────────────────────────────────────
+
+model PerformanceFee {
+  id               String   @id @default(cuid())
+  clientId         String   @map("client_id")
+  client           Client   @relation(fields: [clientId], references: [id])
+  period           String   // "2025-04"
+
+  baseRetainer     Float    @map("base_retainer")
+  benchmarkROAS    Float    @map("benchmark_roas")
+  actualROAS       Float    @map("actual_roas")
+  incrementalROAS  Float    @map("incremental_roas")
+  revenueBase      Float    @map("revenue_base")
+  incrementalRevenue Float  @map("incremental_revenue")
+  perfFeePercent   Float    @map("perf_fee_percent")
+  perfFeeAmount    Float    @map("perf_fee_amount")
+  totalFee         Float    @map("total_fee")
+
+  status           FeeStatus @default(PENDING)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([clientId])
+  @@map("performance_fees")
 }

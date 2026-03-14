@@ -37,5 +37,13 @@ export type {
   CampaignStrategy,
   PsychHypothesis,
   TriggerPerformanceRecord,
+  // 0to1
+  Client,
+  CampaignHypothesis,
+  StopLossEvent,
+  TrackRecord,
+  TriggerScore,
+  PerformanceFee,
+  PrismaClient,
 } from '@prisma/client';
-export { Prisma, Plan, UserRole, ExperimentStatus, ExperimentType, OpportunityType, OpportunityStatus, SuggestionType, SuggestionStatus, FeedbackAction, MetaAdStatus, DiagnosisAction, DiagnosisStatus, DiagnosisSeverity, VariantStatus, CampaignStrategyType, CampaignStrategyStatus, AwarenessLevel, PsychTrigger, EmotionalState, FunnelStage, TriggerConfidence } from '@prisma/client';
+export { Prisma, Plan, UserRole, ExperimentStatus, ExperimentType, OpportunityType, OpportunityStatus, SuggestionType, SuggestionStatus, FeedbackAction, MetaAdStatus, DiagnosisAction, DiagnosisStatus, DiagnosisSeverity, VariantStatus, CampaignStrategyType, CampaignStrategyStatus, AwarenessLevel, PsychTrigger, EmotionalState, FunnelStage, TriggerConfidence, HypothesisStatus, HypothesisVerdict, Vertical, FeeStatus } from '@prisma/client';

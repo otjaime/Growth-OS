@@ -190,6 +190,48 @@ importers:
         specifier: ^1.3.0
         version: 1.6.1(@types/node@20.19.33)
 
+  packages/execution:
+    dependencies:
+      '@growth-os/database':
+        specifier: workspace:*
+        version: link:../database
+      pino:
+        specifier: ^8.19.0
+        version: 8.21.0
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.3.0
+        version: 1.6.1(@types/node@20.19.33)
+
+  packages/hypothesis:
+    dependencies:
+      '@growth-os/database':
+        specifier: workspace:*
+        version: link:../database
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.3.0
+        version: 1.6.1(@types/node@20.19.33)
+
+  packages/portfolio:
+    dependencies:
+      '@growth-os/database':
+        specifier: workspace:*
+        version: link:../database
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.3.0
+        version: 1.6.1(@types/node@20.19.33)
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
