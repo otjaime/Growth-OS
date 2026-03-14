@@ -2,10 +2,17 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import { Loader2, X } from 'lucide-react';
+import { BookOpen, X } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
+import { formatMultiplier } from '@/lib/format';
+import { KpiCard } from '@/components/kpi-card';
+import { KpiCardSkeleton, TableSkeleton } from '@/components/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { ErrorState } from '@/components/ui/error-state';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Badge, getStatusVariant } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
 import { GlassSurface } from '@/components/ui/glass-surface';
 
 interface TradeEntry {
@@ -28,12 +35,6 @@ interface TrackRecord {
   alpha: number;
 }
 
-const VERDICT_STYLES: Record<string, string> = {
-  WIN: 'bg-green-500/20 text-green-400',
-  LOSS: 'bg-red-500/20 text-red-400',
-  INCONCLUSIVE: 'bg-gray-500/20 text-gray-400',
-};
-
 export default function TradebookPage() {
   const params = useParams();
   const clientId = params.id as string;
@@ -44,13 +45,15 @@ export default function TradebookPage() {
   const [error, setError] = useState(false);
 
   // Filters
-  const [triggerFilter, setTriggerFilter] = useState('ALL');
-  const [verdictFilter, setVerdictFilter] = useState('ALL');
+  const [triggerFilter, setTriggerFilter] = useState('');
+  const [verdictFilter, setVerdictFilter] = useState('');
 
   // Lesson modal
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(false);
     Promise.all([
       apiFetch(`/api/clients/${clientId}/tradebook`).then((r) => r.ok ? r.json() : null),
       apiFetch(`/api/clients/${clientId}/track-record`).then((r) => r.ok ? r.json() : null),
@@ -64,7 +67,9 @@ export default function TradebookPage() {
         setError(true);
         setLoading(false);
       });
-  }, [clientId]);
+  };
+
+  useEffect(() => { load(); }, [clientId]);
 
   const uniqueTriggers = useMemo(() => {
     const set = new Set(trades.map((t) => t.trigger));
@@ -73,20 +78,24 @@ export default function TradebookPage() {
 
   const filteredTrades = useMemo(() => {
     let list = trades;
-    if (triggerFilter !== 'ALL') list = list.filter((t) => t.trigger === triggerFilter);
-    if (verdictFilter !== 'ALL') list = list.filter((t) => t.verdict === verdictFilter);
+    if (triggerFilter) list = list.filter((t) => t.trigger === triggerFilter);
+    if (verdictFilter) list = list.filter((t) => t.verdict === verdictFilter);
     return list;
   }, [trades, triggerFilter, verdictFilter]);
 
   const filteredWinRate = useMemo(() => {
-    const wins = filteredTrades.filter((t) => t.verdict === 'WIN').length;
+    const wins = filteredTrades.filter((t) => t.verdict === 'WIN' || t.verdict === 'WINNER').length;
     return filteredTrades.length > 0 ? wins / filteredTrades.length : null;
   }, [filteredTrades]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-apple-blue" />
+      <div className="space-y-6">
+        <PageHeader title="Trade Book" breadcrumb={{ label: 'Back to Client', href: `/clients/${clientId}` }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton />
+        </div>
+        <TableSkeleton rows={6} cols={8} />
       </div>
     );
   }
@@ -94,130 +103,91 @@ export default function TradebookPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Trade Book</h1>
-        <div className="card border-apple-red/50 flex items-center justify-center h-64">
-          <p className="text-apple-red">Failed to load trade book.</p>
-        </div>
+        <PageHeader title="Trade Book" breadcrumb={{ label: 'Back to Client', href: `/clients/${clientId}` }} />
+        <ErrorState message="Failed to load trade book." onRetry={load} />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <Link href={`/clients/${clientId}`} className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors">
-          &larr; Back to Client
-        </Link>
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Trade Book</h1>
-      </div>
+      <PageHeader title="Trade Book" breadcrumb={{ label: 'Back to Client', href: `/clients/${clientId}` }} />
 
       {/* Stats Row */}
       {trackRecord && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <GlassSurface className="card p-5">
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Win Rate</p>
-            <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-              {(trackRecord.winRate * 100).toFixed(0)}%
-            </p>
-          </GlassSurface>
-          <GlassSurface className="card p-5">
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Expected Value</p>
-            <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-              {trackRecord.expectedValue >= 0 ? '+' : ''}{trackRecord.expectedValue.toFixed(2)}x
-            </p>
-          </GlassSurface>
-          <GlassSurface className="card p-5">
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Sharpe Equiv.</p>
-            <p className="text-2xl font-bold font-mono text-[var(--foreground)]">
-              {trackRecord.sharpeEquivalent.toFixed(2)}
-            </p>
-          </GlassSurface>
-          <GlassSurface className="card p-5">
-            <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1">Alpha</p>
-            <p className={clsx(
-              'text-2xl font-bold font-mono',
-              trackRecord.alpha >= 0 ? 'text-green-400' : 'text-red-400',
-            )}>
-              {trackRecord.alpha >= 0 ? '+' : ''}{trackRecord.alpha.toFixed(2)}x
-            </p>
-          </GlassSurface>
+          <KpiCard title="Win Rate" value={trackRecord.winRate} format="percent" />
+          <KpiCard title="Expected Value" value={trackRecord.expectedValue} format="multiplier" />
+          <KpiCard title="Sharpe Equiv." value={trackRecord.sharpeEquivalent} format="multiplier" />
+          <KpiCard title="Alpha" value={trackRecord.alpha} format="multiplier" />
         </div>
       )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
-        <select
+        <Select
           value={triggerFilter}
           onChange={(e) => setTriggerFilter(e.target.value)}
-          className="bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-        >
-          <option value="ALL">All Triggers</option>
-          {uniqueTriggers.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-        <select
+          placeholder="All Triggers"
+          options={uniqueTriggers.map((t) => ({ value: t, label: t }))}
+        />
+        <Select
           value={verdictFilter}
           onChange={(e) => setVerdictFilter(e.target.value)}
-          className="bg-white/[0.06] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--foreground)] focus:border-apple-blue focus:outline-none"
-        >
-          <option value="ALL">All Verdicts</option>
-          <option value="WIN">Win</option>
-          <option value="LOSS">Loss</option>
-          <option value="INCONCLUSIVE">Inconclusive</option>
-        </select>
+          placeholder="All Verdicts"
+          options={[
+            { value: 'WIN', label: 'Win' },
+            { value: 'LOSS', label: 'Loss' },
+            { value: 'INCONCLUSIVE', label: 'Inconclusive' },
+          ]}
+        />
       </div>
 
       {/* Table */}
       {filteredTrades.length === 0 ? (
-        <div className="card text-center py-16">
-          <p className="text-[var(--foreground-secondary)] text-sm">
-            No closed hypotheses yet. The track record builds as campaigns close.
-          </p>
-        </div>
+        <EmptyState
+          icon={BookOpen}
+          title="No closed hypotheses yet."
+          description="The track record builds as campaigns close."
+        />
       ) : (
         <GlassSurface className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[var(--glass-border)] text-xs text-[var(--foreground-secondary)] uppercase">
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Trigger</th>
-                  <th className="px-4 py-3 font-medium text-center">Awareness</th>
-                  <th className="px-4 py-3 font-medium text-right">Exp ROAS</th>
-                  <th className="px-4 py-3 font-medium text-right">Act ROAS</th>
-                  <th className="px-4 py-3 font-medium text-right">Delta</th>
-                  <th className="px-4 py-3 font-medium text-center">Verdict</th>
-                  <th className="px-4 py-3 font-medium">Lesson</th>
+                  <th className="px-5 py-3 font-medium">Title</th>
+                  <th className="px-5 py-3 font-medium">Trigger</th>
+                  <th className="px-5 py-3 font-medium text-center">Awareness</th>
+                  <th className="px-5 py-3 font-medium text-right">Exp ROAS</th>
+                  <th className="px-5 py-3 font-medium text-right">Act ROAS</th>
+                  <th className="px-5 py-3 font-medium text-right">Delta</th>
+                  <th className="px-5 py-3 font-medium text-center">Verdict</th>
+                  <th className="px-5 py-3 font-medium">Lesson</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTrades.map((t) => (
                   <tr key={t.id} className="border-b border-[var(--glass-border)]/50 hover:bg-white/[0.02] transition-colors">
-                    <td className="px-4 py-3 text-sm text-[var(--foreground)]">{t.title}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-300">
-                        {t.trigger}
-                      </span>
+                    <td className="px-5 py-3 text-sm text-[var(--foreground)]">{t.title}</td>
+                    <td className="px-5 py-3">
+                      <Badge variant="slate">{t.trigger}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-center font-mono text-xs text-[var(--foreground)]">{t.awarenessLevel}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-[var(--foreground)]">{t.expectedROAS.toFixed(2)}x</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-[var(--foreground)]">
-                      {t.actualROAS != null ? `${t.actualROAS.toFixed(2)}x` : '--'}
+                    <td className="px-5 py-3 text-center font-mono text-xs text-[var(--foreground)]">{t.awarenessLevel}</td>
+                    <td className="px-5 py-3 text-right font-mono text-xs text-[var(--foreground)]">{formatMultiplier(t.expectedROAS)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-xs text-[var(--foreground)]">
+                      {t.actualROAS != null ? formatMultiplier(t.actualROAS) : '--'}
                     </td>
                     <td className={clsx(
-                      'px-4 py-3 text-right font-mono text-xs',
+                      'px-5 py-3 text-right font-mono text-xs',
                       t.delta != null && t.delta > 0 ? 'text-green-400' : t.delta != null && t.delta < 0 ? 'text-red-400' : 'text-[var(--foreground-secondary)]',
                     )}>
                       {t.delta != null ? `${t.delta > 0 ? '+' : ''}${t.delta.toFixed(2)}x` : '--'}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${VERDICT_STYLES[t.verdict] ?? VERDICT_STYLES.INCONCLUSIVE}`}>
-                        {t.verdict}
-                      </span>
+                    <td className="px-5 py-3 text-center">
+                      <Badge variant={getStatusVariant(t.verdict)}>{t.verdict}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-xs text-[var(--foreground-secondary)] max-w-[200px]">
+                    <td className="px-5 py-3 text-xs text-[var(--foreground-secondary)] max-w-[200px]">
                       {t.lesson ? (
                         <button
                           onClick={() => setExpandedLesson(t.lesson)}
@@ -236,8 +206,8 @@ export default function TradebookPage() {
             </table>
           </div>
 
-          {/* Footer: running win rate */}
-          <div className="px-4 py-3 border-t border-[var(--glass-border)] flex items-center justify-between">
+          {/* Footer */}
+          <div className="px-5 py-3 border-t border-[var(--glass-border)] flex items-center justify-between">
             <span className="text-xs text-[var(--foreground-secondary)]">
               {filteredTrades.length} trade{filteredTrades.length !== 1 ? 's' : ''} shown
             </span>

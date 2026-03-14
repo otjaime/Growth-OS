@@ -25,7 +25,9 @@ import {
   Mail,
   Zap,
   Briefcase,
+  Trophy,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '@/lib/api';
 import { LogoutButton } from '@/components/auth-gate';
@@ -54,27 +56,70 @@ function formatRelativeTime(isoDate: string): string {
   return `${days}d ago`;
 }
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Executive Summary', icon: LayoutDashboard },
-  { href: '/channels', label: 'Channel Performance', icon: Megaphone },
-  { href: '/funnel', label: 'Conversion Funnel', icon: Filter },
-  { href: '/cohorts', label: 'Cohorts & Retention', icon: Users },
-  { href: '/email', label: 'Email Performance', icon: Mail },
-  { href: '/unit-economics', label: 'Unit Economics', icon: DollarSign },
-  { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
-  { href: '/wbr', label: 'Weekly Review', icon: FileText },
-  { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
-  { href: '/autopilot', label: 'Meta Autopilot', icon: Zap },
-  { href: '/clients', label: 'Client Portfolio', icon: Briefcase },
-  { href: '/portfolio', label: 'Track Record', icon: TrendingUp },
-  { href: '/experiments', label: 'Experiments', icon: FlaskConical },
-  { href: '/suggestions', label: 'AI Suggestions', icon: Lightbulb },
-  { href: '/growth-model', label: 'Growth Model', icon: TrendingUp },
-  { href: '/connections', label: 'Data Connections', icon: Cable },
-  { href: '/pipeline', label: 'Pipeline Health', icon: Gauge },
-  { href: '/jobs', label: 'Job Runs', icon: Activity },
-  { href: '/settings', label: 'Settings', icon: Settings },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavSection {
+  label: string;
+  items: readonly NavItem[];
+}
+
+const NAV_SECTIONS: readonly NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { href: '/dashboard', label: 'Executive Summary', icon: LayoutDashboard },
+      { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
+      { href: '/wbr', label: 'Weekly Review', icon: FileText },
+    ],
+  },
+  {
+    label: 'Analytics',
+    items: [
+      { href: '/channels', label: 'Channel Performance', icon: Megaphone },
+      { href: '/funnel', label: 'Conversion Funnel', icon: Filter },
+      { href: '/cohorts', label: 'Cohorts & Retention', icon: Users },
+      { href: '/email', label: 'Email Performance', icon: Mail },
+      { href: '/unit-economics', label: 'Unit Economics', icon: DollarSign },
+    ],
+  },
+  {
+    label: 'Hedge Fund',
+    items: [
+      { href: '/clients', label: 'Client Portfolio', icon: Briefcase },
+      { href: '/portfolio', label: 'Track Record', icon: Trophy },
+    ],
+  },
+  {
+    label: 'Growth Engine',
+    items: [
+      { href: '/autopilot', label: 'Meta Autopilot', icon: Zap },
+      { href: '/experiments', label: 'Experiments', icon: FlaskConical },
+      { href: '/suggestions', label: 'AI Suggestions', icon: Lightbulb },
+      { href: '/growth-model', label: 'Growth Model', icon: TrendingUp },
+      { href: '/ask', label: 'Ask Your Data', icon: Sparkles },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { href: '/connections', label: 'Data Connections', icon: Cable },
+      { href: '/pipeline', label: 'Pipeline Health', icon: Gauge },
+      { href: '/jobs', label: 'Job Runs', icon: Activity },
+      { href: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
 ];
+
+function isActiveRoute(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  // Prefix match for nested routes (e.g. /clients/123 highlights /clients)
+  if (href !== '/dashboard' && pathname.startsWith(href + '/')) return true;
+  return false;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -110,6 +155,44 @@ export function Sidebar() {
     ? `Synced ${formatRelativeTime(lastSyncAt)}`
     : 'Not synced yet';
 
+  const renderNavItem = (item: NavItem, useDock: boolean) => {
+    const isActive = isActiveRoute(pathname, item.href);
+    const Icon = item.icon;
+    const link = (
+      <Link
+        href={item.href}
+        className={clsx(
+          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ease-spring',
+          isActive
+            ? 'bg-[var(--tint-blue)] text-apple-blue'
+            : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-hover',
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        {item.label}
+      </Link>
+    );
+    if (useDock) {
+      return <DockItem key={item.href}>{link}</DockItem>;
+    }
+    return <div key={item.href}>{link}</div>;
+  };
+
+  const renderSections = (useDock: boolean) => (
+    <>
+      {NAV_SECTIONS.map((section, idx) => (
+        <div key={section.label}>
+          {/* Section header — skip divider on first section */}
+          {idx > 0 && <div className="mx-3 my-1 border-t border-[var(--glass-border)]/30" />}
+          <p className="text-[10px] uppercase tracking-widest text-[var(--foreground-secondary)]/40 px-3 pt-3 pb-1 font-medium">
+            {section.label}
+          </p>
+          {section.items.map((item) => renderNavItem(item, useDock))}
+        </div>
+      ))}
+    </>
+  );
+
   const sidebarContent = (
     <>
       {/* Logo */}
@@ -133,49 +216,12 @@ export function Sidebar() {
       </div>
 
       {/* Navigation — Dock magnification on desktop */}
-      <Dock className="hidden lg:flex flex-1 flex-col px-3 py-4 space-y-1 overflow-auto">
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
-          const Icon = item.icon;
-          return (
-            <DockItem key={item.href}>
-              <Link
-                href={item.href}
-                className={clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
-                  isActive
-                    ? 'bg-[var(--tint-blue)] text-apple-blue'
-                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-hover',
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            </DockItem>
-          );
-        })}
+      <Dock className="hidden lg:flex flex-1 flex-col px-3 py-2 overflow-auto">
+        {renderSections(true)}
       </Dock>
       {/* Navigation — plain list on mobile */}
-      <nav className="lg:hidden flex-1 px-3 py-4 space-y-1 overflow-auto">
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ease-spring',
-                isActive
-                  ? 'bg-[var(--tint-blue)] text-apple-blue'
-                  : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-glass-hover',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="lg:hidden flex-1 px-3 py-2 overflow-auto">
+        {renderSections(false)}
       </nav>
 
       {/* Channel Filter */}
