@@ -70,6 +70,16 @@ async function startScheduler() {
     },
   );
 
+  await syncQueue.add(
+    'hypothesis-monitor',
+    { type: 'hypothesis-monitor' },
+    {
+      repeat: { pattern: process.env.HYPOTHESIS_MONITOR_CRON ?? '0 */4 * * *' },
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    },
+  );
+
   // Worker
   const worker = new Worker(
     'growth-os-sync',
@@ -195,6 +205,10 @@ async function startScheduler() {
               log.error({ orgId: org.id, error: String(err) }, 'Weekly analysis failed for org');
             }
           }
+        } else if (job.data.type === 'hypothesis-monitor') {
+          const { syncHypothesisMetrics, evaluateAllLive } = await import('@growth-os/execution');
+          await syncHypothesisMetrics(prisma);
+          await evaluateAllLive(prisma);
         }
 
         const durationMs = Date.now() - startTime;

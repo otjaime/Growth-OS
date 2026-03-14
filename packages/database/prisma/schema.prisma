@@ -1536,6 +1536,12 @@ model CampaignHypothesis {
   // Execution
   status           HypothesisStatus @default(DRAFT)
   metaCampaignId   String?  @map("meta_campaign_id")
+  metaAdSetId       String?  @map("meta_ad_set_id")
+  metaAdIds         Json?    @map("meta_ad_ids")
+  creativeBrief     Json?    @map("creative_brief")
+  dailyBudget       Float?   @map("daily_budget")
+  metricsSnapshot   Json?    @map("metrics_snapshot")
+  lastMetricsSyncAt DateTime? @map("last_metrics_sync_at")
   launchedAt       DateTime? @map("launched_at")
   closedAt         DateTime? @map("closed_at")
 
@@ -1556,6 +1562,7 @@ model CampaignHypothesis {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   stopLossEvents   StopLossEvent[]
+  metricLogs       HypothesisMetricLog[]
 
   @@index([clientId])
   @@index([status])
@@ -1575,6 +1582,27 @@ model StopLossEvent {
 
   @@index([hypothesisId])
   @@map("stop_loss_events")
+}
+
+// ── Hypothesis Metric Logs ──────────────────────────────────
+
+model HypothesisMetricLog {
+  id            String   @id @default(cuid())
+  hypothesisId  String   @map("hypothesis_id")
+  hypothesis    CampaignHypothesis @relation(fields: [hypothesisId], references: [id])
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  spend         Float
+  revenue       Float
+  roas          Float
+  ctr           Float
+  cvr           Float
+  impressions   Int
+  clicks        Int
+  conversions   Int
+  daysRunning   Int      @map("days_running")
+
+  @@index([hypothesisId])
+  @@map("hypothesis_metric_logs")
 }
 
 // ── Track Record ─────────────────────────────────────────────

@@ -184,7 +184,14 @@ export default function ClientDetailPage() {
                     <Badge variant={getStatusVariant(h.status)}>{h.status}</Badge>
                     {h.stopLoss && <span className="ml-1" title="Stop-loss triggered">{'\u26A0\uFE0F'}</span>}
                   </td>
-                  <td className="px-5 py-3 text-sm text-[var(--foreground)]">{h.title}</td>
+                  <td className="px-5 py-3 text-sm">
+                    <Link
+                      href={`/hypotheses/${h.id}?clientId=${clientId}`}
+                      className="text-[var(--foreground)] hover:text-apple-blue transition-colors"
+                    >
+                      {h.title}
+                    </Link>
+                  </td>
                   <td className="px-5 py-3">
                     <Badge variant="slate">{h.trigger}</Badge>
                   </td>

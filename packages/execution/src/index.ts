@@ -4,3 +4,5 @@ export { STOP_LOSS_RULES, evaluateHypothesis, evaluateAllLive } from './stop-los
 export type { StopLossRule, EvaluationResult } from './stop-loss.js';
 export { calculateScaleTarget } from './position-sizer.js';
 export type { ScaleParams } from './position-sizer.js';
+export { syncHypothesisMetrics } from './hypothesis-metrics-sync.js';
+export type { SyncResult } from './hypothesis-metrics-sync.js';
