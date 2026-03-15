@@ -31,6 +31,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { ErrorState } from '@/components/ui/error-state';
 import { Badge, getStatusVariant } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { ConvictionDots } from '@/components/ui/conviction-dots';
 
 /* ── Types ────────────────────────────────────────── */
 
@@ -136,24 +137,7 @@ const CLOSED_STATUSES = new Set(['WINNER', 'LOSER', 'INCONCLUSIVE']);
 
 /* ── Helpers ──────────────────────────────────────── */
 
-function ConvictionDots({ level }: { level: number }) {
-  return (
-    <span className="font-mono text-xs tracking-wider">
-      {Array.from({ length: 5 }, (_, i) => (
-        <span
-          key={i}
-          className={
-            i < level
-              ? 'text-amber-400'
-              : 'text-[var(--foreground-secondary)]/30'
-          }
-        >
-          {'\u25CF'}
-        </span>
-      ))}
-    </span>
-  );
-}
+// ConvictionDots imported from shared component
 
 function daysBetween(from: string, to?: string): number {
   const a = new Date(from).getTime();
@@ -306,8 +290,7 @@ export default function HypothesisDetailPage() {
       {/* ── 1. Page Header ──────────────────────────── */}
       <PageHeader
         title={h.title}
-        icon={FlaskConical}
-        breadcrumb={{ label: h.client.name, href: `/clients/${h.clientId}` }}
+        breadcrumb={{ label: `Back to ${h.client.name}`, href: `/clients/${h.clientId}` }}
       />
 
       {/* ── 2. Status Bar ───────────────────────────── */}
@@ -706,7 +689,7 @@ export default function HypothesisDetailPage() {
               <button
                 disabled={actionLoading}
                 onClick={() => doAction('approve')}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                className="flex items-center gap-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
               >
                 <CheckCircle className="h-4 w-4" />
                 Approve
@@ -717,7 +700,7 @@ export default function HypothesisDetailPage() {
               <button
                 disabled={actionLoading}
                 onClick={() => doAction('generate-brief')}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                className="flex items-center gap-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
               >
                 <FileText className="h-4 w-4" />
                 Generate Brief
@@ -737,7 +720,7 @@ export default function HypothesisDetailPage() {
                 <button
                   disabled={actionLoading}
                   onClick={() => doAction('execute')}
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                  className="flex items-center gap-2 bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
                 >
                   <Rocket className="h-4 w-4" />
                   Launch on Meta
@@ -750,7 +733,7 @@ export default function HypothesisDetailPage() {
                 <button
                   disabled={actionLoading}
                   onClick={() => doAction('pause')}
-                  className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                  className="flex items-center gap-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
                 >
                   <Pause className="h-4 w-4" />
                   Pause
@@ -758,7 +741,7 @@ export default function HypothesisDetailPage() {
                 <button
                   disabled={actionLoading}
                   onClick={() => setShowCloseModal(true)}
-                  className="flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                  className="flex items-center gap-2 bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
                 >
                   <X className="h-4 w-4" />
                   Close Hypothesis
@@ -771,7 +754,7 @@ export default function HypothesisDetailPage() {
                 <button
                   disabled={actionLoading}
                   onClick={() => doAction('execute')}
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                  className="flex items-center gap-2 bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
                 >
                   <Play className="h-4 w-4" />
                   Resume
@@ -779,7 +762,7 @@ export default function HypothesisDetailPage() {
                 <button
                   disabled={actionLoading}
                   onClick={() => setShowCloseModal(true)}
-                  className="flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                  className="flex items-center gap-2 bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-all"
                 >
                   <X className="h-4 w-4" />
                   Close Hypothesis
@@ -818,6 +801,15 @@ interface CloseModalProps {
 function CloseModal({ hypothesis, metricsSnapshot, onClose, onSubmit }: CloseModalProps) {
   const [verdict, setVerdict] = useState<Verdict | ''>('');
   const [lesson, setLesson] = useState('');
+
+  // Escape key handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
   const [triggerEffective, setTriggerEffective] = useState(false);
   const [actualROAS, setActualROAS] = useState(
     metricsSnapshot?.roas?.toString() ?? hypothesis.actualROAS?.toString() ?? '',
@@ -949,7 +941,7 @@ function CloseModal({ hypothesis, metricsSnapshot, onClose, onSubmit }: CloseMod
           <button
             disabled={!canSubmit}
             onClick={handleSubmit}
-            className="text-sm font-medium px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white transition-all"
+            className="text-sm font-medium px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 disabled:opacity-50 transition-all"
           >
             {submitting ? 'Closing...' : 'Close Hypothesis'}
           </button>

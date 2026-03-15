@@ -90,6 +90,7 @@ const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Hedge Fund',
     items: [
       { href: '/clients', label: 'Client Portfolio', icon: Briefcase },
+      { href: '/hypotheses', label: 'Hypotheses', icon: FlaskConical },
       { href: '/portfolio', label: 'Track Record', icon: Trophy },
     ],
   },
