@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatMultiplier, formatPercent } from '@/lib/format';
+import { useClient } from '@/contexts/client';
 import { KpiCard } from '@/components/kpi-card';
 import { KpiCardSkeleton } from '@/components/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
@@ -162,8 +163,9 @@ function KeyValue({ label, value }: { label: string; value: string | null | unde
 export default function HypothesisDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const { selectedClientId } = useClient();
   const hypothesisId = params.id as string;
-  const clientIdParam = searchParams.get('clientId');
+  const clientIdParam = searchParams.get('clientId') ?? selectedClientId;
 
   const [hypothesis, setHypothesis] = useState<HypothesisDetail | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
@@ -176,7 +178,7 @@ export default function HypothesisDetailPage() {
 
   const load = useCallback(() => {
     if (!clientIdParam) {
-      setError('Missing clientId query parameter.');
+      setError('Missing client context. Select a client from the sidebar or navigate from the client page.');
       setLoading(false);
       return;
     }

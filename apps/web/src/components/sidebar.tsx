@@ -33,6 +33,7 @@ import { apiFetch } from '@/lib/api';
 import { LogoutButton } from '@/components/auth-gate';
 import { useFilters } from '@/contexts/filters';
 import { useDemoMode } from '@/contexts/demo-mode';
+import { AccountSwitcher } from '@/components/account-switcher';
 import { Dock, DockItem } from '@/components/ui/dock';
 
 const CHANNELS = [
@@ -215,6 +216,9 @@ export function Sidebar() {
           </button>
         </div>
       </div>
+
+      {/* Account Switcher */}
+      <AccountSwitcher />
 
       {/* Navigation — Dock magnification on desktop */}
       <Dock className="hidden lg:flex flex-1 flex-col px-3 py-2 overflow-auto">

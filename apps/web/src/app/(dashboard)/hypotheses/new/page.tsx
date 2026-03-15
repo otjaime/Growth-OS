@@ -9,6 +9,7 @@ import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Badge } from '@/components/ui/badge';
+import { useClient } from '@/contexts/client';
 
 const STEPS = [
   'Client + Context',
@@ -132,7 +133,8 @@ interface PostCreationState {
 export default function NewHypothesisPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialClientId = searchParams.get('clientId') ?? '';
+  const { selectedClientId, selectedClient: globalClient } = useClient();
+  const initialClientId = searchParams.get('clientId') ?? selectedClientId ?? '';
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>({ ...INITIAL_FORM, clientId: initialClientId, title: '' });
@@ -143,6 +145,13 @@ export default function NewHypothesisPage() {
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [postCreation, setPostCreation] = useState<PostCreationState | null>(null);
+
+  // Auto-fill from global client context
+  useEffect(() => {
+    if (globalClient && !form.clientId) {
+      setForm((f) => ({ ...f, clientId: globalClient.id, vertical: globalClient.vertical }));
+    }
+  }, [globalClient]);
 
   // Load clients
   useEffect(() => {
@@ -492,7 +501,15 @@ export default function NewHypothesisPage() {
 
             <div>
               <label className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1 block">Client</label>
-              {loadingClients ? (
+              {selectedClientId && globalClient ? (
+                <div className="flex items-center gap-2 px-3 py-2 text-sm bg-white/[0.04] border border-[var(--glass-border)] rounded-lg">
+                  <span className="text-[var(--foreground)]">{globalClient.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--foreground-secondary)] uppercase tracking-wider">
+                    {globalClient.vertical}
+                  </span>
+                  <span className="text-[10px] text-[var(--foreground-secondary)]/50 ml-auto">via account switcher</span>
+                </div>
+              ) : loadingClients ? (
                 <Loader2 className="h-4 w-4 animate-spin text-apple-blue" />
               ) : (
                 <select

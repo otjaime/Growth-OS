@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { useClient } from '@/contexts/client';
 
 interface Client {
   id: string;
@@ -44,6 +45,7 @@ const VERTICAL_VARIANT: Record<string, 'pink' | 'purple' | 'green' | 'amber' | '
 };
 
 export default function ClientsPage() {
+  const { setSelectedClientId } = useClient();
   const [clients, setClients] = useState<Client[]>([]);
   const [aum, setAum] = useState<AumData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,7 +111,7 @@ export default function ClientsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {clients.map((client) => (
-            <Link key={client.id} href={`/clients/${client.id}`}>
+            <Link key={client.id} href={`/clients/${client.id}`} onClick={() => setSelectedClientId(client.id)}>
               <GlassSurface className="card p-5 hover:bg-white/[0.04] transition-all ease-spring cursor-pointer">
                 {/* Name + Vertical */}
                 <div className="flex items-center justify-between mb-4">

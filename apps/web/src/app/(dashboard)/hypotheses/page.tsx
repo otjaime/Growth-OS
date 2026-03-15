@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Badge, getStatusVariant } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { ConvictionDots } from '@/components/ui/conviction-dots';
+import { useClient } from '@/contexts/client';
 
 /* ── Types ────────────────────────────────────────── */
 
@@ -59,6 +60,7 @@ const CLOSED_STATUSES = new Set(['WINNER', 'LOSER', 'INCONCLUSIVE']);
 /* ── Page ─────────────────────────────────────────── */
 
 export default function HypothesesPage() {
+  const { selectedClientId, selectedClient } = useClient();
   const [clients, setClients] = useState<ClientWithHypotheses[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -68,44 +70,67 @@ export default function HypothesesPage() {
     setLoading(true);
     setError(false);
 
-    apiFetch('/api/clients')
-      .then((r) => (r.ok ? r.json() : null))
-      .then(async (data) => {
-        if (!data) {
+    if (selectedClientId) {
+      // Scoped to one client — single fetch
+      apiFetch(`/api/clients/${selectedClientId}/hypotheses`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) {
+            setError(true);
+            setLoading(false);
+            return;
+          }
+          setClients([{
+            id: selectedClientId,
+            name: selectedClient?.name ?? '',
+            hypotheses: data.hypotheses ?? [],
+          }]);
+          setLoading(false);
+        })
+        .catch(() => {
           setError(true);
           setLoading(false);
-          return;
-        }
-        const clientList = data.clients ?? data;
+        });
+    } else {
+      // Portfolio mode — fetch all clients' hypotheses
+      apiFetch('/api/clients')
+        .then((r) => (r.ok ? r.json() : null))
+        .then(async (data) => {
+          if (!data) {
+            setError(true);
+            setLoading(false);
+            return;
+          }
+          const clientList = data.clients ?? data;
 
-        // Fetch hypotheses for each client in parallel
-        const results: ClientWithHypotheses[] = await Promise.all(
-          clientList.map(async (c: { id: string; name: string }) => {
-            try {
-              const res = await apiFetch(`/api/clients/${c.id}/hypotheses`);
-              if (res.ok) {
-                const hData = await res.json();
-                return { id: c.id, name: c.name, hypotheses: hData.hypotheses ?? [] };
+          const results: ClientWithHypotheses[] = await Promise.all(
+            clientList.map(async (c: { id: string; name: string }) => {
+              try {
+                const res = await apiFetch(`/api/clients/${c.id}/hypotheses`);
+                if (res.ok) {
+                  const hData = await res.json();
+                  return { id: c.id, name: c.name, hypotheses: hData.hypotheses ?? [] };
+                }
+              } catch {
+                /* skip client on error */
               }
-            } catch {
-              /* skip client on error */
-            }
-            return { id: c.id, name: c.name, hypotheses: [] };
-          }),
-        );
+              return { id: c.id, name: c.name, hypotheses: [] };
+            }),
+          );
 
-        setClients(results);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
+          setClients(results);
+          setLoading(false);
+        })
+        .catch(() => {
+          setError(true);
+          setLoading(false);
+        });
+    }
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [selectedClientId]);
 
   // Flatten all hypotheses with client info
   const allHypotheses = useMemo(() => {
@@ -257,7 +282,7 @@ export default function HypothesesPage() {
             <tr className="border-b border-[var(--glass-border)] text-xs text-[var(--foreground-secondary)] uppercase">
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium">Title</th>
-              <th className="px-5 py-3 font-medium">Client</th>
+              {!selectedClientId && <th className="px-5 py-3 font-medium">Client</th>}
               <th className="px-5 py-3 font-medium">Trigger</th>
               <th className="px-5 py-3 font-medium text-center">Conviction</th>
               <th className="px-5 py-3 font-medium text-right">Exp ROAS</th>
@@ -289,14 +314,16 @@ export default function HypothesesPage() {
                     {h.title}
                   </Link>
                 </td>
-                <td className="px-5 py-3 text-xs text-[var(--foreground-secondary)]">
-                  <Link
-                    href={`/clients/${h.clientId}`}
-                    className="hover:text-[var(--foreground)] transition-colors"
-                  >
-                    {h.clientName}
-                  </Link>
-                </td>
+                {!selectedClientId && (
+                  <td className="px-5 py-3 text-xs text-[var(--foreground-secondary)]">
+                    <Link
+                      href={`/clients/${h.clientId}`}
+                      className="hover:text-[var(--foreground)] transition-colors"
+                    >
+                      {h.clientName}
+                    </Link>
+                  </td>
+                )}
                 <td className="px-5 py-3">
                   <Badge variant="slate">{h.trigger}</Badge>
                 </td>
