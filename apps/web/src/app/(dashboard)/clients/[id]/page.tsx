@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Badge, getStatusVariant } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { ConvictionDots } from '@/components/ui/conviction-dots';
+import { useClient } from '@/contexts/client';
 
 interface Hypothesis {
   id: string;
@@ -56,9 +57,15 @@ const STATUS_ORDER: Record<string, number> = {
 export default function ClientDetailPage() {
   const params = useParams();
   const clientId = params.id as string;
+  const { setSelectedClientId } = useClient();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  // Sync global client context when viewing this client
+  useEffect(() => {
+    setSelectedClientId(clientId);
+  }, [clientId, setSelectedClientId]);
 
   const load = () => {
     setLoading(true);
