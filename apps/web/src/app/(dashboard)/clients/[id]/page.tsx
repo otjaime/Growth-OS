@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { ErrorState } from '@/components/ui/error-state';
 import { Badge, getStatusVariant } from '@/components/ui/badge';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { ConvictionDots } from '@/components/ui/conviction-dots';
 
 interface Hypothesis {
   id: string;
@@ -50,17 +51,7 @@ const STATUS_ORDER: Record<string, number> = {
   LIVE: 0, APPROVED: 1, DRAFT: 2, WINNER: 3, LOSER: 4, INCONCLUSIVE: 5,
 };
 
-function ConvictionDots({ level }: { level: number }) {
-  return (
-    <span className="font-mono text-xs tracking-wider">
-      {Array.from({ length: 5 }, (_, i) => (
-        <span key={i} className={i < level ? 'text-amber-400' : 'text-[var(--foreground-secondary)]/30'}>
-          {'\u25CF'}
-        </span>
-      ))}
-    </span>
-  );
-}
+// ConvictionDots imported from shared component
 
 export default function ClientDetailPage() {
   const params = useParams();
