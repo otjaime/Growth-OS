@@ -60,9 +60,9 @@ interface CreativeBrief {
 interface StopLossEvent {
   id: string;
   rule: string;
-  action: string;
-  metricsAtTrigger: Record<string, number> | null;
-  triggeredAt: string;
+  actionTaken: string;
+  metricAtTrigger: Record<string, number> | null;
+  executedAt: string;
 }
 
 interface Client {
@@ -77,7 +77,7 @@ interface HypothesisDetail {
   status: string;
   trigger: string;
   conviction: number;
-  mechanism: string | null;
+  triggerMechanism: string | null;
   audience: string | null;
   funnelStage: string | null;
   creativeAngle: string | null;
@@ -320,7 +320,7 @@ export default function HypothesisDetailPage() {
         </h2>
         <dl className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KeyValue label="Trigger" value={h.trigger} />
-          <KeyValue label="Mechanism" value={h.mechanism} />
+          <KeyValue label="Mechanism" value={h.triggerMechanism} />
           <KeyValue label="Audience" value={h.audience} />
           <KeyValue label="Funnel Stage" value={h.funnelStage} />
           <KeyValue label="Creative Angle" value={h.creativeAngle} />
@@ -589,18 +589,18 @@ export default function HypothesisDetailPage() {
                     {ev.rule}
                   </p>
                   <p className="text-[var(--foreground-secondary)]">
-                    Action: {ev.action}
+                    Action: {ev.actionTaken}
                   </p>
-                  {ev.metricsAtTrigger && (
+                  {ev.metricAtTrigger && (
                     <p className="text-[var(--foreground-secondary)] font-mono">
-                      {Object.entries(ev.metricsAtTrigger)
+                      {Object.entries(ev.metricAtTrigger)
                         .map(([k, v]) => `${k}: ${v}`)
                         .join(' | ')}
                     </p>
                   )}
                 </div>
                 <span className="text-[var(--foreground-secondary)] whitespace-nowrap ml-4">
-                  {new Date(ev.triggeredAt).toLocaleDateString()}
+                  {new Date(ev.executedAt).toLocaleDateString()}
                 </span>
               </div>
             ))}
