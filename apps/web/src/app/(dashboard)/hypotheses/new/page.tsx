@@ -51,6 +51,7 @@ interface TriggerRecommendation {
 
 interface FormData {
   clientId: string;
+  title: string;
   vertical: string;
   funnelStage: string;
   awarenessLevel: number;
@@ -70,8 +71,17 @@ interface FormData {
   budgetOverride: string;
 }
 
+const AWARENESS_LEVEL_MAP: Record<number, string> = {
+  1: 'UNAWARE',
+  2: 'PAIN_AWARE',
+  3: 'SOLUTION_AWARE',
+  4: 'PRODUCT_AWARE',
+  5: 'MOST_AWARE',
+};
+
 const INITIAL_FORM: FormData = {
   clientId: '',
+  title: '',
   vertical: '',
   funnelStage: '',
   awarenessLevel: 0,
@@ -99,7 +109,7 @@ interface CopyVariant {
 }
 
 interface BriefResult {
-  variants: CopyVariant[];
+  copyVariants: CopyVariant[];
   [key: string]: unknown;
 }
 
@@ -125,7 +135,7 @@ export default function NewHypothesisPage() {
   const initialClientId = searchParams.get('clientId') ?? '';
 
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<FormData>({ ...INITIAL_FORM, clientId: initialClientId });
+  const [form, setForm] = useState<FormData>({ ...INITIAL_FORM, clientId: initialClientId, title: '' });
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [triggers, setTriggers] = useState<TriggerRecommendation[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -233,12 +243,13 @@ export default function NewHypothesisPage() {
     setSubmitting(true);
     try {
       const body = {
+        title: form.title || `${selectedTrigger?.name ?? form.triggerId} — ${selectedClient?.name ?? 'Hypothesis'}`,
         clientId: form.clientId,
         funnelStage: form.funnelStage,
-        awarenessLevel: form.awarenessLevel,
+        awarenessLevel: AWARENESS_LEVEL_MAP[form.awarenessLevel] ?? 'UNAWARE',
         primaryEmotion: form.primaryEmotion,
         primaryObjection: form.primaryObjection,
-        triggerId: form.triggerId,
+        trigger: selectedTrigger?.id ?? form.triggerId,
         triggerMechanism: form.triggerMechanism,
         audience: form.audience,
         creativeAngle: form.creativeAngle,
@@ -249,7 +260,7 @@ export default function NewHypothesisPage() {
         durationDays: parseInt(form.durationDays, 10) || 7,
         falsificationCondition: form.falsificationCondition,
         conviction: form.conviction,
-        budget: form.budgetOverride ? parseFloat(form.budgetOverride) : kellyBudget,
+        budgetUSD: form.budgetOverride ? parseFloat(form.budgetOverride) : kellyBudget,
       };
 
       const res = await apiFetch(`/api/clients/${form.clientId}/hypotheses`, {
@@ -261,7 +272,7 @@ export default function NewHypothesisPage() {
       if (res.ok) {
         const created = await res.json();
         setPostCreation({
-          hypothesisId: created.id,
+          hypothesisId: created.hypothesis?.id ?? created.id,
           clientId: form.clientId,
           brief: null,
           execution: null,
@@ -291,7 +302,8 @@ export default function NewHypothesisPage() {
       );
       if (res.ok) {
         const data = await res.json();
-        setPostCreation((s) => s ? { ...s, brief: data, briefLoading: false } : s);
+        const briefData = data.brief ?? data;
+        setPostCreation((s) => s ? { ...s, brief: briefData, briefLoading: false } : s);
       } else {
         setPostCreation((s) => s ? { ...s, briefError: 'Failed to generate brief. Please try again.', briefLoading: false } : s);
       }
@@ -363,7 +375,7 @@ export default function NewHypothesisPage() {
           <GlassSurface className="card p-6 space-y-4">
             <h2 className="text-lg font-semibold text-[var(--foreground)]">Creative Brief Preview</h2>
             <div className="space-y-3">
-              {brief.variants.map((variant, i) => (
+              {brief.copyVariants.map((variant, i) => (
                 <GlassSurface key={i} className="card p-4 bg-white/[0.03] space-y-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="blue">{variant.angle}</Badge>
@@ -382,7 +394,7 @@ export default function NewHypothesisPage() {
             <button
               onClick={handleExecuteLaunch}
               disabled={execLoading}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-6 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+              className="flex items-center gap-2 bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 text-sm font-medium px-6 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
             >
               {execLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -466,6 +478,17 @@ export default function NewHypothesisPage() {
         {step === 0 && (
           <div className="space-y-5">
             <h2 className="text-lg font-semibold text-[var(--foreground)]">Client + Context</h2>
+
+            <div>
+              <label className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1 block">Hypothesis Title</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => updateField('title', e.target.value)}
+                placeholder="e.g. Loss Aversion × BOFU for Q1 Skincare Launch"
+                className="w-full px-3 py-2 text-sm bg-white/[0.06] border border-[var(--glass-border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--foreground-secondary)]/50 focus:border-apple-blue focus:outline-none"
+              />
+            </div>
 
             <div>
               <label className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-1 block">Client</label>
@@ -845,6 +868,8 @@ export default function NewHypothesisPage() {
             <GlassSurface className="card p-4 bg-white/[0.03] space-y-2">
               <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wider mb-2">Review Summary</p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
+                <span className="text-[var(--foreground-secondary)]">Title</span>
+                <span className="text-[var(--foreground)]">{form.title || '(auto-generated)'}</span>
                 <span className="text-[var(--foreground-secondary)]">Client</span>
                 <span className="text-[var(--foreground)]">{selectedClient?.name ?? '--'}</span>
                 <span className="text-[var(--foreground-secondary)]">Funnel</span>
@@ -902,7 +927,7 @@ export default function NewHypothesisPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-6 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
+            className="flex items-center gap-2 bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 text-sm font-medium px-6 py-2 rounded-lg transition-all ease-spring disabled:opacity-50"
           >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
